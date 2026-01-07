@@ -1,0 +1,138 @@
+---
+title: 'Services'
+description: 'Ads, beacons, feed, and utility endpoints'
+---
+
+## Advertisements
+
+```bash
+GET /v3/ads
+```
+
+## Statistics
+
+```bash
+GET /v3/statistics
+GET /v3/statistics/{id}
+```
+
+## Beacons
+
+Location broadcasts from players.
+
+### List Beacons
+
+```bash
+GET /v3/beacons
+GET /v3/beacons?lat=40.7128&lon=-74.0060&distance=10
+```
+
+### Create Beacon
+
+```bash
+POST /v3/beacons
+Authorization: Bearer YOUR_TOKEN
+{
+  "latitude": 40.7128,
+  "longitude": -74.0060,
+  "message": "Looking for a game!"
+}
+```
+
+### Delete Beacon
+
+```bash
+DELETE /v3/beacons/{id}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Feed
+
+User's activity feed:
+
+```bash
+GET /v3/feed
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Data Services
+
+### Geocode
+
+```bash
+GET /v3/data/geocode?address=123%20Main%20St
+```
+
+### Place Info
+
+```bash
+GET /v3/data/place?place_id=ChIJ...
+```
+
+### Place Suggestions
+
+```bash
+GET /v3/data/places/suggestions?q=pool%20hall
+```
+
+### Google Photo
+
+```bash
+GET /v3/data/google/photo?reference=...
+```
+
+### IP Location
+
+```bash
+GET /v3/data/ip-location
+```
+
+### Reddit Search
+
+```bash
+GET /v3/data/reddit/search?q=billiards
+```
+
+## Facts
+
+Random pool facts:
+
+```bash
+GET /v3/facts
+GET /v3/facts/random
+```
+
+## Check-ins
+
+### List Check-ins
+
+```bash
+GET /v3/checkins
+GET /v3/checkins?user_id=1
+GET /v3/checkins?venue_id=1
+```
+
+### Create Check-in
+
+```bash
+POST /v3/checkins
+Authorization: Bearer YOUR_TOKEN
+{
+  "venue_id": 1
+}
+```
+
+## Notifications
+
+```bash
+GET /v3/notifications
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Configuration
+
+Public app configuration:
+
+```bash
+GET /v3/config
+```

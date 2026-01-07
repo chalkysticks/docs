@@ -1,0 +1,75 @@
+---
+title: 'Authentication Components'
+description: 'Login, signup, and auth panel components'
+---
+
+## AuthPanel
+
+Full authentication panel with login/signup tabs.
+
+```html
+<ChalkyAuthPanel
+    v-on:login="handleLogin"
+    v-on:register="handleRegister"
+/>
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `showGoogle` | boolean | true | Show Google OAuth button |
+| `showApple` | boolean | false | Show Apple OAuth button |
+| `defaultTab` | string | 'login' | Initial tab ('login' or 'register') |
+
+### Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `login` | User | User logged in successfully |
+| `register` | User | User registered successfully |
+| `error` | Error | Authentication error |
+
+## BasicLogin
+
+Standalone login form.
+
+```html
+<ChalkyBasicLogin
+    v-on:submit="handleLogin"
+    v-on:forgot-password="showForgotPassword"
+/>
+```
+
+## BasicSignup
+
+Standalone registration form.
+
+```html
+<ChalkyBasicSignup
+    v-on:submit="handleRegister"
+/>
+```
+
+## AuthNavigation
+
+User dropdown menu for authenticated state.
+
+```html
+<ChalkyAuthNavigation
+    v-bind:user="currentUser"
+    v-on:logout="handleLogout"
+/>
+```
+
+## AuthModal
+
+Modal wrapper for auth panel.
+
+```html
+<ChalkyAuthModal
+    v-bind:visible="showAuthModal"
+    v-on:close="showAuthModal = false"
+    v-on:login="handleLogin"
+/>
+```

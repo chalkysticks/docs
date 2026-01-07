@@ -1,0 +1,116 @@
+---
+title: 'Embed the trainer'
+description: 'Add the pool simulator to a page'
+---
+
+## Basic Setup
+
+```html
+<template>
+    <div class="game-container">
+        <ChalkyTrainer
+            ref="trainer"
+            v-bind:gameType="'8ball'"
+            v-on:shot="handleShot"
+            v-on:pocket="handlePocket"
+        />
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+
+@Component
+export default class GamePage extends Vue {
+    handleShot(data: object): void {
+        console.log('Shot executed:', data);
+    }
+
+    handlePocket(ball: object, pocket: string): void {
+        console.log(`Ball pocketed in ${pocket}`);
+    }
+}
+</script>
+
+<style scoped>
+.game-container {
+    height: 100vh;
+    width: 100%;
+}
+</style>
+```
+
+## With Controls
+
+```html
+<template>
+    <div class="game-page">
+        <ChalkyTrainer
+            ref="trainer"
+            v-bind:gameType="gameType"
+            v-bind:showAimLine="true"
+            v-bind:showGhostBall="true"
+        />
+
+        <div class="controls">
+            <button v-on:click="newGame('8ball')">8-Ball</button>
+            <button v-on:click="newGame('9ball')">9-Ball</button>
+            <button v-on:click="reset">Reset</button>
+        </div>
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+
+@Component
+export default class GamePage extends Vue {
+    gameType: string = '8ball';
+
+    get game(): any {
+        return this.$refs.trainer?.game;
+    }
+
+    newGame(type: string): void {
+        this.gameType = type;
+        this.game?.start(type);
+    }
+
+    reset(): void {
+        this.game?.reset();
+    }
+}
+</script>
+```
+
+## Access Game API
+
+```typescript
+// Via ref
+const game = this.$refs.trainer.game;
+
+// Control the game
+game.setPower(0.5);
+game.setEnglish(0.3, -0.2);
+game.shoot();
+
+// Camera control
+game.setCamera('overhead');
+game.setCamera('behind-cue');
+```
+
+## Listen for Events
+
+```typescript
+mounted(): void {
+    const game = this.$refs.trainer.game;
+
+    game.on('turn:start', (player) => {
+        console.log('Turn started:', player);
+    });
+
+    game.on('game:over', (result) => {
+        console.log('Winner:', result.winner);
+    });
+}
+```

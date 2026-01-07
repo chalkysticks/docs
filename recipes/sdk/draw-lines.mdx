@@ -1,0 +1,90 @@
+---
+title: 'Draw coach lines'
+description: 'Connect balls with shot path lines'
+---
+
+## Setup
+
+```typescript
+const tableManager = this.$refs.pad.tableManager;
+const ballManager = tableManager.ballManager;
+const lineManager = tableManager.lineManager;
+```
+
+## Draw Line Between Balls
+
+```typescript
+// Get ball references
+const cueBall = ballManager.getBallByType('cue');
+const targetBall = ballManager.getBalls()[1]; // First object ball
+
+// Draw line
+lineManager.addLine(cueBall, targetBall);
+```
+
+## Styled Line
+
+```typescript
+lineManager.addLine(cueBall, targetBall, {
+    color: '#ff0000',
+    dashed: true,
+    width: 2
+});
+```
+
+## Show Shot Path
+
+Draw cue to ghost to target:
+
+```typescript
+const cueBall = ballManager.getBallByType('cue');
+const ghostBall = ballManager.getBallByType('ghost');
+const targetBall = ballManager.getBalls().find(b => b.number === 1);
+
+// Cue to ghost (aim line)
+lineManager.addLine(cueBall, ghostBall, {
+    color: '#ffffff',
+    dashed: false
+});
+
+// Ghost to target (path after contact)
+lineManager.addLine(ghostBall, targetBall, {
+    color: '#ffff00',
+    dashed: true
+});
+```
+
+## Full Example
+
+```typescript
+export default class DiagramEditor extends Vue {
+    setupShot(): void {
+        const { ballManager, lineManager } = this.$refs.pad.tableManager;
+
+        // Clear
+        ballManager.clearBalls();
+        lineManager.clearLines();
+
+        // Add balls
+        ballManager.addBall('cue', { x: 0.2, y: 0.5 });
+        ballManager.addBall('ghost', { x: 0.55, y: 0.45 });
+        ballManager.addBall('solid', { x: 0.6, y: 0.4 }, { number: 1 });
+
+        // Get references
+        const cue = ballManager.getBallByType('cue');
+        const ghost = ballManager.getBallByType('ghost');
+        const target = ballManager.getBalls().find(b => b.number === 1);
+
+        // Draw aim line
+        lineManager.addLine(cue, ghost, {
+            color: '#ffffff'
+        });
+
+        // Draw ball path
+        lineManager.addLine(ghost, target, {
+            color: '#ffff00',
+            dashed: true
+        });
+    }
+}
+```

@@ -1,0 +1,110 @@
+---
+title: 'Authentication'
+description: 'Login, register, and token management'
+---
+
+## Login
+
+```bash
+POST /v3/auth/login
+```
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password"
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "User Name",
+    "email": "user@example.com",
+    "token": "your-jwt-token"
+  }
+}
+```
+
+## Register
+
+```bash
+POST /v3/auth/register
+```
+
+**Request:**
+```json
+{
+  "name": "New User",
+  "email": "new@example.com",
+  "password": "password",
+  "password_confirmation": "password"
+}
+```
+
+## Logout
+
+```bash
+POST /v3/auth/logout
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Google OAuth
+
+```bash
+# Redirect to Google
+GET /v3/auth/google
+
+# Login with Google token
+POST /v3/auth/google
+{
+  "token": "google-id-token"
+}
+```
+
+## Password Reset
+
+### Request Reset
+
+```bash
+POST /v3/auth/forgot-password
+{
+  "email": "user@example.com"
+}
+```
+
+### Reset Password
+
+```bash
+POST /v3/auth/reset-password/{token}
+{
+  "password": "newpassword",
+  "password_confirmation": "newpassword"
+}
+```
+
+## Change Password
+
+```bash
+POST /v3/auth/change-password
+Authorization: Bearer YOUR_TOKEN
+{
+  "current_password": "oldpassword",
+  "password": "newpassword",
+  "password_confirmation": "newpassword"
+}
+```
+
+## Validate Email
+
+Check if email is available:
+
+```bash
+POST /v3/auth/validate-email
+{
+  "email": "check@example.com"
+}
+```

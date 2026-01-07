@@ -1,0 +1,53 @@
+---
+title: 'Table Manager'
+description: 'Orchestrating pad operations'
+---
+
+The Table Manager is the main entry point for all pad operations.
+
+## Getting the Manager
+
+```typescript
+// In vue2-pad context
+const tableManager = this.$refs.pad.tableManager;
+
+// Or via SDK
+import { Core } from '@chalkysticks/sdk-pad';
+const tableManager = Core.TableManager.getInstance();
+```
+
+## Manager Components
+
+| Manager | Purpose |
+|---------|---------|
+| `BallManager` | Add/remove/position balls |
+| `LineManager` | Draw coach lines |
+| `RailManager` | Table boundaries |
+| `TrajectoryManager` | Shot path visualization |
+
+## Accessing Sub-Managers
+
+```typescript
+const ballManager = tableManager.ballManager;
+const lineManager = tableManager.lineManager;
+const railManager = tableManager.railManager;
+const trajectoryManager = tableManager.trajectoryManager;
+```
+
+## Common Operations
+
+```typescript
+// Clear everything
+tableManager.clearTable();
+
+// Get current state
+const state = tableManager.exportTableState();
+
+// Load a state
+tableManager.importTableState(state);
+
+// Listen for changes
+tableManager.on('change', (state) => {
+    console.log('Table changed:', state);
+});
+```

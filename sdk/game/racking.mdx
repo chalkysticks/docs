@@ -1,0 +1,77 @@
+---
+title: 'Racking Patterns'
+description: 'Standard and custom ball rack configurations'
+---
+
+## Rack Types
+
+| Type | Description |
+|------|-------------|
+| `8ball` | 15-ball triangle rack |
+| `9ball` | 9-ball diamond rack |
+| `10ball` | 10-ball triangle rack |
+| `3ball` | 3-ball triangle |
+| `drill-line` | Balls in a line for drills |
+| `custom` | Manual ball placement |
+
+## Standard Racks
+
+```typescript
+const rackManager = game.rackManager;
+
+// 8-ball rack
+rackManager.rackBalls('8ball');
+
+// 9-ball rack
+rackManager.rackBalls('9ball');
+
+// 10-ball rack
+rackManager.rackBalls('10ball');
+```
+
+## Rack Options
+
+```typescript
+// Shuffle balls before racking
+rackManager.rackBalls('8ball', { shuffle: true });
+
+// Place at custom foot spot
+rackManager.rackBalls('8ball', {
+    footSpot: { x: 0.75, y: 0.5 }
+});
+```
+
+## Drill Patterns
+
+```typescript
+// Line of balls for straight-in drill
+rackManager.rackBalls('drill-line', {
+    balls: [1, 2, 3, 4, 5],
+    spacing: 0.1
+});
+
+// Custom positions
+rackManager.custom([
+    { number: 1, x: 0.3, y: 0.3 },
+    { number: 2, x: 0.5, y: 0.5 },
+    { number: 3, x: 0.7, y: 0.7 }
+]);
+```
+
+## Cue Ball Placement
+
+```typescript
+// Place cue ball in kitchen
+rackManager.placeCueBall({ x: 0.25, y: 0.5 });
+
+// Ball in hand (anywhere on table)
+rackManager.placeCueBall({ x: 0.4, y: 0.6 });
+```
+
+## Rack Events
+
+```typescript
+rackManager.on('rack:complete', (pattern) => {
+    console.log('Balls racked:', pattern);
+});
+```

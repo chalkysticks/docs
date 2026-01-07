@@ -1,0 +1,107 @@
+---
+title: 'UI Elements'
+description: 'Badge, progress bars, tooltips, and more'
+---
+
+## Badge
+
+Display status or count badges.
+
+```html
+<ChalkyBadge v-bind:count="5" />
+<ChalkyBadge type="success" text="Active" />
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `count` | number | Numeric badge |
+| `text` | string | Text badge |
+| `type` | string | 'default', 'success', 'warning', 'error' |
+
+## ProgressBar
+
+Animated progress indicator.
+
+```html
+<ChalkyProgressBar v-bind:value="75" />
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | number | 0 | Progress 0-100 |
+| `showLabel` | boolean | false | Show percentage label |
+| `color` | string | 'primary' | Bar color |
+
+## BarGraph
+
+Horizontal bar chart.
+
+```html
+<ChalkyBarGraph
+    v-bind:data="[
+        { label: 'Wins', value: 45 },
+        { label: 'Losses', value: 12 }
+    ]"
+/>
+```
+
+## CoachMark
+
+Highlight and explain UI elements.
+
+```html
+<ChalkyCoachMark
+    v-bind:target="$refs.targetElement"
+    title="New Feature"
+    description="Click here to access the new feature"
+/>
+```
+
+## CoachMarkSequencer
+
+Guide users through multiple coach marks.
+
+```html
+<ChalkyCoachMarkSequencer
+    v-bind:steps="[
+        { target: '#step1', title: 'Step 1', description: 'First step' },
+        { target: '#step2', title: 'Step 2', description: 'Second step' }
+    ]"
+    v-on:complete="onTourComplete"
+/>
+```
+
+## Tooltip
+
+Hover tooltips.
+
+```html
+<ChalkyTooltip text="More information">
+    <button>Hover me</button>
+</ChalkyTooltip>
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | string | - | Tooltip text |
+| `position` | string | 'top' | 'top', 'bottom', 'left', 'right' |
+| `delay` | number | 200 | Show delay in ms |
+
+## FeatureCard
+
+Promotional feature cards.
+
+```html
+<ChalkyFeatureCard
+    title="Premium Features"
+    description="Unlock all features"
+    icon="crown"
+    v-on:click="showUpgrade"
+/>
+```

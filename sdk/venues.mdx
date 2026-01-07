@@ -1,0 +1,91 @@
+---
+title: 'Venues Package'
+description: 'Venue data, search, and check-ins'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-venues
+```
+
+## Searching Venues
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-venues';
+
+const venues = new Collection.Venue();
+
+// Search by location
+venues.setQuery({
+    lat: 40.7128,
+    lon: -74.0060,
+    distance: 25  // km
+});
+await venues.fetch();
+
+// Search by city/state
+venues.setQuery({
+    city: 'New York',
+    state: 'NY'
+});
+await venues.fetch();
+
+// Search by name
+venues.setQuery({ q: 'Amsterdam Billiards' });
+await venues.fetch();
+```
+
+## Venue Model
+
+```typescript
+import { Model } from '@chalkysticks/sdk-venues';
+
+const venue = new Model.Venue({ id: 123 });
+await venue.fetch();
+
+// Properties
+console.log(venue.name);
+console.log(venue.address);
+console.log(venue.city, venue.state, venue.zip);
+console.log(venue.phone);
+console.log(venue.website);
+console.log(venue.latitude, venue.longitude);
+console.log(venue.tableCount);
+console.log(venue.rating);
+```
+
+## Venue Types
+
+| Type | Description |
+|------|-------------|
+| `pool_hall` | Dedicated pool hall |
+| `bar` | Bar with tables |
+| `club` | Private club |
+| `recreation` | Recreation center |
+
+## Check-ins
+
+```typescript
+// Check into a venue
+await venue.checkin();
+
+// Get check-in history
+const checkins = venue.checkins;
+await checkins.fetch();
+
+// Get who's currently at venue
+checkins.setQuery({ active: true });
+await checkins.fetch();
+```
+
+## Venue Media
+
+```typescript
+// Get venue photos
+const media = venue.media;
+await media.fetch();
+
+// First photo URL
+const photoUrl = media.first().url;
+```

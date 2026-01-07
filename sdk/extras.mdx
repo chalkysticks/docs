@@ -1,0 +1,88 @@
+---
+title: 'Extras Package'
+description: 'Facts, rulebooks, and statistics'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-extras
+```
+
+## Facts
+
+Random pool/billiards facts.
+
+```typescript
+import { Collection, Factory } from '@chalkysticks/sdk-extras';
+
+// Get all facts
+const facts = new Collection.Fact();
+await facts.fetch();
+
+// Get random fact
+const randomFact = await Factory.Fact.random();
+console.log(randomFact.text);
+```
+
+## Rulebooks
+
+Official game rules.
+
+```typescript
+import { Collection, Model } from '@chalkysticks/sdk-extras';
+
+// Get all rulebooks
+const rulebooks = new Collection.Rulebook();
+await rulebooks.fetch();
+
+// Get specific rulebook
+const rules8ball = new Model.Rulebook({ id: '8ball' });
+await rules8ball.fetch();
+
+console.log(rules8ball.title);
+console.log(rules8ball.content);  // Markdown content
+```
+
+## Available Rulebooks
+
+| ID | Game |
+|----|------|
+| `8ball` | 8-Ball |
+| `9ball` | 9-Ball |
+| `10ball` | 10-Ball |
+| `straight` | Straight Pool |
+| `one_pocket` | One Pocket |
+| `bank` | Bank Pool |
+| `snooker` | Snooker |
+
+## Statistics
+
+Player and game statistics.
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-extras';
+
+// Get global statistics
+const stats = new Collection.Statistic();
+await stats.fetch();
+
+stats.models.forEach(stat => {
+    console.log(stat.name, stat.value);
+});
+```
+
+## Google Places Integration
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-extras';
+
+// Search for places
+const places = await Factory.GooglePlace.search('pool hall near me');
+
+// Get place details
+const place = await Factory.GooglePlace.getDetails('ChIJ...');
+console.log(place.name);
+console.log(place.address);
+console.log(place.rating);
+```

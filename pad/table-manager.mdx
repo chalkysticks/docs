@@ -1,0 +1,88 @@
+---
+title: 'Table Manager'
+description: 'Main orchestrator for pad operations'
+---
+
+## Accessing Table Manager
+
+```typescript
+const tableManager = this.$refs.pad.tableManager;
+```
+
+## Common Operations
+
+### Clear Table
+
+```typescript
+// Remove all balls and lines
+tableManager.clearTable();
+```
+
+### Export State
+
+```typescript
+// Get current state as JSON
+const state = tableManager.exportTableState();
+
+console.log(state);
+// {
+//   balls: [...],
+//   lines: [...],
+//   version: '1.0'
+// }
+```
+
+### Import State
+
+```typescript
+// Load a previously saved state
+tableManager.importTableState(state);
+```
+
+## Sub-Managers
+
+Access specialized managers:
+
+```typescript
+// Ball operations
+const ballManager = tableManager.ballManager;
+
+// Line operations
+const lineManager = tableManager.lineManager;
+
+// Rail/boundary operations
+const railManager = tableManager.railManager;
+
+// Trajectory visualization
+const trajectoryManager = tableManager.trajectoryManager;
+```
+
+## Events
+
+```typescript
+// Listen for any change
+tableManager.on('change', (state) => {
+    console.log('Table changed');
+    autoSave(state);
+});
+
+// Specific events
+tableManager.on('ball:added', (ball) => { ... });
+tableManager.on('ball:removed', (ball) => { ... });
+tableManager.on('line:added', (line) => { ... });
+tableManager.on('line:removed', (line) => { ... });
+```
+
+## Table Dimensions
+
+Coordinates are normalized 0-1:
+
+- `(0, 0)` = Top-left corner
+- `(1, 1)` = Bottom-right corner
+- `(0.5, 0.5)` = Center of table
+
+```typescript
+// Get table dimensions
+const dimensions = tableManager.getDimensions();
+// { width: 1, height: 0.5 } for 9-foot table ratio
+```

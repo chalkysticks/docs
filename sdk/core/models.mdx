@@ -1,0 +1,67 @@
+---
+title: 'Models'
+description: 'Data models for users, venues, media, and more'
+---
+
+## Available Models
+
+| Model | Description |
+|-------|-------------|
+| `User` | User account data |
+| `Venue` | Pool hall/venue data |
+| `Media` | Photos and videos |
+| `UserMedia` | User-specific media |
+| `VenueMedia` | Venue-specific media |
+| `Comment` | Comments on content |
+| `Reaction` | Love/like reactions |
+| `Content` | Rulebooks, articles |
+| `Message` | Chat messages |
+| `Meta` | Metadata key-value pairs |
+
+## Basic Usage
+
+```typescript
+import { Model } from '@chalkysticks/sdk-core';
+
+// Create a model instance
+const user = new Model.User({
+    id: 1,
+    name: 'Matt Kenefick',
+    email: 'matt@chalkysticks.com'
+});
+
+// Access properties
+console.log(user.name);
+console.log(user.email);
+```
+
+## Model Methods
+
+```typescript
+// Get attribute
+user.get('name');
+
+// Set attribute
+user.set('name', 'New Name');
+
+// Check if attribute exists
+user.has('avatar');
+
+// Get all attributes
+user.getAttributes();
+
+// Convert to JSON
+user.toJSON();
+```
+
+## Relationships
+
+Models can have relationships to other models:
+
+```typescript
+// User's media collection
+const media = user.media;
+
+// Venue's check-ins
+const checkins = venue.checkins;
+```

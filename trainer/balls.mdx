@@ -1,0 +1,96 @@
+---
+title: 'Ball Management'
+description: 'Adding, removing, and tracking balls in the trainer'
+---
+
+## Ball Types
+
+| Number | Type | Color |
+|--------|------|-------|
+| Cue | Cue ball | White |
+| 1-7 | Solids | Solid colors |
+| 8 | 8-ball | Black |
+| 9-15 | Stripes | Striped colors |
+
+## Accessing Ball Manager
+
+```typescript
+const ballManager = game.ballManager;
+```
+
+## Getting Balls
+
+```typescript
+// Get cue ball
+const cueBall = ballManager.getCueBall();
+
+// Get specific ball by number
+const ball1 = ballManager.getBall(1);
+const eightBall = ballManager.getBall(8);
+
+// Get all balls
+const allBalls = ballManager.getAllBalls();
+
+// Get balls on table (not pocketed)
+const activeBalls = ballManager.getActiveBalls();
+
+// Get pocketed balls
+const pocketed = ballManager.getPocketedBalls();
+```
+
+## Ball Properties
+
+```typescript
+const ball = ballManager.getBall(1);
+
+// Position (normalized 0-1)
+const { x, y } = ball.position;
+
+// Velocity
+const velocity = ball.velocity;
+
+// Spin
+const spin = ball.spin;
+
+// State
+const isPocketed = ball.pocketed;
+const isMoving = ball.isMoving();
+```
+
+## Ball Placement
+
+```typescript
+// Place cue ball (ball in hand)
+ballManager.placeCueBall({ x: 0.25, y: 0.5 });
+
+// Respot a ball
+ballManager.respotBall(8, { x: 0.5, y: 0.125 });
+```
+
+## Ball Events
+
+```typescript
+ballManager.on('ball:pocketed', (ball, pocket) => {
+    console.log(`Ball ${ball.number} in ${pocket}`);
+});
+
+ballManager.on('ball:collision', (ball1, ball2) => {
+    console.log(`${ball1.number} hit ${ball2.number}`);
+});
+
+ballManager.on('all:stopped', () => {
+    console.log('All balls stopped');
+});
+```
+
+## Custom Ball Setup
+
+```typescript
+// Clear all balls
+ballManager.clearBalls();
+
+// Add balls manually
+ballManager.addCueBall({ x: 0.25, y: 0.5 });
+ballManager.addBall(1, { x: 0.5, y: 0.3 });
+ballManager.addBall(2, { x: 0.7, y: 0.6 });
+```

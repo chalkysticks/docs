@@ -1,68 +1,198 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "ChalkySticks",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2563EB",
+    "light": "#3B82F6",
+    "dark": "#1D4ED8"
   },
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Home",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
-            ]
-          },
-          {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "index"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "SDK",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "sdk/index"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Core",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "sdk/core/index",
+              "sdk/core/models",
+              "sdk/core/collections",
+              "sdk/core/events",
+              "sdk/core/utilities"
+            ]
+          },
+          {
+            "group": "Pad",
+            "pages": [
+              "sdk/pad/index",
+              "sdk/pad/table-manager",
+              "sdk/pad/balls",
+              "sdk/pad/lines",
+              "sdk/pad/saving"
+            ]
+          },
+          {
+            "group": "Game",
+            "pages": [
+              "sdk/game/index",
+              "sdk/game/physics",
+              "sdk/game/balls",
+              "sdk/game/shots",
+              "sdk/game/racking"
+            ]
+          },
+          {
+            "group": "Packages",
+            "pages": [
+              "sdk/venues",
+              "sdk/players",
+              "sdk/tv",
+              "sdk/authentication",
+              "sdk/extras"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Vue Components",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "vue/index"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "vue/authentication",
+              "vue/ui-elements",
+              "vue/media",
+              "vue/social",
+              "vue/venue",
+              "vue/branding"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Vue Trainer",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "trainer/index"
+            ]
+          },
+          {
+            "group": "Game Engine",
+            "pages": [
+              "trainer/game-service",
+              "trainer/balls",
+              "trainer/shots",
+              "trainer/racking",
+              "trainer/camera",
+              "trainer/console"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Vue Pad",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "pad/index"
+            ]
+          },
+          {
+            "group": "Managers",
+            "pages": [
+              "pad/table-manager",
+              "pad/balls",
+              "pad/lines",
+              "pad/export"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/index"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/authentication",
+              "api/users",
+              "api/venues",
+              "api/games",
+              "api/media",
+              "api/diagrams",
+              "api/comments",
+              "api/tv",
+              "api/services"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Recipes",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "recipes/index"
+            ]
+          },
+          {
+            "group": "SDK Recipes",
+            "pages": [
+              "recipes/sdk/add-balls",
+              "recipes/sdk/draw-lines",
+              "recipes/sdk/search-venues",
+              "recipes/sdk/save-diagrams"
+            ]
+          },
+          {
+            "group": "Vue Recipes",
+            "pages": [
+              "recipes/vue/embed-trainer",
+              "recipes/vue/show-feed",
+              "recipes/vue/upload-media"
+            ]
+          },
+          {
+            "group": "API Recipes",
+            "pages": [
+              "recipes/api/fetch-venues",
+              "recipes/api/record-shots",
+              "recipes/api/get-schedule"
             ]
           }
         ]
@@ -71,14 +201,14 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
+          "anchor": "GitHub",
+          "href": "https://github.com/chalkysticks",
+          "icon": "github"
         },
         {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
+          "anchor": "Website",
+          "href": "https://chalkysticks.com",
+          "icon": "globe"
         }
       ]
     }
@@ -90,33 +220,16 @@
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "label": "App",
+        "href": "https://app.chalkysticks.com"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/chalkysticks",
+      "x": "https://x.com/chalkysticks",
+      "instagram": "https://instagram.com/chalkysticks"
     }
   }
 }

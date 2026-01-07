@@ -1,0 +1,68 @@
+---
+title: 'Vue Trainer'
+description: 'Physics-based pool simulator and training tool'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/vue2-trainer
+```
+
+## Setup
+
+```typescript
+import Vue from 'vue';
+import ChalkyTrainer from '@chalkysticks/vue2-trainer';
+
+Vue.use(ChalkyTrainer);
+```
+
+## Basic Usage
+
+```html
+<ChalkyTrainer
+    v-bind:gameType="'8ball'"
+    v-on:shot="handleShot"
+    v-on:pocket="handlePocket"
+/>
+```
+
+## Features
+
+- **Realistic Physics** - Custom-built ball dynamics, spin, and collision
+- **Game Variants** - 8-ball, 9-ball, 10-ball, 3-ball, custom
+- **Shot Control** - Power, english, elevation (jump shots)
+- **Camera Modes** - Overhead, side, corner, behind-cue, first-person
+- **Training Tools** - Shot replay, undo, frame-by-frame analysis
+- **Console API** - Full control via `window.game`
+
+## Architecture
+
+```
+Service Layer (Game.ts, BallManager, RackManager, ShotExecutor)
+       |
+Engine Layer (GameLoop, PhysicsEngine, RenderManager)
+       |
+Physics/Rendering (CollisionDetector, TrajectoryPredictor)
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `gameType` | string | '8ball' | Game type |
+| `physicsProfile` | string | 'tournament' | Physics preset |
+| `showAimLine` | boolean | true | Show aim helper |
+| `showGhostBall` | boolean | true | Show ghost ball |
+| `quality` | string | 'high' | Render quality |
+
+## Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `shot` | ShotData | Shot executed |
+| `pocket` | Ball, Pocket | Ball pocketed |
+| `foul` | FoulData | Foul occurred |
+| `turn-complete` | - | Turn ended |
+| `game-over` | Result | Game finished |

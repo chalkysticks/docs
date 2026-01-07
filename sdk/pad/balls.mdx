@@ -1,0 +1,93 @@
+---
+title: 'Ball Operations'
+description: 'Adding, removing, and positioning balls on the pad'
+---
+
+## Ball Types
+
+| Type | Description |
+|------|-------------|
+| `cue` | White cue ball |
+| `solid` | Solid colored balls (1-7) |
+| `striped` | Striped balls (9-15) |
+| `8ball` | The 8 ball |
+| `ghost` | Ghost ball for aiming |
+
+## Adding Balls
+
+```typescript
+const ballManager = tableManager.ballManager;
+
+// Add cue ball at center
+ballManager.addBall('cue', { x: 0.5, y: 0.5 });
+
+// Add solid ball
+ballManager.addBall('solid', { x: 0.25, y: 0.25 }, { number: 1 });
+
+// Add striped ball
+ballManager.addBall('striped', { x: 0.75, y: 0.75 }, { number: 9 });
+
+// Add 8-ball
+ballManager.addBall('8ball', { x: 0.5, y: 0.25 });
+
+// Add ghost ball for aiming
+ballManager.addBall('ghost', { x: 0.3, y: 0.3 });
+```
+
+## Removing Balls
+
+```typescript
+// Remove specific ball by reference
+ballManager.removeBall(ball);
+
+// Remove ball by ID
+ballManager.removeBallById(ballId);
+
+// Remove all balls
+ballManager.clearBalls();
+
+// Remove balls of type
+ballManager.removeBallsByType('ghost');
+```
+
+## Positioning
+
+Coordinates are normalized 0-1 (top-left is 0,0).
+
+```typescript
+// Move a ball
+ballManager.moveBall(ball, { x: 0.6, y: 0.4 });
+
+// Get ball position
+const position = ball.getPosition();
+console.log(position.x, position.y);
+```
+
+## Selecting Balls
+
+```typescript
+// Select a ball
+ballManager.selectBall(ball);
+
+// Get selected balls
+const selected = ballManager.getSelectedBalls();
+
+// Deselect all
+ballManager.deselectAll();
+```
+
+## Ball Events
+
+```typescript
+ballManager.on('ball:added', (ball) => {
+    console.log('Ball added:', ball);
+});
+
+ballManager.on('ball:removed', (ball) => {
+    console.log('Ball removed:', ball);
+});
+
+ballManager.on('ball:moved', (ball, position) => {
+    console.log('Ball moved to:', position);
+});
+```

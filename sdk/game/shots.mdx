@@ -1,0 +1,97 @@
+---
+title: 'Shot Execution'
+description: 'Power, english, and shot control'
+---
+
+## Shot Parameters
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| Power | 0-1 | Shot force (0 = soft, 1 = break) |
+| English X | -1 to 1 | Left/right spin |
+| English Y | -1 to 1 | Top/back spin |
+| Elevation | 0-90 | Cue angle in degrees |
+
+## Executing a Shot
+
+```typescript
+const shotExecutor = game.shotExecutor;
+
+// Basic shot
+shotExecutor.shoot({
+    power: 0.5,
+    angle: 45  // degrees
+});
+
+// Shot with english
+shotExecutor.shoot({
+    power: 0.6,
+    angle: 30,
+    english: { x: 0.3, y: -0.2 }  // Right english, draw
+});
+
+// Jump shot
+shotExecutor.shoot({
+    power: 0.7,
+    angle: 45,
+    elevation: 35
+});
+```
+
+## Aiming
+
+```typescript
+// Set aim direction
+game.setAimAngle(45);
+
+// Aim at a specific ball
+game.aimAt(targetBall);
+
+// Aim at a point on the table
+game.aimAtPoint({ x: 0.75, y: 0.5 });
+```
+
+## Power Control
+
+```typescript
+// Set power (0-1)
+game.setPower(0.6);
+
+// Get current power
+const power = game.getPower();
+```
+
+## English/Spin Control
+
+```typescript
+// Set english (both axes -1 to 1)
+game.setEnglish(0.3, -0.2);  // Right, draw
+
+// Get current english
+const english = game.getEnglish();
+console.log(english.x, english.y);
+
+// Reset english to center
+game.resetEnglish();
+```
+
+## Elevation (Jump/Masse)
+
+```typescript
+// Set cue elevation (degrees)
+game.setElevation(15);  // Slightly elevated
+game.setElevation(45);  // Jump shot
+game.setElevation(70);  // Masse shot
+```
+
+## Shot Events
+
+```typescript
+game.on('shot:start', ({ power, angle, english }) => {
+    console.log('Shot fired with power:', power);
+});
+
+game.on('shot:complete', () => {
+    console.log('Shot animation complete');
+});
+```

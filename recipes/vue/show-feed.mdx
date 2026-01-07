@@ -1,0 +1,137 @@
+---
+title: 'Show a venue feed'
+description: 'Display venue cards with location search'
+---
+
+## Basic Venue Feed
+
+```html
+<template>
+    <div class="venue-page">
+        <ChalkyVenueFeed
+            v-bind:collection="venues"
+            v-bind:showDistance="true"
+            v-on:venue-click="openVenue"
+        />
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+import { Collection } from '@chalkysticks/sdk-venues';
+import { Utility } from '@chalkysticks/sdk-core';
+
+@Component
+export default class VenuePage extends Vue {
+    venues: Collection.Venue = new Collection.Venue();
+
+    async mounted(): Promise<void> {
+        await this.loadNearbyVenues();
+    }
+
+    async loadNearbyVenues(): Promise<void> {
+        const position = await Utility.Geolocation.getCurrentPosition();
+
+        this.venues.setQuery({
+            lat: position.latitude,
+            lon: position.longitude,
+            distance: 25
+        });
+
+        await this.venues.fetch();
+    }
+
+    openVenue(venue: any): void {
+        this.$router.push(`/venues/${venue.id}`);
+    }
+}
+</script>
+```
+
+## With Search
+
+```html
+<template>
+    <div class="venue-page">
+        <ChalkySearch
+            v-model="searchQuery"
+            placeholder="Search venues..."
+            v-on:search="search"
+        />
+
+        <ChalkyVenueFeed
+            v-if="venues.length"
+            v-bind:collection="venues"
+            v-bind:infinite="true"
+        />
+
+        <div v-else-if="loading" class="loading">
+            Loading...
+        </div>
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+import { Collection } from '@chalkysticks/sdk-venues';
+
+@Component
+export default class VenuePage extends Vue {
+    venues: Collection.Venue = new Collection.Venue();
+    searchQuery: string = '';
+    loading: boolean = false;
+
+    async search(): Promise<void> {
+        this.loading = true;
+
+        this.venues.setQuery({
+            q: this.searchQuery
+        });
+
+        await this.venues.fetch();
+        this.loading = false;
+    }
+}
+</script>
+```
+
+## With Map
+
+```html
+<template>
+    <div class="venue-page">
+        <div class="map-container">
+            <ChalkyVenueMap
+                v-bind:venues="venues"
+                v-bind:center="mapCenter"
+                v-bind:zoom="12"
+                v-on:marker-click="selectVenue"
+            />
+        </div>
+
+        <div class="list-container">
+            <ChalkyVenueList
+                v-bind:venues="venues.models"
+                v-bind:selected="selectedVenueId"
+                v-on:select="selectVenue"
+            />
+        </div>
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+import { Collection, Model } from '@chalkysticks/sdk-venues';
+
+@Component
+export default class VenuePage extends Vue {
+    venues: Collection.Venue = new Collection.Venue();
+    selectedVenueId: number | null = null;
+    mapCenter: object = { lat: 40.7128, lng: -74.0060 };
+
+    selectVenue(venue: Model.Venue): void {
+        this.selectedVenueId = venue.id;
+    }
+}
+</script>
+```

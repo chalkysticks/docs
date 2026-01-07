@@ -1,0 +1,79 @@
+---
+title: 'Saving & Loading'
+description: 'Persisting pad diagrams to the API'
+---
+
+## Export State
+
+Get the current table state as JSON:
+
+```typescript
+const state = tableManager.exportTableState();
+console.log(state);
+// {
+//   balls: [...],
+//   lines: [...],
+//   version: '1.0'
+// }
+```
+
+## Import State
+
+Load a previously saved state:
+
+```typescript
+tableManager.importTableState(state);
+```
+
+## Save to API
+
+```typescript
+import { Model, Factory } from '@chalkysticks/sdk-pad';
+
+// Create diagram from current state
+const diagram = Factory.Diagram.create({
+    data: tableManager.exportTableState()
+});
+
+// Save to API
+await diagram.save();
+
+// Get the hash for sharing
+const hash = diagram.hash;
+console.log(`Share URL: https://pad.chalkysticks.com/${hash}`);
+```
+
+## Load from API
+
+```typescript
+import { Model } from '@chalkysticks/sdk-pad';
+
+// Load by hash
+const diagram = new Model.Diagram({ hash: 'abc123' });
+await diagram.fetch();
+
+// Apply to table
+tableManager.importTableState(diagram.data);
+```
+
+## Generate Images
+
+```typescript
+// Generate SVG
+const svgUrl = diagram.getSvgUrl();
+
+// Generate PNG
+const pngUrl = diagram.getPngUrl();
+
+// Request image generation
+await diagram.generateImages();
+```
+
+## Auto-Save
+
+```typescript
+// Listen for changes and auto-save
+tableManager.on('change', debounce(async (state) => {
+    await diagram.set('data', state).save();
+}, 1000));
+```

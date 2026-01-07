@@ -1,97 +1,55 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: 'ChalkySticks Documentation'
+description: 'Developer reference for the ChalkySticks ecosystem'
 ---
 
-## Setting up
+Personal reference documentation for SDK, Vue components, API, and practical recipes.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
+## Quick Links
 
 <Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
+    <Card title="SDK" icon="code" href="/sdk/index">
+        TypeScript SDK packages for core, pad, game, venues, and more.
+    </Card>
+    <Card title="Vue Components" icon="layer-group" href="/vue/index">
+        Reusable Vue 2.7 component library with Chalky prefix.
+    </Card>
+    <Card title="Vue Trainer" icon="gamepad" href="/trainer/index">
+        Physics-based pool simulator and training tool.
+    </Card>
+    <Card title="Vue Pad" icon="diagram-project" href="/pad/index">
+        Interactive pool diagram creation tool.
+    </Card>
+    <Card title="API Reference" icon="server" href="/api/index">
+        REST API endpoints for venues, games, media, and more.
+    </Card>
+    <Card title="Recipes" icon="book" href="/recipes/index">
+        Practical "How do I..." examples.
+    </Card>
 </Columns>
 
-## Create beautiful pages
+## Packages
 
-Everything you need to create world-class documentation.
+| Package | Description |
+|---------|-------------|
+| `@chalkysticks/sdk` | Main SDK aggregator |
+| `@chalkysticks/sdk-core` | Foundation: models, collections, events |
+| `@chalkysticks/sdk-pad` | Pad/diagram functionality |
+| `@chalkysticks/sdk-game` | Game physics and logic |
+| `@chalkysticks/sdk-venues` | Venue data and search |
+| `@chalkysticks/vue2-components` | Reusable Vue components |
+| `@chalkysticks/vue2-trainer` | Pool simulator |
+| `@chalkysticks/vue2-pad` | Diagram tool |
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Project Paths
 
-## Need inspiration?
+See [.memory/project-paths.md](https://github.com) for full path reference.
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+| Project | Path |
+|---------|------|
+| SDK | `repos/v3/sdk` |
+| API | `bin/api-v2` |
+| Vue Components | `repos/v3/framework/vue/vue2-components` |
+| Vue Trainer | `repos/v3/framework/vue/vue2-trainer` |
+| Vue Pad | `repos/v3/framework/vue/vue2-pad` |
+| Web App | `bin/web-app` |

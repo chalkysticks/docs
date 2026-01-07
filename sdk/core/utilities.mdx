@@ -1,0 +1,90 @@
+---
+title: 'Utilities'
+description: 'Helper utilities for geolocation, intervals, and more'
+---
+
+## Available Utilities
+
+| Utility | Purpose |
+|---------|---------|
+| Geolocation | GPS and location services |
+| Hysteresis | Value smoothing/debouncing |
+| Interval | Timed intervals |
+| Latch | State latching |
+| Shortcut | Keyboard shortcuts |
+
+## Geolocation
+
+```typescript
+import { Utility } from '@chalkysticks/sdk-core';
+
+// Get current position
+const position = await Utility.Geolocation.getCurrentPosition();
+console.log(position.latitude, position.longitude);
+
+// Watch position changes
+Utility.Geolocation.watchPosition((position) => {
+    console.log('Position updated:', position);
+});
+
+// Calculate distance between two points
+const distance = Utility.Geolocation.distance(
+    { lat: 40.7128, lon: -74.0060 },
+    { lat: 34.0522, lon: -118.2437 }
+);
+```
+
+## Interval
+
+```typescript
+import { Utility } from '@chalkysticks/sdk-core';
+
+// Create an interval
+const interval = new Utility.Interval(() => {
+    console.log('Tick');
+}, 1000);
+
+// Start
+interval.start();
+
+// Stop
+interval.stop();
+
+// Pause/Resume
+interval.pause();
+interval.resume();
+```
+
+## Hysteresis
+
+Smooth rapid value changes:
+
+```typescript
+import { Utility } from '@chalkysticks/sdk-core';
+
+const hysteresis = new Utility.Hysteresis({
+    threshold: 0.1,
+    callback: (value) => {
+        console.log('Stabilized value:', value);
+    }
+});
+
+hysteresis.push(0.5);
+hysteresis.push(0.52);
+hysteresis.push(0.51);
+// Only triggers callback when value changes significantly
+```
+
+## Shortcuts
+
+```typescript
+import { Utility } from '@chalkysticks/sdk-core';
+
+// Register keyboard shortcut
+Utility.Shortcut.register('ctrl+s', () => {
+    console.log('Save triggered');
+});
+
+// Unregister
+Utility.Shortcut.unregister('ctrl+s');
+```

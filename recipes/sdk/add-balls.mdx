@@ -1,0 +1,83 @@
+---
+title: 'Add balls to a table'
+description: 'Position balls on the pad using BallManager'
+---
+
+## Setup
+
+```typescript
+// Get the ball manager from pad
+const ballManager = this.$refs.pad.tableManager.ballManager;
+```
+
+## Add Cue Ball
+
+```typescript
+ballManager.addBall('cue', { x: 0.25, y: 0.5 });
+```
+
+## Add Object Balls
+
+```typescript
+// Add solid (with number)
+ballManager.addBall('solid', { x: 0.5, y: 0.3 }, { number: 1 });
+
+// Add striped
+ballManager.addBall('striped', { x: 0.7, y: 0.6 }, { number: 9 });
+
+// Add 8-ball
+ballManager.addBall('8ball', { x: 0.5, y: 0.5 });
+```
+
+## Add Ghost Ball
+
+For aiming visualization:
+
+```typescript
+ballManager.addBall('ghost', { x: 0.6, y: 0.4 });
+```
+
+## Set Up a Standard Drill
+
+```typescript
+// Clear existing balls
+ballManager.clearBalls();
+
+// Add cue ball in kitchen
+ballManager.addBall('cue', { x: 0.2, y: 0.5 });
+
+// Add object balls in a line
+const balls = [1, 2, 3, 4, 5];
+balls.forEach((num, i) => {
+    ballManager.addBall('solid', {
+        x: 0.4 + (i * 0.1),
+        y: 0.5
+    }, { number: num });
+});
+```
+
+## Full Example
+
+```typescript
+export default class DiagramEditor extends Vue {
+    mounted(): void {
+        this.setupDrill();
+    }
+
+    setupDrill(): void {
+        const ballManager = this.$refs.pad.tableManager.ballManager;
+
+        // Clear table
+        ballManager.clearBalls();
+
+        // Cue ball
+        ballManager.addBall('cue', { x: 0.2, y: 0.5 });
+
+        // Target ball
+        ballManager.addBall('solid', { x: 0.6, y: 0.5 }, { number: 1 });
+
+        // Ghost ball for aim point
+        ballManager.addBall('ghost', { x: 0.58, y: 0.5 });
+    }
+}
+```

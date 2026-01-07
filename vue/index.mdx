@@ -1,0 +1,70 @@
+---
+title: 'Vue Components'
+description: 'Reusable Vue 2.7 component library'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/vue2-components
+```
+
+## Setup
+
+```typescript
+// main.ts
+import Vue from 'vue';
+import ChalkySticks from '@chalkysticks/vue2-components';
+
+Vue.use(ChalkySticks);
+```
+
+## Component Prefix
+
+All components use the `Chalky` prefix:
+
+```html
+<ChalkyBrandingBadge />
+<ChalkyAuthPanel />
+<ChalkyVenueFeed />
+```
+
+## Technology Stack
+
+- Vue 2.7.14
+- TypeScript
+- vue-property-decorators (class-based)
+- GSAP for animations
+- Video.js for media
+- Google Maps integration
+- Ably chat integration
+
+## Component Categories
+
+| Category | Components |
+|----------|------------|
+| Authentication | AuthPanel, BasicLogin, BasicSignup, Modal, Navigation |
+| UI Elements | Badge, BarGraph, CoachMark, ProgressBar, Tooltip |
+| Media | Feed, CardSwipe, ImageUploader, VideoUploader |
+| Social | Comments, Reactions, Chat |
+| Venue | Feed, Card, List, Map |
+| Branding | Standard, Badge, Splash |
+
+## Individual Imports
+
+```typescript
+// Import specific component
+import { ChalkyBrandingBadge } from '@chalkysticks/vue2-components';
+
+export default {
+    components: {
+        ChalkyBrandingBadge
+    }
+};
+```
+
+## Dependencies
+
+The component library requires:
+- `@chalkysticks/sdk`
+- `@chalkysticks/sass` (for theming)

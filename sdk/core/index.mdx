@@ -1,0 +1,50 @@
+---
+title: 'Core Package'
+description: 'Foundation package with models, collections, events, and utilities'
+---
+
+The `sdk-core` package is the foundation of the ChalkySticks SDK. All other packages depend on it.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-core
+```
+
+## Modules
+
+| Module | Purpose |
+|--------|---------|
+| Collection | Data collection classes (User, Venue, Media, etc.) |
+| Model | Data model representations |
+| Factory | Object factory methods |
+| Enum | Enumerations (MediaType, VenueStatus, etc.) |
+| Event | Event dispatching system |
+| Exception | Error/exception classes |
+| Input | Sensor, pointer, keyboard handling |
+| Provider | Data providers and services |
+| Strategy | Subscription and media strategies |
+| Utility | Geolocation, intervals, hysteresis, etc. |
+| Data | Data access layer |
+| Sound | Audio management |
+| Common | ChalkySticks main class, Environment, Constants |
+
+## Quick Import
+
+```typescript
+import * as ChalkySticks from '@chalkysticks/sdk-core';
+
+// Or specific modules
+import { Model, Collection, Enum } from '@chalkysticks/sdk-core';
+```
+
+## Environment Setup
+
+```typescript
+import { Environment } from '@chalkysticks/sdk-core';
+
+Environment.set({
+    apiUrl: 'https://api.chalkysticks.com',
+    environment: 'production'
+});
+```

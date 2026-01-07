@@ -1,0 +1,102 @@
+---
+title: "Get today's TV schedule"
+description: 'Fetch live broadcasts via API'
+---
+
+## Get Live Now
+
+```bash
+curl "https://api.chalkysticks.com/v3/tv/live"
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "title": "US Open 9-Ball Championship",
+      "channel": "Matchroom Pool",
+      "stream_url": "https://youtube.com/watch?v=...",
+      "started_at": "2025-01-07T14:00:00Z",
+      "game_type": "9ball"
+    }
+  ]
+}
+```
+
+## Get Today's Schedule
+
+```bash
+curl "https://api.chalkysticks.com/v3/tv/schedule"
+```
+
+## Get Specific Date
+
+```bash
+curl "https://api.chalkysticks.com/v3/tv/schedule?date=2025-01-15"
+```
+
+## Get Channels
+
+```bash
+curl "https://api.chalkysticks.com/v3/tv/channels"
+```
+
+## JavaScript Example
+
+```javascript
+async function getTVSchedule() {
+    const baseUrl = 'https://api.chalkysticks.com/v3';
+
+    // Get live broadcasts
+    const liveResponse = await fetch(`${baseUrl}/tv/live`);
+    const { data: liveShows } = await liveResponse.json();
+
+    console.log('Currently Live:');
+    liveShows.forEach(show => {
+        console.log(`- ${show.title} on ${show.channel}`);
+    });
+
+    // Get today's schedule
+    const scheduleResponse = await fetch(`${baseUrl}/tv/schedule`);
+    const { data: schedule } = await scheduleResponse.json();
+
+    console.log('\nToday\'s Schedule:');
+    schedule.forEach(show => {
+        const time = new Date(show.starts_at).toLocaleTimeString();
+        console.log(`- ${time}: ${show.title}`);
+    });
+}
+```
+
+## With SDK
+
+```typescript
+import { Collection, Factory } from '@chalkysticks/sdk-tv';
+
+async function getTVSchedule(): Promise<void> {
+    // Get live broadcasts
+    const live = await Factory.Live.getCurrent();
+
+    live.forEach(stream => {
+        console.log(`LIVE: ${stream.title}`);
+        console.log(`Watch: ${stream.streamUrl}`);
+    });
+
+    // Get today's schedule
+    const schedule = new Collection.Schedule();
+    await schedule.fetch();
+
+    schedule.models.forEach(show => {
+        console.log(`${show.startsAt}: ${show.title}`);
+    });
+}
+```
+
+## Filter by Game Type
+
+```bash
+# Only 9-ball events
+curl "https://api.chalkysticks.com/v3/tv/schedule?game_type=9ball"
+```

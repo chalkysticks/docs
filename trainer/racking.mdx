@@ -1,0 +1,100 @@
+---
+title: 'Racking'
+description: 'Standard and custom ball rack patterns'
+---
+
+## Rack Types
+
+| Type | Description |
+|------|-------------|
+| `8ball` | 15-ball triangle |
+| `9ball` | 9-ball diamond |
+| `10ball` | 10-ball triangle |
+| `3ball` | 3-ball triangle |
+| `drill-line` | Line of balls |
+| `custom` | Manual placement |
+
+## Standard Racks
+
+```typescript
+// 8-ball rack
+game.rackBalls('8ball');
+
+// 9-ball rack
+game.rackBalls('9ball');
+
+// 10-ball rack
+game.rackBalls('10ball');
+```
+
+## Rack Options
+
+```typescript
+// Shuffle before racking
+game.rackBalls('8ball', { shuffle: true });
+
+// Custom foot spot position
+game.rackBalls('8ball', {
+    footSpot: { x: 0.75, y: 0.5 }
+});
+```
+
+## 8-Ball Rack Layout
+
+```
+        1
+      3   11
+    6   8   14
+  10   7   12   4
+15   2   13   9   5
+```
+
+The 8-ball is always in the center. Solids and stripes alternate on the bottom corners.
+
+## 9-Ball Rack Layout
+
+```
+      1
+    2   3
+  4   9   5
+    6   7
+      8
+```
+
+1-ball at the apex, 9-ball in the center.
+
+## Drill Setups
+
+```typescript
+// Line of balls for straight-in practice
+game.rackBalls('drill-line', {
+    balls: [1, 2, 3, 4, 5],
+    startX: 0.5,
+    startY: 0.3,
+    spacing: 0.1,
+    direction: 'vertical'
+});
+```
+
+## Custom Positions
+
+```typescript
+game.rackBalls('custom', {
+    positions: [
+        { number: 1, x: 0.3, y: 0.3 },
+        { number: 2, x: 0.5, y: 0.5 },
+        { number: 3, x: 0.7, y: 0.3 },
+        { number: 8, x: 0.5, y: 0.7 }
+    ]
+});
+```
+
+## Cue Ball Placement
+
+```typescript
+// Kitchen placement (behind head string)
+game.placeCueBall({ x: 0.25, y: 0.5 });
+
+// Ball in hand (anywhere)
+game.placeCueBall({ x: 0.4, y: 0.6 });
+```

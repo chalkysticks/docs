@@ -1,0 +1,78 @@
+---
+title: 'API Reference'
+description: 'ChalkySticks REST API documentation'
+---
+
+## Base URL
+
+```
+https://api.chalkysticks.com/v3
+```
+
+## Authentication
+
+Most endpoints require authentication via Bearer token:
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+     https://api.chalkysticks.com/v3/users/me
+```
+
+## Response Format
+
+All responses return JSON:
+
+```json
+{
+  "data": { ... },
+  "meta": {
+    "pagination": {
+      "total": 100,
+      "per_page": 15,
+      "current_page": 1
+    }
+  }
+}
+```
+
+## Error Responses
+
+| Code | Description |
+|------|-------------|
+| 400 | Bad Request |
+| 401 | Unauthorized |
+| 403 | Forbidden |
+| 404 | Not Found |
+| 422 | Validation Error |
+| 500 | Server Error |
+
+Error format:
+
+```json
+{
+  "message": "Error description",
+  "errors": {
+    "field": ["Validation error message"]
+  }
+}
+```
+
+## Pagination
+
+```bash
+GET /v3/venues?page=2&limit=25
+```
+
+| Parameter | Default | Max | Description |
+|-----------|---------|-----|-------------|
+| `page` | 1 | - | Page number |
+| `limit` | 15 | 128 | Items per page |
+
+## Rate Limiting
+
+- 60 requests per minute for authenticated users
+- 30 requests per minute for unauthenticated
+
+## Postman Collection
+
+Full API collection available in `.memory/v3-2026-01-07.postman_collection.json`

@@ -1,0 +1,104 @@
+---
+title: 'Camera Controls'
+description: 'Camera modes and positioning'
+---
+
+## Camera Modes
+
+| Mode | Description |
+|------|-------------|
+| `overhead` | Top-down view |
+| `side` | Side view |
+| `corner` | Corner pocket view |
+| `behind-cue` | Behind the cue ball |
+| `first-person` | Shooter's perspective |
+| `ball-track` | Follows a specific ball |
+
+## Setting Camera Mode
+
+```typescript
+// Set camera mode
+game.setCamera('overhead');
+game.setCamera('behind-cue');
+game.setCamera('first-person');
+
+// Get current mode
+const mode = game.getCameraMode();
+```
+
+## Camera Position
+
+```typescript
+// Custom position
+game.setCameraPosition({
+    x: 0.5,
+    y: 2.0,
+    z: 0.5
+});
+
+// Look at point
+game.setCameraLookAt({
+    x: 0.5,
+    y: 0,
+    z: 0.5
+});
+```
+
+## Camera Transitions
+
+```typescript
+// Smooth transition to new mode
+game.setCamera('overhead', {
+    duration: 1000,  // ms
+    easing: 'easeInOut'
+});
+
+// Immediate switch
+game.setCamera('side', { immediate: true });
+```
+
+## Ball Tracking
+
+```typescript
+// Follow cue ball
+game.trackBall('cue');
+
+// Follow specific ball
+game.trackBall(9);
+
+// Stop tracking
+game.stopTracking();
+```
+
+## Zoom Control
+
+```typescript
+// Set zoom level
+game.setZoom(1.5);  // 1.0 is default
+
+// Zoom in/out
+game.zoomIn();
+game.zoomOut();
+```
+
+## Camera Events
+
+```typescript
+game.on('camera:change', (mode) => {
+    console.log('Camera mode:', mode);
+});
+
+game.on('camera:move', (position) => {
+    console.log('Camera position:', position);
+});
+```
+
+## Auto Camera
+
+```typescript
+// Enable auto camera (follows action)
+game.setAutoCamera(true);
+
+// Disable auto camera
+game.setAutoCamera(false);
+```

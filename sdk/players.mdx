@@ -1,0 +1,80 @@
+---
+title: 'Players Package'
+description: 'Player management and beacons'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-players
+```
+
+## Player Collection
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-players';
+
+const players = new Collection.Player();
+
+// Search players
+players.setQuery({ q: 'Matt' });
+await players.fetch();
+
+// Players near location
+players.setQuery({
+    lat: 40.7128,
+    lon: -74.0060,
+    distance: 10
+});
+await players.fetch();
+```
+
+## Player Model
+
+```typescript
+import { Model } from '@chalkysticks/sdk-players';
+
+const player = new Model.Player({ id: 123 });
+await player.fetch();
+
+// Properties
+console.log(player.name);
+console.log(player.avatar);
+console.log(player.level);
+console.log(player.gamesPlayed);
+console.log(player.winRate);
+```
+
+## Beacons
+
+Beacons are location broadcasts from players.
+
+```typescript
+import { Collection, Model } from '@chalkysticks/sdk-players';
+
+// Get active beacons
+const beacons = new Collection.Beacon();
+await beacons.fetch();
+
+// Create a beacon (broadcast your location)
+const beacon = new Model.Beacon({
+    latitude: 40.7128,
+    longitude: -74.0060,
+    message: 'Looking for a game!'
+});
+await beacon.save();
+
+// Delete beacon (stop broadcasting)
+await beacon.destroy();
+```
+
+## Beacon Properties
+
+| Property | Description |
+|----------|-------------|
+| `latitude` | Location latitude |
+| `longitude` | Location longitude |
+| `message` | Optional message |
+| `user` | Associated user |
+| `venue` | Associated venue (if at one) |
+| `expiresAt` | When beacon expires |

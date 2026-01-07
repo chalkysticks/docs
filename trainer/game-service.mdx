@@ -1,0 +1,104 @@
+---
+title: 'Game Service API'
+description: 'Main game orchestrator and public API'
+---
+
+## Accessing the Game
+
+```typescript
+// Via component ref
+const game = this.$refs.trainer.game;
+
+// Via window (dev/debug)
+const game = window.game;
+```
+
+## Game States
+
+| State | Description |
+|-------|-------------|
+| `idle` | Waiting for action |
+| `aiming` | Player is aiming |
+| `shooting` | Shot animation in progress |
+| `balls-moving` | Balls are in motion |
+| `turn-complete` | Turn has ended |
+
+## Game Control
+
+```typescript
+// Start a new game
+game.start('8ball');
+
+// Reset current game
+game.reset();
+
+// Stop the game
+game.stop();
+
+// Pause/Resume
+game.pause();
+game.resume();
+```
+
+## Aim Control
+
+```typescript
+// Set aim angle (degrees)
+game.setAimAngle(45);
+
+// Aim at a ball
+game.aimAt(targetBall);
+
+// Aim at a point
+game.aimAtPoint({ x: 0.75, y: 0.5 });
+
+// Get current aim
+const angle = game.getAimAngle();
+```
+
+## Shot Control
+
+```typescript
+// Set power (0-1)
+game.setPower(0.6);
+
+// Set english (-1 to 1 for x and y)
+game.setEnglish(0.3, -0.2);
+
+// Set elevation (degrees, for jump shots)
+game.setElevation(15);
+
+// Execute shot
+game.shoot();
+```
+
+## Game State
+
+```typescript
+// Get current player
+const player = game.getCurrentPlayer();
+
+// Get score
+const score = game.getScore();
+
+// Check if game is over
+if (game.isGameOver()) {
+    console.log('Winner:', game.getWinner());
+}
+```
+
+## Events
+
+```typescript
+game.on('state:change', (state) => {
+    console.log('Game state:', state);
+});
+
+game.on('turn:start', (player) => {
+    console.log('Turn started for:', player);
+});
+
+game.on('turn:end', (player) => {
+    console.log('Turn ended for:', player);
+});
+```

@@ -1,0 +1,102 @@
+---
+title: 'Media Components'
+description: 'Feed, uploaders, and media display'
+---
+
+## Feed
+
+Display a scrollable media feed.
+
+```html
+<ChalkyMediaFeed
+    v-bind:collection="mediaCollection"
+    v-on:item-click="handleItemClick"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `collection` | Collection.Media | Media collection |
+| `columns` | number | Grid columns (default: 3) |
+| `infinite` | boolean | Enable infinite scroll |
+
+## CardSwipe
+
+Tinder-style swipeable cards.
+
+```html
+<ChalkyCardSwipe
+    v-bind:items="mediaItems"
+    v-on:swipe-left="handleReject"
+    v-on:swipe-right="handleApprove"
+/>
+```
+
+## ImageUploader
+
+Upload images with preview.
+
+```html
+<ChalkyImageUploader
+    v-on:upload="handleUpload"
+    v-on:error="handleError"
+/>
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `multiple` | boolean | false | Allow multiple uploads |
+| `maxSize` | number | 10 | Max file size in MB |
+| `accept` | string | 'image/*' | Accepted file types |
+| `showPreview` | boolean | true | Show preview after select |
+
+### Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `upload` | UserMedia | Upload completed |
+| `progress` | number | Upload progress (0-100) |
+| `error` | Error | Upload error |
+
+## VideoUploader
+
+Upload videos with thumbnail generation.
+
+```html
+<ChalkyVideoUploader
+    v-on:upload="handleVideoUpload"
+    v-bind:maxDuration="120"
+/>
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `maxSize` | number | 100 | Max file size in MB |
+| `maxDuration` | number | 300 | Max duration in seconds |
+| `generateThumbnail` | boolean | true | Auto-generate thumbnail |
+
+## VideoPlayer
+
+Video.js based player.
+
+```html
+<ChalkyVideoPlayer
+    v-bind:src="videoUrl"
+    v-bind:poster="thumbnailUrl"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `src` | string | Video source URL |
+| `poster` | string | Poster image URL |
+| `autoplay` | boolean | Auto-play video |
+| `controls` | boolean | Show player controls |

@@ -1,0 +1,103 @@
+---
+title: 'Social Components'
+description: 'Comments, reactions, and chat'
+---
+
+## Comments
+
+Display and manage comments.
+
+```html
+<ChalkyComments
+    v-bind:contentType="'venue'"
+    v-bind:contentId="venueId"
+    v-on:comment-added="handleNewComment"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `contentType` | string | 'venue', 'media', 'content' |
+| `contentId` | number | ID of the content |
+| `allowReply` | boolean | Enable nested replies |
+| `maxDepth` | number | Max reply depth (default: 2) |
+
+## Reactions
+
+Love/like reaction buttons.
+
+### ReactionButton
+
+Single reaction toggle.
+
+```html
+<ChalkyReactionButton
+    v-bind:type="'love'"
+    v-bind:contentType="'venue'"
+    v-bind:contentId="venueId"
+    v-bind:active="isLoved"
+    v-on:toggle="handleReaction"
+/>
+```
+
+### ReactionList
+
+Display who reacted.
+
+```html
+<ChalkyReactionList
+    v-bind:reactions="reactions"
+    v-bind:limit="5"
+/>
+```
+
+### ReactionSummary
+
+Compact reaction count display.
+
+```html
+<ChalkyReactionSummary
+    v-bind:loveCount="42"
+    v-bind:likeCount="18"
+/>
+```
+
+### FavoriteButton
+
+Heart/favorite button.
+
+```html
+<ChalkyFavoriteButton
+    v-bind:active="isFavorited"
+    v-on:toggle="handleFavorite"
+/>
+```
+
+## Chat
+
+Real-time chat component.
+
+```html
+<ChalkyChat
+    v-bind:channelId="chatChannelId"
+    v-bind:user="currentUser"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `channelId` | string | Ably channel ID |
+| `user` | User | Current user |
+| `showTyping` | boolean | Show typing indicators |
+| `showTimestamps` | boolean | Show message timestamps |
+
+### Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `message` | Message | New message received |
+| `typing` | User | User is typing |

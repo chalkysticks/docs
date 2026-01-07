@@ -1,0 +1,90 @@
+---
+title: 'Drawing Lines'
+description: 'Coach lines and trajectories'
+---
+
+## Line Types
+
+| Type | Description |
+|------|-------------|
+| Coach line | Direct line between balls |
+| Aim line | Line from cue through target |
+| Trajectory | Predicted ball path |
+
+## Drawing Coach Lines
+
+```typescript
+const lineManager = tableManager.lineManager;
+
+// Line between two balls
+lineManager.addLine(cueBall, targetBall);
+
+// Line with styling
+lineManager.addLine(cueBall, targetBall, {
+    color: '#ff0000',
+    dashed: true,
+    width: 2
+});
+```
+
+## Line Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `color` | string | '#ffffff' | Line color |
+| `dashed` | boolean | false | Dashed line |
+| `width` | number | 1 | Line width |
+| `opacity` | number | 1 | Line opacity |
+
+## Removing Lines
+
+```typescript
+// Remove specific line
+lineManager.removeLine(line);
+
+// Remove all lines
+lineManager.clearLines();
+
+// Remove lines connected to a ball
+lineManager.removeLinesForBall(ball);
+```
+
+## Getting Lines
+
+```typescript
+// Get all lines
+const lines = lineManager.getLines();
+
+// Get lines for a ball
+const ballLines = lineManager.getLinesForBall(ball);
+```
+
+## Trajectories
+
+```typescript
+const trajectoryManager = tableManager.trajectoryManager;
+
+// Show trajectory from cue to target
+trajectoryManager.showTrajectory(cueBall, targetBall);
+
+// Show with options
+trajectoryManager.showTrajectory(cueBall, targetBall, {
+    showBounce: true,
+    bounceCount: 2
+});
+
+// Clear trajectories
+trajectoryManager.clearTrajectories();
+```
+
+## Events
+
+```typescript
+lineManager.on('line:added', (line) => {
+    console.log('Line added');
+});
+
+lineManager.on('line:removed', (line) => {
+    console.log('Line removed');
+});
+```

@@ -1,0 +1,111 @@
+---
+title: 'Authentication Package'
+description: 'User authentication and JWT handling'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-authentication
+```
+
+## Login
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-authentication';
+
+// Email/password login
+const user = await Factory.Authentication.login({
+    email: 'user@example.com',
+    password: 'password'
+});
+
+console.log(user.name);
+console.log(user.token);
+```
+
+## Google OAuth
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-authentication';
+
+// Start Google OAuth flow
+await Factory.Authentication.loginWithGoogle();
+
+// Handle callback (in Capacitor app)
+Factory.Authentication.on('login:success', (user) => {
+    console.log('Logged in as:', user.name);
+});
+```
+
+## Registration
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-authentication';
+
+const user = await Factory.Authentication.register({
+    name: 'New User',
+    email: 'new@example.com',
+    password: 'password',
+    password_confirmation: 'password'
+});
+```
+
+## JWT Handling
+
+```typescript
+import { Model } from '@chalkysticks/sdk-authentication';
+
+// Get current JWT
+const jwt = Model.Jwt.getToken();
+
+// Check if token is valid
+if (Model.Jwt.isValid()) {
+    console.log('Token is valid');
+}
+
+// Refresh token
+await Model.Jwt.refresh();
+
+// Clear token (logout)
+Model.Jwt.clear();
+```
+
+## Current User
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-authentication';
+
+// Get current user
+const user = Factory.Authentication.getCurrentUser();
+
+if (user) {
+    console.log('Logged in as:', user.name);
+} else {
+    console.log('Not logged in');
+}
+```
+
+## Logout
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-authentication';
+
+await Factory.Authentication.logout();
+```
+
+## Password Reset
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-authentication';
+
+// Request reset email
+await Factory.Authentication.forgotPassword('user@example.com');
+
+// Reset with token
+await Factory.Authentication.resetPassword({
+    token: 'reset-token',
+    password: 'newpassword',
+    password_confirmation: 'newpassword'
+});
+```

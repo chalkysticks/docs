@@ -1,0 +1,64 @@
+---
+title: 'Physics Engine'
+description: 'Ball dynamics, collision, and friction simulation'
+---
+
+## Physics Configuration
+
+```typescript
+const physicsConfig = {
+    friction: 0.02,          // Table friction coefficient
+    restitution: 0.95,       // Ball-to-ball bounce factor
+    railRestitution: 0.75,   // Rail bounce factor
+    throwCoefficient: 0.04,  // Throw effect on cut shots
+    ballDiameter: 57.15,     // Ball diameter in mm
+    ballMass: 170            // Ball mass in grams
+};
+```
+
+## Physics Presets
+
+| Preset | Description |
+|--------|-------------|
+| `tournament` | Tournament-grade cloth, low friction |
+| `bar` | Bar table, higher friction |
+| `practice` | Balanced settings |
+
+## Engine Loop
+
+The physics engine runs at 60Hz with variable render rate:
+
+```typescript
+// Physics timestep
+const FIXED_TIMESTEP = 1/60; // 16.67ms
+
+// Engine processes in fixed steps
+engine.step(deltaTime);
+```
+
+## Collision Detection
+
+```typescript
+// Ball-to-ball collisions
+engine.on('collision:ball', (ball1, ball2, velocity) => {
+    console.log('Collision between', ball1.id, ball2.id);
+});
+
+// Ball-to-rail collisions
+engine.on('collision:rail', (ball, rail) => {
+    console.log('Ball hit rail:', rail);
+});
+
+// Ball-to-pocket collisions
+engine.on('pocket', (ball, pocket) => {
+    console.log('Ball pocketed:', ball.id, pocket);
+});
+```
+
+## Spin/English Effects
+
+The engine simulates:
+- **Top spin** - Ball rolls forward after impact
+- **Back spin** - Ball draws back after impact
+- **Left/Right english** - Ball curves and transfers spin
+- **Throw** - Cut shots affected by friction

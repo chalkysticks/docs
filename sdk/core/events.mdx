@@ -1,0 +1,62 @@
+---
+title: 'Events'
+description: 'Event system for pub/sub messaging'
+---
+
+## Event Bus
+
+The SDK uses a centralized event bus for communication between components.
+
+```typescript
+import { Event } from '@chalkysticks/sdk-core';
+
+const bus = Event.Bus;
+```
+
+## Subscribing to Events
+
+```typescript
+// Subscribe to an event
+bus.on('user:login', (user) => {
+    console.log('User logged in:', user.name);
+});
+
+// Subscribe once (auto-unsubscribe after first trigger)
+bus.once('app:ready', () => {
+    console.log('App is ready');
+});
+```
+
+## Publishing Events
+
+```typescript
+// Trigger an event
+bus.trigger('user:login', currentUser);
+
+// Trigger with multiple arguments
+bus.trigger('game:shot', { power: 0.8, english: 0.2 });
+```
+
+## Unsubscribing
+
+```typescript
+// Store reference to handler
+const handler = (data) => console.log(data);
+
+// Subscribe
+bus.on('my:event', handler);
+
+// Unsubscribe
+bus.off('my:event', handler);
+```
+
+## Common Events
+
+| Event | Description |
+|-------|-------------|
+| `user:login` | User logged in |
+| `user:logout` | User logged out |
+| `venue:checkin` | User checked into venue |
+| `media:upload` | Media upload completed |
+| `pad:change` | Pad diagram changed |
+| `game:shot` | Shot executed in trainer |

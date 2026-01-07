@@ -1,0 +1,105 @@
+---
+title: 'Export & Persistence'
+description: 'Saving diagrams and generating images'
+---
+
+## Export State
+
+```typescript
+// Get current state as JSON
+const state = tableManager.exportTableState();
+
+// State format
+{
+    balls: [
+        { type: 'cue', x: 0.25, y: 0.5 },
+        { type: 'solid', x: 0.5, y: 0.3, number: 1 }
+    ],
+    lines: [
+        { from: 'ball-1', to: 'ball-2', color: '#fff' }
+    ],
+    version: '1.0'
+}
+```
+
+## Import State
+
+```typescript
+// Load a state
+tableManager.importTableState(state);
+
+// Clear and load
+tableManager.clearTable();
+tableManager.importTableState(state);
+```
+
+## Save to API
+
+```typescript
+import { Model, Factory } from '@chalkysticks/sdk-pad';
+
+// Create diagram model
+const diagram = Factory.Diagram.create({
+    data: tableManager.exportTableState()
+});
+
+// Save to API
+await diagram.save();
+
+// Get shareable hash
+const hash = diagram.hash;
+console.log(`URL: https://pad.chalkysticks.com/${hash}`);
+```
+
+## Load from API
+
+```typescript
+import { Model } from '@chalkysticks/sdk-pad';
+
+// Load by hash
+const diagram = new Model.Diagram({ hash: 'abc123' });
+await diagram.fetch();
+
+// Apply to table
+tableManager.importTableState(diagram.data);
+```
+
+## Generate Images
+
+```typescript
+// Get SVG URL
+const svgUrl = diagram.getSvgUrl();
+
+// Get PNG URL
+const pngUrl = diagram.getPngUrl();
+
+// Request image generation (if not cached)
+await diagram.generateImages();
+```
+
+## Auto-Save Pattern
+
+```typescript
+import { debounce } from 'lodash';
+
+// Save on change (debounced)
+tableManager.on('change', debounce(async (state) => {
+    diagram.set('data', state);
+    await diagram.save();
+    console.log('Auto-saved');
+}, 1000));
+```
+
+## Local Storage
+
+```typescript
+// Save to localStorage
+const state = tableManager.exportTableState();
+localStorage.setItem('pad-draft', JSON.stringify(state));
+
+// Load from localStorage
+const saved = localStorage.getItem('pad-draft');
+if (saved) {
+    tableManager.importTableState(JSON.parse(saved));
+}
+```

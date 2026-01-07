@@ -1,0 +1,102 @@
+---
+title: 'Diagrams'
+description: 'Pool table diagram storage and image generation'
+---
+
+## List Diagrams
+
+```bash
+GET /v3/diagrams
+GET /v3/diagrams?user_id=1
+```
+
+## Get Diagram
+
+```bash
+GET /v3/diagrams/{hash}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "hash": "abc123",
+    "data": {
+      "balls": [...],
+      "lines": [...]
+    },
+    "svg_url": "https://...",
+    "png_url": "https://...",
+    "created_at": "2025-01-01T00:00:00Z"
+  }
+}
+```
+
+## Create Diagram
+
+```bash
+POST /v3/diagrams
+{
+  "data": {
+    "balls": [
+      { "type": "cue", "x": 0.25, "y": 0.5 },
+      { "type": "solid", "x": 0.5, "y": 0.3, "number": 1 }
+    ],
+    "lines": [
+      { "from": "ball-0", "to": "ball-1" }
+    ]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "hash": "abc123",
+    "url": "https://pad.chalkysticks.com/abc123"
+  }
+}
+```
+
+## Delete Diagram
+
+```bash
+DELETE /v3/diagrams/{hash}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Get SVG
+
+```bash
+GET /v3/diagrams/{hash}/svg
+```
+
+Returns SVG image.
+
+## Get PNG
+
+```bash
+GET /v3/diagrams/{hash}/png
+```
+
+Returns PNG image.
+
+## Generate Images
+
+Force regenerate SVG/PNG:
+
+```bash
+POST /v3/diagrams/{hash}/generate-images
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "svg_url": "https://...",
+    "png_url": "https://..."
+  }
+}
+```

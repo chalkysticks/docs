@@ -1,0 +1,112 @@
+---
+title: 'Ball Operations'
+description: 'Adding, removing, and positioning balls'
+---
+
+## Ball Types
+
+| Type | Description |
+|------|-------------|
+| `cue` | White cue ball |
+| `solid` | Solid colored (1-7) |
+| `striped` | Striped (9-15) |
+| `8ball` | The 8-ball |
+| `ghost` | Ghost ball for aiming |
+
+## Adding Balls
+
+```typescript
+const ballManager = tableManager.ballManager;
+
+// Add cue ball
+ballManager.addBall('cue', { x: 0.25, y: 0.5 });
+
+// Add solid with number
+ballManager.addBall('solid', { x: 0.5, y: 0.3 }, { number: 1 });
+
+// Add striped
+ballManager.addBall('striped', { x: 0.7, y: 0.6 }, { number: 9 });
+
+// Add 8-ball
+ballManager.addBall('8ball', { x: 0.5, y: 0.5 });
+
+// Add ghost ball
+ballManager.addBall('ghost', { x: 0.6, y: 0.4 });
+```
+
+## Removing Balls
+
+```typescript
+// Remove specific ball
+ballManager.removeBall(ball);
+
+// Remove by ID
+ballManager.removeBallById(ballId);
+
+// Remove all balls
+ballManager.clearBalls();
+
+// Remove by type
+ballManager.removeBallsByType('ghost');
+```
+
+## Moving Balls
+
+```typescript
+// Move to new position
+ballManager.moveBall(ball, { x: 0.6, y: 0.4 });
+
+// Get current position
+const pos = ball.getPosition();
+console.log(pos.x, pos.y);
+```
+
+## Selection
+
+```typescript
+// Select a ball
+ballManager.selectBall(ball);
+
+// Get selected balls
+const selected = ballManager.getSelectedBalls();
+
+// Deselect all
+ballManager.deselectAll();
+
+// Move selected balls
+ballManager.moveSelectedBalls({ dx: 0.1, dy: 0 });
+```
+
+## Getting Balls
+
+```typescript
+// Get all balls
+const balls = ballManager.getBalls();
+
+// Get by type
+const cueBall = ballManager.getBallByType('cue');
+const ghosts = ballManager.getBallsByType('ghost');
+
+// Get by ID
+const ball = ballManager.getBallById(id);
+```
+
+## Events
+
+```typescript
+ballManager.on('ball:added', (ball) => {
+    console.log('Added:', ball.type);
+});
+
+ballManager.on('ball:removed', (ball) => {
+    console.log('Removed:', ball.type);
+});
+
+ballManager.on('ball:moved', (ball, position) => {
+    console.log('Moved to:', position);
+});
+
+ballManager.on('ball:selected', (ball) => {
+    console.log('Selected:', ball);
+});
+```

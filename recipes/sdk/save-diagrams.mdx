@@ -1,0 +1,105 @@
+---
+title: 'Save and load diagrams'
+description: 'Persist pad state to the API'
+---
+
+## Save Current State
+
+```typescript
+import { Model, Factory } from '@chalkysticks/sdk-pad';
+
+// Get current state
+const state = this.$refs.pad.tableManager.exportTableState();
+
+// Create diagram
+const diagram = Factory.Diagram.create({
+    data: state
+});
+
+// Save to API
+await diagram.save();
+
+// Get shareable URL
+const url = `https://pad.chalkysticks.com/${diagram.hash}`;
+console.log('Share URL:', url);
+```
+
+## Load from Hash
+
+```typescript
+import { Model } from '@chalkysticks/sdk-pad';
+
+const hash = 'abc123';  // From URL
+
+// Fetch diagram
+const diagram = new Model.Diagram({ hash });
+await diagram.fetch();
+
+// Apply to pad
+this.$refs.pad.tableManager.importTableState(diagram.data);
+```
+
+## Auto-Save on Change
+
+```typescript
+import { Component, Vue } from 'vue-property-decorator';
+import { Model, Factory } from '@chalkysticks/sdk-pad';
+import { debounce } from 'lodash';
+
+@Component
+export default class DiagramEditor extends Vue {
+    diagram: Model.Diagram | null = null;
+
+    mounted(): void {
+        this.setupAutoSave();
+    }
+
+    setupAutoSave(): void {
+        const tableManager = this.$refs.pad.tableManager;
+
+        tableManager.on('change', debounce(async (state) => {
+            await this.save(state);
+        }, 1000));
+    }
+
+    async save(state: object): Promise<void> {
+        if (!this.diagram) {
+            this.diagram = Factory.Diagram.create({ data: state });
+        }
+        else {
+            this.diagram.set('data', state);
+        }
+
+        await this.diagram.save();
+        console.log('Auto-saved:', this.diagram.hash);
+    }
+}
+```
+
+## Local Storage Backup
+
+```typescript
+// Save to localStorage
+const state = tableManager.exportTableState();
+localStorage.setItem('pad-draft', JSON.stringify(state));
+
+// Load from localStorage
+const saved = localStorage.getItem('pad-draft');
+if (saved) {
+    tableManager.importTableState(JSON.parse(saved));
+}
+```
+
+## Generate Images
+
+```typescript
+// After saving
+await diagram.save();
+
+// Generate SVG and PNG
+await diagram.generateImages();
+
+// Get URLs
+const svgUrl = diagram.getSvgUrl();
+const pngUrl = diagram.getPngUrl();
+```

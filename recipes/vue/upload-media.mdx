@@ -1,0 +1,155 @@
+---
+title: 'Upload user media'
+description: 'Handle image/video uploads'
+---
+
+## Image Upload
+
+```html
+<template>
+    <div class="upload-page">
+        <ChalkyImageUploader
+            v-on:upload="handleUpload"
+            v-on:progress="handleProgress"
+            v-on:error="handleError"
+        />
+
+        <div v-if="uploading" class="progress">
+            Uploading: {{ progress }}%
+        </div>
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+
+@Component
+export default class UploadPage extends Vue {
+    uploading: boolean = false;
+    progress: number = 0;
+
+    handleProgress(percent: number): void {
+        this.uploading = true;
+        this.progress = percent;
+    }
+
+    handleUpload(media: any): void {
+        this.uploading = false;
+        console.log('Uploaded:', media.url);
+    }
+
+    handleError(error: Error): void {
+        this.uploading = false;
+        console.error('Upload failed:', error);
+    }
+}
+</script>
+```
+
+## Multiple Images
+
+```html
+<template>
+    <ChalkyImageUploader
+        v-bind:multiple="true"
+        v-bind:maxSize="10"
+        v-on:upload="handleUpload"
+    />
+</template>
+
+<script lang="ts">
+@Component
+export default class UploadPage extends Vue {
+    handleUpload(media: any[]): void {
+        media.forEach(m => {
+            console.log('Uploaded:', m.url);
+        });
+    }
+}
+</script>
+```
+
+## Video Upload
+
+```html
+<template>
+    <ChalkyVideoUploader
+        v-bind:maxSize="100"
+        v-bind:maxDuration="120"
+        v-on:upload="handleVideoUpload"
+        v-on:progress="handleProgress"
+    />
+</template>
+
+<script lang="ts">
+@Component
+export default class UploadPage extends Vue {
+    handleVideoUpload(media: any): void {
+        console.log('Video URL:', media.url);
+        console.log('Thumbnail:', media.thumbnail);
+    }
+}
+</script>
+```
+
+## Upload to Venue
+
+```html
+<template>
+    <div class="venue-media">
+        <ChalkyImageUploader
+            v-on:upload="uploadToVenue"
+        />
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Model } from '@chalkysticks/sdk-venues';
+
+@Component
+export default class VenueMedia extends Vue {
+    @Prop() venue!: Model.Venue;
+
+    async uploadToVenue(media: any): Promise<void> {
+        // Associate with venue
+        await this.venue.media.add(media);
+
+        // Refresh venue media
+        await this.venue.media.fetch();
+    }
+}
+</script>
+```
+
+## Display Uploaded Media
+
+```html
+<template>
+    <div class="media-gallery">
+        <ChalkyMediaFeed
+            v-bind:collection="userMedia"
+            v-bind:columns="3"
+            v-on:item-click="openMedia"
+        />
+    </div>
+</template>
+
+<script lang="ts">
+import { Component, Vue } from 'vue-property-decorator';
+import { Collection } from '@chalkysticks/sdk-core';
+
+@Component
+export default class MediaGallery extends Vue {
+    userMedia: Collection.UserMedia = new Collection.UserMedia();
+
+    async mounted(): Promise<void> {
+        await this.userMedia.fetch();
+    }
+
+    openMedia(media: any): void {
+        // Open lightbox or detail view
+    }
+}
+</script>
+```

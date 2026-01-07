@@ -1,0 +1,48 @@
+---
+title: 'Game Package'
+description: 'SDK for pool game physics and trainer functionality'
+---
+
+The `sdk-game` package provides physics simulation and game logic for the trainer.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-game
+```
+
+## Quick Start
+
+```typescript
+import * as Game from '@chalkysticks/sdk-game';
+
+// Game configuration
+const config = {
+    gameType: '8ball',
+    tableDimensions: { width: 2540, height: 1270 }
+};
+```
+
+## Exports
+
+```typescript
+import { Collection, Model, Factory, Utility } from '@chalkysticks/sdk-game';
+```
+
+## Game Types
+
+| Type | Description |
+|------|-------------|
+| `8ball` | Standard 8-ball rules |
+| `9ball` | 9-ball rotation |
+| `10ball` | 10-ball (called pocket) |
+| `3ball` | 3-ball speed game |
+| `custom` | Custom game setup |
+
+## Key Concepts
+
+- **Physics Engine** handles ball dynamics, collisions, friction
+- **Ball Manager** tracks ball states and positions
+- **Shot Executor** handles power, english, elevation
+- **Racking** provides standard and custom rack patterns
+- **Foul Detector** enforces game rules

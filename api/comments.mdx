@@ -1,0 +1,113 @@
+---
+title: 'Comments & Reactions'
+description: 'Social interactions on content'
+---
+
+## Comments
+
+### List Comments
+
+```bash
+GET /v3/comments
+GET /v3/comments?content_type=venue&content_id=1
+```
+
+### Create Comment
+
+```bash
+POST /v3/comments
+Authorization: Bearer YOUR_TOKEN
+{
+  "content_type": "venue",
+  "content_id": 1,
+  "body": "Great pool hall!"
+}
+```
+
+### Update Comment
+
+```bash
+PUT /v3/comments/{id}
+Authorization: Bearer YOUR_TOKEN
+{
+  "body": "Updated comment text"
+}
+```
+
+### Delete Comment
+
+```bash
+DELETE /v3/comments/{id}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Flag Comment
+
+Report inappropriate content:
+
+```bash
+POST /v3/comments/{id}/flag
+Authorization: Bearer YOUR_TOKEN
+{
+  "reason": "spam"
+}
+```
+
+### Venue Comments
+
+```bash
+GET /v3/venues/{id}/comments
+```
+
+## Reactions
+
+### List Reactions
+
+```bash
+GET /v3/reactions
+GET /v3/reactions?content_type=venue&content_id=1
+```
+
+### Create Reaction
+
+```bash
+POST /v3/reactions
+Authorization: Bearer YOUR_TOKEN
+{
+  "content_type": "venue",
+  "content_id": 1,
+  "type": "love"
+}
+```
+
+Reaction types: `love`, `like`
+
+### Delete My Reaction
+
+```bash
+DELETE /v3/reactions/me
+Authorization: Bearer YOUR_TOKEN
+{
+  "content_type": "venue",
+  "content_id": 1
+}
+```
+
+### Delete Reaction by ID
+
+```bash
+DELETE /v3/reactions/{id}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Venue Reactions
+
+```bash
+GET /v3/venues/{id}/reactions
+```
+
+### Content Reactions
+
+```bash
+GET /v3/content/{id}/reactions
+```

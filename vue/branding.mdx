@@ -1,0 +1,87 @@
+---
+title: 'Branding Components'
+description: 'Logos, badges, and splash screens'
+---
+
+## BrandingStandard
+
+Standard ChalkySticks logo.
+
+```html
+<ChalkyBrandingStandard />
+<ChalkyBrandingStandard v-bind:variant="'light'" />
+<ChalkyBrandingStandard v-bind:variant="'dark'" />
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `variant` | string | 'default' | 'default', 'light', 'dark' |
+| `width` | number | 200 | Logo width in px |
+| `animated` | boolean | false | Enable animation |
+
+## BrandingBadge
+
+Compact badge logo.
+
+```html
+<ChalkyBrandingBadge />
+<ChalkyBrandingBadge v-bind:size="'small'" />
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `size` | string | 'medium' | 'small', 'medium', 'large' |
+| `variant` | string | 'default' | 'default', 'light', 'dark' |
+
+## BrandingSplash
+
+Full-screen splash/loading screen.
+
+```html
+<ChalkyBrandingSplash
+    v-bind:visible="isLoading"
+    v-bind:progress="loadProgress"
+/>
+```
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `visible` | boolean | true | Show splash screen |
+| `progress` | number | null | Loading progress 0-100 |
+| `message` | string | 'Loading...' | Loading message |
+| `animated` | boolean | true | Animate logo |
+
+## Usage Examples
+
+### App Header
+
+```html
+<header class="app-header">
+    <ChalkyBrandingStandard v-bind:width="150" />
+</header>
+```
+
+### Loading State
+
+```html
+<ChalkyBrandingSplash
+    v-bind:visible="!appReady"
+    v-bind:progress="loadProgress"
+    message="Preparing your game..."
+/>
+```
+
+### Footer
+
+```html
+<footer class="app-footer">
+    <ChalkyBrandingBadge v-bind:size="'small'" />
+    <span>Powered by ChalkySticks</span>
+</footer>
+```

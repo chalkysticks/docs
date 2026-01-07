@@ -1,0 +1,109 @@
+---
+title: 'Search venues by location'
+description: 'Find pool halls near coordinates'
+---
+
+## Basic Location Search
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-venues';
+
+const venues = new Collection.Venue();
+
+venues.setQuery({
+    lat: 40.7128,
+    lon: -74.0060,
+    distance: 25  // km
+});
+
+await venues.fetch();
+
+venues.models.forEach(venue => {
+    console.log(venue.name, venue.distance);
+});
+```
+
+## Get User Location First
+
+```typescript
+import { Utility } from '@chalkysticks/sdk-core';
+import { Collection } from '@chalkysticks/sdk-venues';
+
+// Get current position
+const position = await Utility.Geolocation.getCurrentPosition();
+
+// Search nearby
+const venues = new Collection.Venue();
+venues.setQuery({
+    lat: position.latitude,
+    lon: position.longitude,
+    distance: 10
+});
+
+await venues.fetch();
+```
+
+## With Vue Component
+
+```typescript
+import { Component, Vue } from 'vue-property-decorator';
+import { Collection } from '@chalkysticks/sdk-venues';
+import { Utility } from '@chalkysticks/sdk-core';
+
+@Component
+export default class VenueSearch extends Vue {
+    venues: Collection.Venue = new Collection.Venue();
+    loading: boolean = false;
+
+    async mounted(): Promise<void> {
+        await this.searchNearby();
+    }
+
+    async searchNearby(): Promise<void> {
+        this.loading = true;
+
+        try {
+            const position = await Utility.Geolocation.getCurrentPosition();
+
+            this.venues.setQuery({
+                lat: position.latitude,
+                lon: position.longitude,
+                distance: 25
+            });
+
+            await this.venues.fetch();
+        }
+        catch (error) {
+            console.error('Location error:', error);
+        }
+        finally {
+            this.loading = false;
+        }
+    }
+}
+```
+
+## Search by City
+
+```typescript
+const venues = new Collection.Venue();
+
+venues.setQuery({
+    city: 'New York',
+    state: 'NY'
+});
+
+await venues.fetch();
+```
+
+## Search by Name
+
+```typescript
+const venues = new Collection.Venue();
+
+venues.setQuery({
+    q: 'amsterdam billiards'
+});
+
+await venues.fetch();
+```

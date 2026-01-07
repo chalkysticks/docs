@@ -1,0 +1,72 @@
+---
+title: 'Ball Manager'
+description: 'Managing ball state in the game engine'
+---
+
+## Ball Types
+
+| Type | Numbers | Description |
+|------|---------|-------------|
+| Cue | - | White cue ball |
+| Solids | 1-7 | Solid colored balls |
+| Stripes | 9-15 | Striped balls |
+| 8-ball | 8 | The 8 ball |
+
+## Adding Balls
+
+```typescript
+const ballManager = game.ballManager;
+
+// Add cue ball
+ballManager.addCueBall({ x: 0.25, y: 0.5 });
+
+// Add object ball
+ballManager.addBall(1, { x: 0.75, y: 0.5 }); // Solid 1
+
+// Add all balls for racking
+ballManager.setupBalls('8ball');
+```
+
+## Ball State
+
+```typescript
+// Get a ball
+const cueBall = ballManager.getCueBall();
+const ball1 = ballManager.getBall(1);
+
+// Ball properties
+const position = ball1.position;    // { x, y }
+const velocity = ball1.velocity;    // { x, y }
+const spin = ball1.spin;            // { x, y, z }
+const isPocketed = ball1.pocketed;
+const isMoving = ball1.isMoving();
+```
+
+## Removing Balls
+
+```typescript
+// Remove specific ball
+ballManager.removeBall(1);
+
+// Clear all balls
+ballManager.clearBalls();
+
+// Reset pocketed balls (for re-spot)
+ballManager.respot(1, { x: 0.5, y: 0.125 });
+```
+
+## Ball Events
+
+```typescript
+ballManager.on('ball:pocketed', (ball, pocket) => {
+    console.log(`Ball ${ball.number} pocketed in ${pocket}`);
+});
+
+ballManager.on('ball:stopped', (ball) => {
+    console.log(`Ball ${ball.number} stopped at`, ball.position);
+});
+
+ballManager.on('all:stopped', () => {
+    console.log('All balls stopped - turn complete');
+});
+```

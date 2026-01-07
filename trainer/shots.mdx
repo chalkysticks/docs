@@ -1,0 +1,109 @@
+---
+title: 'Shot Control'
+description: 'Power, english, and shot execution'
+---
+
+## Shot Parameters
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| Power | 0-1 | Shot force |
+| English X | -1 to 1 | Left/right spin |
+| English Y | -1 to 1 | Top/back spin |
+| Elevation | 0-90 | Cue angle (degrees) |
+
+## Setting Power
+
+```typescript
+// Set power (0 = soft, 1 = break)
+game.setPower(0.5);
+
+// Get current power
+const power = game.getPower();
+```
+
+## Setting English
+
+```typescript
+// Set both axes
+game.setEnglish(0.3, -0.2);  // Right, draw
+
+// Set individually
+game.setEnglishX(0.3);   // Right english
+game.setEnglishY(-0.2);  // Draw/back spin
+
+// Reset to center
+game.resetEnglish();
+
+// Get current english
+const { x, y } = game.getEnglish();
+```
+
+## English Effects
+
+| English | Effect |
+|---------|--------|
+| Top (Y > 0) | Ball rolls forward after impact |
+| Draw (Y < 0) | Ball pulls back after impact |
+| Left (X < 0) | Ball curves left, transfers right spin |
+| Right (X > 0) | Ball curves right, transfers left spin |
+
+## Elevation (Jump/Masse)
+
+```typescript
+// Slightly elevated (follow through)
+game.setElevation(5);
+
+// Jump shot
+game.setElevation(35);
+
+// Masse shot
+game.setElevation(60);
+
+// Get current elevation
+const elevation = game.getElevation();
+```
+
+## Executing Shots
+
+```typescript
+// Simple shot
+game.shoot();
+
+// Shot with parameters
+game.shoot({
+    power: 0.6,
+    angle: 45,
+    english: { x: 0.3, y: -0.2 },
+    elevation: 0
+});
+```
+
+## Shot Events
+
+```typescript
+game.on('shot:start', (params) => {
+    console.log('Shot with power:', params.power);
+});
+
+game.on('shot:impact', (cueBall, targetBall) => {
+    console.log('Cue ball hit:', targetBall.number);
+});
+
+game.on('shot:complete', () => {
+    console.log('All balls stopped');
+});
+```
+
+## Undo/Replay
+
+```typescript
+// Undo last shot
+game.undo();
+
+// Replay last shot
+game.replay();
+
+// Replay in slow motion
+game.replay({ speed: 0.25 });
+```

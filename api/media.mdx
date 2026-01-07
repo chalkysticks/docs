@@ -1,0 +1,136 @@
+---
+title: 'Media'
+description: 'Image and video uploads, shares, and tags'
+---
+
+## Presigned Upload
+
+Get a presigned URL for direct S3 upload:
+
+```bash
+POST /v3/media/presigned-url
+Authorization: Bearer YOUR_TOKEN
+{
+  "filename": "photo.jpg",
+  "content_type": "image/jpeg"
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "url": "https://s3.amazonaws.com/...",
+    "key": "uploads/abc123.jpg",
+    "expires_at": "2025-01-01T01:00:00Z"
+  }
+}
+```
+
+## Create Image Upload
+
+After uploading to S3:
+
+```bash
+POST /v3/media/image/create-upload
+Authorization: Bearer YOUR_TOKEN
+{
+  "key": "uploads/abc123.jpg",
+  "content_type": "venue",
+  "content_id": 1
+}
+```
+
+## Create Video Upload
+
+```bash
+POST /v3/media/video/create-upload
+Authorization: Bearer YOUR_TOKEN
+{
+  "key": "uploads/video123.mp4",
+  "content_type": "user",
+  "content_id": 1
+}
+```
+
+## Media Shares
+
+### List Shares
+
+```bash
+GET /v3/media/{id}/shares
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Share Media
+
+```bash
+POST /v3/media/{id}/shares
+Authorization: Bearer YOUR_TOKEN
+{
+  "user_id": 2
+}
+```
+
+### Accept Share
+
+```bash
+POST /v3/media/{id}/shares/{share_id}/accept
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Reject Share
+
+```bash
+POST /v3/media/{id}/shares/{share_id}/reject
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Media Tags
+
+### List Tags
+
+```bash
+GET /v3/media/{id}/tags
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Add Tag
+
+```bash
+POST /v3/media/{id}/tags
+Authorization: Bearer YOUR_TOKEN
+{
+  "user_id": 2
+}
+```
+
+### Remove Tag
+
+```bash
+DELETE /v3/media/{id}/tags/{tag_id}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Browse Media
+
+### Tagged Media
+
+```bash
+GET /v3/media/tags
+GET /v3/media/tags?user_id=1
+```
+
+### Users with Media
+
+```bash
+GET /v3/media/users
+GET /v3/media/users/{user_id}
+```
+
+### Venues with Media
+
+```bash
+GET /v3/media/venues
+GET /v3/media/venues/{venue_id}
+```

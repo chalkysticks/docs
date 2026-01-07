@@ -1,0 +1,127 @@
+---
+title: 'TV & Content'
+description: 'TV schedules, live streams, and rulebooks'
+---
+
+## TV Overview
+
+```bash
+GET /v3/tv
+```
+
+## Channels
+
+```bash
+GET /v3/tv/channels
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Matchroom Pool",
+      "logo": "https://..."
+    }
+  ]
+}
+```
+
+## Channel Map
+
+```bash
+GET /v3/tv/channel-map
+```
+
+## Live Broadcasts
+
+```bash
+GET /v3/tv/live
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "title": "US Open 9-Ball",
+      "channel": "Matchroom Pool",
+      "stream_url": "https://...",
+      "started_at": "2025-01-01T14:00:00Z"
+    }
+  ]
+}
+```
+
+## Schedule
+
+### Get Schedule
+
+```bash
+GET /v3/tv/schedule
+GET /v3/tv/schedule?date=2025-01-15
+```
+
+### Get Schedule Item
+
+```bash
+GET /v3/tv/schedule/{id}
+```
+
+### Create Schedule (Auth)
+
+```bash
+POST /v3/tv/schedule
+Authorization: Bearer YOUR_TOKEN
+{
+  "title": "New Event",
+  "channel_id": 1,
+  "starts_at": "2025-01-15T14:00:00Z",
+  "ends_at": "2025-01-15T18:00:00Z"
+}
+```
+
+## Content
+
+### List Content
+
+```bash
+GET /v3/content
+GET /v3/content?type=rulebook
+```
+
+### Get Content
+
+```bash
+GET /v3/content/{id}
+GET /v3/content/{id}/detail
+```
+
+## Rulebooks
+
+### List Rulebooks
+
+```bash
+GET /v3/rulebooks
+```
+
+### Get Rulebook
+
+```bash
+GET /v3/rulebooks/{id}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "8ball",
+    "title": "8-Ball Rules",
+    "content": "## Official Rules\n\n..."
+  }
+}
+```
+
+Available rulebooks: `8ball`, `9ball`, `10ball`, `straight`, `one_pocket`, `bank`, `snooker`

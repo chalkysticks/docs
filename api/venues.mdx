@@ -1,0 +1,131 @@
+---
+title: 'Venues'
+description: 'Venue search, details, and management'
+---
+
+## List Venues
+
+```bash
+GET /v3/venues
+GET /v3/venues?limit=25
+```
+
+## Search Venues
+
+### By Location
+
+```bash
+GET /v3/venues?lat=40.7128&lon=-74.0060&distance=25
+```
+
+### By City/State
+
+```bash
+GET /v3/venues?city=New%20York&state=NY
+```
+
+### By Name
+
+```bash
+GET /v3/venues?q=amsterdam%20billiards
+```
+
+## Get Venue
+
+```bash
+GET /v3/venues/{id}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "Amsterdam Billiards",
+    "address": "123 Main St",
+    "city": "New York",
+    "state": "NY",
+    "zip": "10001",
+    "phone": "(555) 123-4567",
+    "website": "https://example.com",
+    "latitude": 40.7128,
+    "longitude": -74.0060,
+    "table_count": 20,
+    "rating": 4.5
+  }
+}
+```
+
+## Random Venue
+
+```bash
+GET /v3/venues/random
+```
+
+## Create Venue
+
+```bash
+POST /v3/venues
+Authorization: Bearer YOUR_TOKEN
+{
+  "name": "New Pool Hall",
+  "address": "456 Oak Ave",
+  "city": "Brooklyn",
+  "state": "NY",
+  "zip": "11201"
+}
+```
+
+## Update Venue
+
+```bash
+PUT /v3/venues/{id}
+Authorization: Bearer YOUR_TOKEN
+{
+  "phone": "(555) 999-8888"
+}
+```
+
+## Venue Media
+
+```bash
+GET /v3/venues/{id}/media
+POST /v3/venues/{id}/media
+POST /v3/venues/{id}/media/from-url
+```
+
+## Check-ins
+
+### List Check-ins
+
+```bash
+GET /v3/venues/{id}/checkins
+GET /v3/venues/{id}/checkins?active=true
+```
+
+### Create Check-in
+
+```bash
+POST /v3/venues/{id}/checkins
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Comments & Reactions
+
+```bash
+GET /v3/venues/{id}/comments
+GET /v3/venues/{id}/reactions
+```
+
+## Revisions
+
+Track venue metadata changes:
+
+```bash
+GET /v3/venues/{id}/revisions
+POST /v3/venues/{id}/revisions
+{
+  "field": "phone",
+  "value": "(555) 111-2222"
+}
+```

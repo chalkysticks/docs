@@ -1,0 +1,147 @@
+---
+title: 'Games & Matches'
+description: 'Game tracking, shots, and innings'
+---
+
+## Games
+
+### List Games
+
+```bash
+GET /v3/games
+GET /v3/games?user_id=1
+```
+
+### Get Game
+
+```bash
+GET /v3/games/{id}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": 1,
+    "game_type": "8ball",
+    "user1_id": 1,
+    "user2_id": 2,
+    "winner_id": null,
+    "status": "in_progress",
+    "created_at": "2025-01-01T00:00:00Z"
+  }
+}
+```
+
+### Get Game State
+
+```bash
+GET /v3/games/{id}/state
+```
+
+### Create Game
+
+```bash
+POST /v3/games
+Authorization: Bearer YOUR_TOKEN
+{
+  "game_type": "8ball",
+  "user2_id": 2
+}
+```
+
+### Update Game
+
+```bash
+PUT /v3/games/{id}
+Authorization: Bearer YOUR_TOKEN
+{
+  "winner_id": 1,
+  "status": "completed"
+}
+```
+
+## Shots
+
+### List Shots
+
+```bash
+GET /v3/games/{id}/shots
+```
+
+### Record Shot
+
+```bash
+POST /v3/games/{id}/shots
+Authorization: Bearer YOUR_TOKEN
+{
+  "player_id": 1,
+  "ball_pocketed": 3,
+  "foul": false
+}
+```
+
+### Get Shot
+
+```bash
+GET /v3/games/{id}/shots/{shot_id}
+```
+
+## Innings
+
+### List Innings
+
+```bash
+GET /v3/games/{id}/innings
+```
+
+### Get Current Inning
+
+```bash
+GET /v3/games/{id}/innings/current
+```
+
+### Create Inning
+
+```bash
+POST /v3/games/{id}/innings
+Authorization: Bearer YOUR_TOKEN
+{
+  "player_id": 1
+}
+```
+
+## Matches
+
+Matches contain multiple games (race to X).
+
+### List Matches
+
+```bash
+GET /v3/matches
+```
+
+### Create Match
+
+```bash
+POST /v3/matches
+Authorization: Bearer YOUR_TOKEN
+{
+  "game_type": "9ball",
+  "race_to": 5,
+  "user2_id": 2
+}
+```
+
+### Get Games in Match
+
+```bash
+GET /v3/matches/{id}/games
+```
+
+### Start Game in Match
+
+```bash
+POST /v3/matches/{id}/games/{game_id}/start
+Authorization: Bearer YOUR_TOKEN
+```

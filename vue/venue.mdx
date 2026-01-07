@@ -1,0 +1,107 @@
+---
+title: 'Venue Components'
+description: 'Venue display, feeds, and maps'
+---
+
+## VenueFeed
+
+Scrollable venue list.
+
+```html
+<ChalkyVenueFeed
+    v-bind:collection="venueCollection"
+    v-on:venue-click="handleVenueClick"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `collection` | Collection.Venue | Venue collection |
+| `showDistance` | boolean | Show distance from user |
+| `infinite` | boolean | Enable infinite scroll |
+
+## VenueCard
+
+Single venue display card.
+
+```html
+<ChalkyVenueCard
+    v-bind:venue="venue"
+    v-on:click="handleClick"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `venue` | Model.Venue | Venue model |
+| `showRating` | boolean | Show star rating |
+| `showTables` | boolean | Show table count |
+| `showDistance` | boolean | Show distance |
+
+## VenueList
+
+Compact venue list.
+
+```html
+<ChalkyVenueList
+    v-bind:venues="venues"
+    v-bind:selected="selectedVenueId"
+    v-on:select="handleSelect"
+/>
+```
+
+## VenueMap
+
+Google Maps with venue markers.
+
+```html
+<ChalkyVenueMap
+    v-bind:venues="venues"
+    v-bind:center="{ lat: 40.7128, lng: -74.0060 }"
+    v-bind:zoom="12"
+    v-on:marker-click="handleMarkerClick"
+/>
+```
+
+### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `venues` | Collection.Venue | Venues to display |
+| `center` | object | Map center { lat, lng } |
+| `zoom` | number | Initial zoom level |
+| `showUserLocation` | boolean | Show user's location |
+
+### Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `marker-click` | Venue | Venue marker clicked |
+| `bounds-changed` | Bounds | Map bounds changed |
+
+## VenueDetail
+
+Full venue detail view.
+
+```html
+<ChalkyVenueDetail
+    v-bind:venue="venue"
+    v-on:checkin="handleCheckin"
+    v-on:call="handleCall"
+/>
+```
+
+## VenueCheckinButton
+
+Check-in action button.
+
+```html
+<ChalkyVenueCheckinButton
+    v-bind:venue="venue"
+    v-on:checkin="handleCheckin"
+/>
+```

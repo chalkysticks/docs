@@ -1,0 +1,86 @@
+---
+title: 'TV Package'
+description: 'TV schedules and live streams'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-tv
+```
+
+## TV Schedule
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-tv';
+
+const schedule = new Collection.Schedule();
+
+// Get today's schedule
+await schedule.fetch();
+
+// Get schedule for specific date
+schedule.setQuery({ date: '2025-01-15' });
+await schedule.fetch();
+
+// Get live broadcasts only
+schedule.setQuery({ live: true });
+await schedule.fetch();
+```
+
+## Schedule Model
+
+```typescript
+import { Model } from '@chalkysticks/sdk-tv';
+
+const show = new Model.Schedule({ id: 123 });
+await show.fetch();
+
+// Properties
+console.log(show.title);
+console.log(show.description);
+console.log(show.channel);
+console.log(show.startsAt);
+console.log(show.endsAt);
+console.log(show.isLive);
+console.log(show.streamUrl);
+```
+
+## Game Types
+
+| Type | Description |
+|------|-------------|
+| `8ball` | 8-ball matches |
+| `9ball` | 9-ball matches |
+| `10ball` | 10-ball matches |
+| `straight` | Straight pool |
+| `one_pocket` | One-pocket |
+| `snooker` | Snooker |
+| `carom` | Carom/3-cushion |
+
+## Live Streams
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-tv';
+
+// Get currently live streams
+const live = await Factory.Live.getCurrent();
+
+live.forEach(stream => {
+    console.log(stream.title);
+    console.log(stream.streamUrl);
+    console.log(stream.viewerCount);
+});
+```
+
+## Channels
+
+```typescript
+// Get available channels
+const channels = await Factory.Schedule.getChannels();
+
+channels.forEach(channel => {
+    console.log(channel.name);
+    console.log(channel.logo);
+});
+```

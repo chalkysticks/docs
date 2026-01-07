@@ -1,0 +1,73 @@
+---
+title: 'Lines & Trajectories'
+description: 'Drawing coach lines and visualizing shot paths'
+---
+
+## Coach Lines
+
+Coach lines connect two balls to illustrate shot paths.
+
+```typescript
+const lineManager = tableManager.lineManager;
+
+// Draw line between two balls
+lineManager.addLine(cueBall, targetBall);
+
+// Draw line with options
+lineManager.addLine(cueBall, targetBall, {
+    color: '#ff0000',
+    dashed: true
+});
+```
+
+## Line Types
+
+| Type | Purpose |
+|------|---------|
+| Coach line | Direct line between balls |
+| Aim line | Line from cue through ghost ball |
+| Trajectory | Predicted ball path after impact |
+
+## Managing Lines
+
+```typescript
+// Remove a specific line
+lineManager.removeLine(line);
+
+// Clear all lines
+lineManager.clearLines();
+
+// Get all lines
+const lines = lineManager.getLines();
+```
+
+## Trajectories
+
+Trajectory manager shows predicted ball paths.
+
+```typescript
+const trajectoryManager = tableManager.trajectoryManager;
+
+// Show trajectory from cue to target
+trajectoryManager.showTrajectory(cueBall, targetBall);
+
+// Show trajectory with bounce
+trajectoryManager.showTrajectory(cueBall, targetBall, {
+    showBounce: true
+});
+
+// Clear trajectories
+trajectoryManager.clearTrajectories();
+```
+
+## Line Events
+
+```typescript
+lineManager.on('line:added', (line) => {
+    console.log('Line added');
+});
+
+lineManager.on('line:removed', (line) => {
+    console.log('Line removed');
+});
+```

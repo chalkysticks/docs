@@ -1,0 +1,50 @@
+---
+title: 'Pad Package'
+description: 'SDK for creating and managing pool table diagrams'
+---
+
+The `sdk-pad` package provides functionality for creating, editing, and persisting pool table diagrams.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-pad
+```
+
+## Quick Start
+
+```typescript
+import * as Pad from '@chalkysticks/sdk-pad';
+
+// Create a new diagram
+const diagram = Pad.Factory.Diagram.create();
+
+// Add balls, lines, etc.
+// (See subpages for details)
+
+// Save to API
+await diagram.save();
+```
+
+## Exports
+
+```typescript
+import { Collection, Model, Factory } from '@chalkysticks/sdk-pad';
+
+// Collection
+Collection.Diagram  // List of diagrams
+
+// Model
+Model.Diagram       // Single diagram
+
+// Factory
+Factory.Diagram     // Create diagrams
+```
+
+## Key Concepts
+
+- **Diagrams** are the main container for pad content
+- **Balls** are positioned on the table (cue, solid, striped, ghost)
+- **Lines** connect balls to show shot paths
+- **Trajectories** visualize ball movement predictions
+- All coordinates are normalized (0-1) relative to table dimensions

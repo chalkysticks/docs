@@ -1,0 +1,97 @@
+---
+title: 'Fetch venues within 10km'
+description: 'Location-based venue search via API'
+---
+
+## cURL
+
+```bash
+curl "https://api.chalkysticks.com/v3/venues?lat=40.7128&lon=-74.0060&distance=10"
+```
+
+## Response
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Amsterdam Billiards",
+      "address": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "distance": 0.5,
+      "table_count": 20,
+      "rating": 4.5
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "total": 15,
+      "per_page": 15,
+      "current_page": 1
+    }
+  }
+}
+```
+
+## JavaScript (Fetch)
+
+```javascript
+async function fetchNearbyVenues(lat, lon, distance = 10) {
+    const params = new URLSearchParams({
+        lat: lat.toString(),
+        lon: lon.toString(),
+        distance: distance.toString()
+    });
+
+    const response = await fetch(
+        `https://api.chalkysticks.com/v3/venues?${params}`
+    );
+
+    const { data } = await response.json();
+    return data;
+}
+
+// Usage with geolocation
+navigator.geolocation.getCurrentPosition(async (position) => {
+    const venues = await fetchNearbyVenues(
+        position.coords.latitude,
+        position.coords.longitude,
+        10
+    );
+
+    console.log(`Found ${venues.length} venues`);
+});
+```
+
+## With SDK
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-venues';
+import { Utility } from '@chalkysticks/sdk-core';
+
+async function fetchNearbyVenues(): Promise<void> {
+    const position = await Utility.Geolocation.getCurrentPosition();
+
+    const venues = new Collection.Venue();
+    venues.setQuery({
+        lat: position.latitude,
+        lon: position.longitude,
+        distance: 10
+    });
+
+    await venues.fetch();
+
+    venues.models.forEach(venue => {
+        console.log(`${venue.name} - ${venue.distance}km away`);
+    });
+}
+```
+
+## With Pagination
+
+```bash
+# Page 2, 25 results per page
+curl "https://api.chalkysticks.com/v3/venues?lat=40.7128&lon=-74.0060&distance=10&page=2&limit=25"
+```

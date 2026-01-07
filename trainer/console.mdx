@@ -1,0 +1,132 @@
+---
+title: 'Console Commands'
+description: 'Debug and control the game via window.game'
+---
+
+## Accessing the Console API
+
+Open browser dev tools and use:
+
+```javascript
+window.game
+```
+
+## Game Control
+
+```javascript
+// Start/stop
+game.start('8ball')
+game.stop()
+game.reset()
+game.pause()
+game.resume()
+
+// Rack balls
+game.rackBalls('8ball')
+game.rackBalls('9ball')
+game.rackBalls('9ball', { shuffle: true })
+```
+
+## Shot Control
+
+```javascript
+// Set aim and power
+game.setAimAngle(45)
+game.setPower(0.6)
+
+// Set english
+game.setEnglish(0.3, -0.2)
+game.setEnglishX(0.3)
+game.setEnglishY(-0.2)
+game.resetEnglish()
+
+// Set elevation
+game.setElevation(15)
+
+// Shoot
+game.shoot()
+
+// Shoot with params
+game.shoot({ power: 0.5, angle: 30 })
+```
+
+## Ball Management
+
+```javascript
+// Get balls
+game.ballManager.getCueBall()
+game.ballManager.getBall(1)
+game.ballManager.getAllBalls()
+game.ballManager.getActiveBalls()
+game.ballManager.getPocketedBalls()
+
+// Place cue ball
+game.placeCueBall({ x: 0.25, y: 0.5 })
+
+// Clear and add balls
+game.ballManager.clearBalls()
+game.ballManager.addCueBall({ x: 0.25, y: 0.5 })
+game.ballManager.addBall(1, { x: 0.5, y: 0.5 })
+```
+
+## Camera
+
+```javascript
+// Set mode
+game.setCamera('overhead')
+game.setCamera('behind-cue')
+game.setCamera('first-person')
+
+// Zoom
+game.setZoom(1.5)
+game.zoomIn()
+game.zoomOut()
+
+// Track ball
+game.trackBall('cue')
+game.trackBall(9)
+game.stopTracking()
+```
+
+## Undo/Replay
+
+```javascript
+// Undo last shot
+game.undo()
+
+// Replay
+game.replay()
+game.replay({ speed: 0.5 })  // Slow motion
+```
+
+## Debug
+
+```javascript
+// Show physics debug
+game.debug.showCollisions = true
+game.debug.showVelocity = true
+game.debug.showTrajectory = true
+
+// Log state
+game.getState()
+game.ballManager.getAllBalls().forEach(b => console.log(b.number, b.position))
+```
+
+## Quick Test Shots
+
+```javascript
+// Quick straight shot
+game.rackBalls('drill-line', { balls: [1] })
+game.placeCueBall({ x: 0.25, y: 0.5 })
+game.setAimAngle(0)
+game.setPower(0.5)
+game.shoot()
+
+// Quick cut shot
+game.ballManager.clearBalls()
+game.ballManager.addCueBall({ x: 0.25, y: 0.5 })
+game.ballManager.addBall(1, { x: 0.6, y: 0.4 })
+game.aimAt(game.ballManager.getBall(1))
+game.setPower(0.4)
+game.shoot()
+```

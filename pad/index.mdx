@@ -1,0 +1,76 @@
+---
+title: 'Vue Pad'
+description: 'Interactive pool diagram creation tool'
+---
+
+## Installation
+
+```bash
+npm install @chalkysticks/vue2-pad
+```
+
+## Setup
+
+```typescript
+import Vue from 'vue';
+import ChalkyPad from '@chalkysticks/vue2-pad';
+
+Vue.use(ChalkyPad);
+```
+
+## Basic Usage
+
+```html
+<ChalkyPad
+    ref="pad"
+    v-on:change="handleChange"
+/>
+```
+
+## Features
+
+- **Ball Placement** - Add cue, solid, striped, and ghost balls
+- **Coach Lines** - Draw lines between balls
+- **Trajectories** - Visualize shot paths
+- **Persistence** - Save/load diagrams via SDK
+- **Export** - Generate SVG and PNG images
+
+## Architecture
+
+The pad uses a manager-based architecture:
+
+| Manager | Purpose |
+|---------|---------|
+| TableManager | Main orchestrator |
+| BallManager | Ball operations |
+| LineManager | Coach lines |
+| RailManager | Table boundaries |
+| TrajectoryManager | Shot paths |
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `tableType` | string | '9foot' | Table size |
+| `showGrid` | boolean | false | Show alignment grid |
+| `interactive` | boolean | true | Allow user interaction |
+| `readOnly` | boolean | false | View-only mode |
+
+## Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `change` | State | Diagram state changed |
+| `ball:added` | Ball | Ball added |
+| `ball:removed` | Ball | Ball removed |
+| `line:added` | Line | Line added |
+
+## Accessing Managers
+
+```typescript
+const pad = this.$refs.pad;
+
+const tableManager = pad.tableManager;
+const ballManager = pad.ballManager;
+const lineManager = pad.lineManager;
+```

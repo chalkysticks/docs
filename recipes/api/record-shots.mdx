@@ -1,0 +1,124 @@
+---
+title: 'Record game shots'
+description: 'Track shots during a game via API'
+---
+
+## Create a Game
+
+```bash
+curl -X POST "https://api.chalkysticks.com/v3/games" \
+     -H "Authorization: Bearer YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "game_type": "8ball",
+       "user2_id": 2
+     }'
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": 123,
+    "game_type": "8ball",
+    "status": "in_progress"
+  }
+}
+```
+
+## Record a Shot
+
+```bash
+curl -X POST "https://api.chalkysticks.com/v3/games/123/shots" \
+     -H "Authorization: Bearer YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "player_id": 1,
+       "ball_pocketed": 3,
+       "foul": false
+     }'
+```
+
+## Record a Foul
+
+```bash
+curl -X POST "https://api.chalkysticks.com/v3/games/123/shots" \
+     -H "Authorization: Bearer YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "player_id": 1,
+       "ball_pocketed": null,
+       "foul": true,
+       "foul_type": "scratch"
+     }'
+```
+
+## JavaScript Example
+
+```javascript
+class GameTracker {
+    constructor(token) {
+        this.token = token;
+        this.baseUrl = 'https://api.chalkysticks.com/v3';
+    }
+
+    async createGame(gameType, opponentId) {
+        const response = await fetch(`${this.baseUrl}/games`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                game_type: gameType,
+                user2_id: opponentId
+            })
+        });
+
+        const { data } = await response.json();
+        this.gameId = data.id;
+        return data;
+    }
+
+    async recordShot(playerId, ballPocketed, foul = false) {
+        const response = await fetch(`${this.baseUrl}/games/${this.gameId}/shots`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                player_id: playerId,
+                ball_pocketed: ballPocketed,
+                foul: foul
+            })
+        });
+
+        return response.json();
+    }
+
+    async endGame(winnerId) {
+        const response = await fetch(`${this.baseUrl}/games/${this.gameId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                winner_id: winnerId,
+                status: 'completed'
+            })
+        });
+
+        return response.json();
+    }
+}
+
+// Usage
+const tracker = new GameTracker('YOUR_TOKEN');
+await tracker.createGame('8ball', 2);
+await tracker.recordShot(1, 3);      // Player 1 pocketed ball 3
+await tracker.recordShot(1, 5);      // Player 1 pocketed ball 5
+await tracker.recordShot(1, null, true);  // Foul
+await tracker.endGame(1);            // Player 1 wins
+```

@@ -1,0 +1,88 @@
+---
+title: 'Collections'
+description: 'Data collections for fetching and managing lists of models'
+---
+
+## Available Collections
+
+| Collection | Description |
+|------------|-------------|
+| `User` | List of users |
+| `Venue` | List of venues |
+| `Media` | List of media items |
+| `UserMedia` | User's media |
+| `VenueMedia` | Venue's media |
+| `Comment` | Comments list |
+| `Reaction` | Reactions list |
+| `Content` | Content items |
+| `Feed` | User feed |
+| `Message` | Chat messages |
+| `VenueCheckin` | Venue check-ins |
+
+## Basic Usage
+
+```typescript
+import { Collection } from '@chalkysticks/sdk-core';
+
+// Create a collection
+const venues = new Collection.Venue();
+
+// Fetch from API
+await venues.fetch();
+
+// Access models
+venues.models.forEach(venue => {
+    console.log(venue.name);
+});
+```
+
+## Filtering
+
+```typescript
+// Search by query
+venues.setQuery({ q: 'pool hall' });
+await venues.fetch();
+
+// Filter by location
+venues.setQuery({
+    lat: 40.7128,
+    lon: -74.0060,
+    distance: 10
+});
+await venues.fetch();
+```
+
+## Pagination
+
+```typescript
+// Set limit
+venues.setLimit(25);
+
+// Fetch next page
+await venues.fetchNext();
+
+// Check if more pages exist
+if (venues.hasMore()) {
+    await venues.fetchNext();
+}
+```
+
+## Collection Methods
+
+```typescript
+// Get model by ID
+const venue = venues.getById(123);
+
+// Get first/last model
+const first = venues.first();
+const last = venues.last();
+
+// Get count
+const count = venues.length;
+
+// Filter models locally
+const filtered = venues.filter(v => v.city === 'New York');
+
+// Find single model
+const found = venues.find(v => v.id === 123);
+```
