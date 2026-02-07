@@ -1,0 +1,345 @@
+---
+title: 'Enums Reference'
+description: 'Complete catalog of all enum definitions and their values'
+---
+
+## Overview
+
+All enums are defined in `src/App/Enum/` and imported as a namespace:
+
+```typescript
+import * as Enum from '../Enum';
+
+// Usage
+const gameType = Enum.RackStrategy.EightBall;
+const mode = Enum.MatchMode.VersusCpu;
+```
+
+There are 25 enums covering game types, states, strategies, and configuration options.
+
+---
+
+## AIShotType
+
+Shot types evaluated by the AI opponent system.
+
+| Key | Value |
+|-----|-------|
+| `Bank` | `'Bank'` |
+| `Combo` | `'Combo'` |
+| `Direct` | `'Direct'` |
+| `Jump` | `'Jump'` |
+| `Kick` | `'Kick'` |
+| `Safety` | `'Safety'` |
+
+## BallType
+
+Ball classification types for game rules and player assignment.
+
+| Key | Value |
+|-----|-------|
+| `Black` | `'black'` |
+| `Blue` | `'blue'` |
+| `Brown` | `'brown'` |
+| `Cue` | `'cue'` |
+| `Ghost` | `'ghost'` |
+| `Green` | `'green'` |
+| `None` | `'none'` |
+| `Pink` | `'pink'` |
+| `Red` | `'red'` |
+| `Solid` | `'solid'` |
+| `Stripe` | `'stripe'` |
+| `Winner` | `'winner'` |
+| `Yellow` | `'yellow'` |
+
+## BallTypeRequirement
+
+Rules for which ball type must be contacted or pocketed.
+
+| Key | Value |
+|-----|-------|
+| `Random` | `'Random'` |
+| `Solid` | `'Solid'` |
+| `Specific` | `'Specific'` |
+| `Stripe` | `'Stripe'` |
+
+## BreakRule
+
+Determines who breaks after each game in a match.
+
+| Key | Value |
+|-----|-------|
+| `AlternateBreaks` | `'AlternateBreaks'` |
+| `LoserBreaks` | `'LoserBreaks'` |
+| `WinnerBreaks` | `'WinnerBreaks'` |
+
+## CameraPosition
+
+Named camera preset positions.
+
+| Key | Value |
+|-----|-------|
+| `BallTracking` | `'ball-tracking'` |
+| `Break` | `'break'` |
+| `BreakReverse` | `'break-reverse'` |
+| `CinematicFlythrough` | `'cinematic-flythrough'` |
+| `CinematicOrbit` | `'cinematic-orbit'` |
+| `CinematicRail` | `'cinematic-rail'` |
+| `CloseUp` | `'close-up'` |
+| `CueSelection` | `'cue-selection'` |
+| `EndTable` | `'end-table'` |
+| `FirstPerson` | `'first-person'` |
+| `FollowShot` | `'follow-shot'` |
+| `FreeLook` | `'free-look'` |
+| `GameSelection` | `'game-selection'` |
+| `LeftHalf` | `'left-half'` |
+| `MainMenu` | `'main-menu'` |
+| `Overview` | `'overview'` |
+| `ReplayMode` | `'replay-mode'` |
+| `RightHalf` | `'right-half'` |
+| `Side` | `'side'` |
+| `SpectatorMode` | `'spectator-mode'` |
+| `ThreeQuarter` | `'three-quarter'` |
+
+## CollisionType
+
+Types of physics collisions.
+
+| Key | Value |
+|-----|-------|
+| `BallBall` | `'ball-ball'` |
+| `BallPocket` | `'ball-pocket'` |
+| `BallRail` | `'ball-rail'` |
+
+## CueState
+
+Cue stick visual states.
+
+| Key | Value |
+|-----|-------|
+| `Aiming` | `'aiming'` |
+| `Elevated` | `'elevated'` |
+| `Hidden` | `'hidden'` |
+| `Striking` | `'striking'` |
+
+## EnvironmentStrategy
+
+Available environment presets for scene backgrounds and lighting.
+
+| Key | Value |
+|-----|-------|
+| `AmsterdamBilliards` | `'AmsterdamBilliards'` |
+| `Chalky` | `'Chalky'` |
+| `Custom` | `'Custom'` |
+| `Default` | `'Default'` |
+| `Generic` | `'Generic'` |
+| `ModernBar` | `'ModernBar'` |
+| `MosconiCup` | `'MosconiCup'` |
+| `OldPoolHall` | `'OldPoolHall'` |
+
+## GameState
+
+States of the game loop.
+
+| Key | Value |
+|-----|-------|
+| `Aiming` | `'aiming'` |
+| `BallsMoving` | `'balls_moving'` |
+| `GameOver` | `'game_over'` |
+| `Idle` | `'idle'` |
+| `Paused` | `'paused'` |
+| `Shooting` | `'shooting'` |
+| `TurnEnd` | `'turn_end'` |
+
+## InputMode
+
+User input modes.
+
+| Key | Value |
+|-----|-------|
+| `Aiming` | `'aiming'` |
+| `DragBall` | `'dragball'` |
+
+## MatchMode
+
+Match configuration modes.
+
+| Key | Value |
+|-----|-------|
+| `Practice` | `'Practice'` |
+| `VersusCpu` | `'VersusCpu'` |
+| `VersusPlayer` | `'VersusPlayer'` |
+
+## MatchStatus
+
+Match lifecycle states.
+
+| Key | Value |
+|-----|-------|
+| `Complete` | `'Complete'` |
+| `Configured` | `'Configured'` |
+| `Idle` | `'Idle'` |
+| `InProgress` | `'InProgress'` |
+
+## Orientation
+
+Screen orientation for responsive layout.
+
+| Key | Value |
+|-----|-------|
+| `Auto` | `'auto'` |
+| `Landscape` | `'landscape'` |
+| `Portrait` | `'portrait'` |
+
+## PhysicsStepStrategy
+
+Physics engine stepping strategies.
+
+| Key | Value |
+|-----|-------|
+| `AdaptiveSubsteps` | `'AdaptiveSubsteps'` |
+| `Backtrack` | `'Backtrack'` |
+| `Discrete` | `'Discrete'` |
+| `SweptCCD` | `'SweptCCD'` |
+
+## PocketLocation
+
+Named pocket positions on the table.
+
+| Key | Value |
+|-----|-------|
+| `FootBottom` | `'foot-bottom'` |
+| `FootTop` | `'foot-top'` |
+| `HeadBottom` | `'head-bottom'` |
+| `HeadTop` | `'head-top'` |
+| `MiddleBottom` | `'middle-bottom'` |
+| `MiddleTop` | `'middle-top'` |
+
+## RackGeometry
+
+Geometric shapes for ball racking patterns.
+
+| Key | Value |
+|-----|-------|
+| `Custom` | `'Custom'` |
+| `Diamond` | `'Diamond'` |
+| `Hexagon` | `'Hexagon'` |
+| `Line` | `'Line'` |
+| `Triangle` | `'Triangle'` |
+
+## RackStrategy
+
+Game variants and racking configurations.
+
+| Key | Value |
+|-----|-------|
+| `Clear` | `'Clear'` |
+| `Custom` | `'Custom'` |
+| `DrillLine` | `'DrillLine'` |
+| `EightBall` | `'EightBall'` |
+| `NineBall` | `'NineBall'` |
+| `OneBall` | `'OneBall'` |
+| `RandomSpread` | `'RandomSpread'` |
+| `Rotation` | `'Rotation'` |
+| `StraightPool` | `'StraightPool'` |
+| `TenBall` | `'TenBall'` |
+| `ThreeBall` | `'ThreeBall'` |
+
+## RailLocation
+
+Named rail segments on the table.
+
+| Key | Value |
+|-----|-------|
+| `Foot` | `'foot'` |
+| `FootBottom` | `'foot-bottom'` |
+| `FootTop` | `'foot-top'` |
+| `Head` | `'head'` |
+| `HeadBottom` | `'head-bottom'` |
+| `HeadTop` | `'head-top'` |
+
+## RulesType
+
+Rule evaluation strategies.
+
+| Key | Value |
+|-----|-------|
+| `Global` | `'global'` |
+| `Sequential` | `'sequential'` |
+
+## SceneMode
+
+Temporary visual/interactive modes that interrupt gameplay.
+
+| Key | Value |
+|-----|-------|
+| `BallSelection` | `'ballSelection'` |
+| `CueSelection` | `'cueSelection'` |
+| `GameSelection` | `'gameSelection'` |
+| `Gameplay` | `'gameplay'` |
+| `MainMenu` | `'mainMenu'` |
+| `Pause` | `'pause'` |
+
+## SoundCategory
+
+Audio channel categories for volume control.
+
+| Key | Value |
+|-----|-------|
+| `Ambient` | `'ambient'` |
+| `Master` | `'master'` |
+| `Music` | `'music'` |
+| `Sfx` | `'sfx'` |
+| `Ui` | `'ui'` |
+| `Voice` | `'voice'` |
+
+## SoundType
+
+Named sound effect types.
+
+| Key | Value |
+|-----|-------|
+| `AmbientSounds` | `'ambientSounds'` |
+| `BackgroundMusic` | `'backgroundMusic'` |
+| `BallCollisions` | `'ballCollisions'` |
+| `CueStrikes` | `'cueStrikes'` |
+| `PocketDrops` | `'pocketDrops'` |
+| `RackingSounds` | `'rackingSounds'` |
+| `RailBounces` | `'railBounces'` |
+| `UiSounds` | `'uiSounds'` |
+
+## TableAppearanceStrategy
+
+Available table texture presets.
+
+| Key | Value |
+|-----|-------|
+| `Chalky` | `'Chalky'` |
+| `Charcoal` | `'Charcoal'` |
+| `Classic` | `'Classic'` |
+| `Custom` | `'Custom'` |
+| `Matchroom` | `'Matchroom'` |
+| `Superfine` | `'Superfine'` |
+| `Traditional` | `'Traditional'` |
+
+## TableRegion
+
+Named regions of the table surface.
+
+| Key | Value |
+|-----|-------|
+| `FootString` | `'foot_string'` |
+| `FullTable` | `'full_table'` |
+| `HeadString` | `'head_string'` |
+
+## TableType
+
+Table sizes and variants.
+
+| Key | Value |
+|-----|-------|
+| `Billiards` | `'Billiards'` |
+| `EightFoot` | `'EightFoot'` |
+| `NineFoot` | `'NineFoot'` |
+| `SevenFoot` | `'SevenFoot'` |
+| `Snooker` | `'Snooker'` |

@@ -1,0 +1,237 @@
+---
+title: 'Scene Components'
+description: 'Pre-built scenes for different game experiences'
+---
+
+## Overview
+
+Scene components live in `src/App/Scene/` and represent different levels of the game experience. Each scene extends `Core/Scene.vue` and is exported from the barrel `index.ts`:
+
+```typescript
+export { default as Freeplay } from './Freeplay.vue';
+export { default as Game } from './Game.vue';
+export { default as Table } from './Table.vue';
+export { default as Trainer } from './Trainer.vue';
+```
+
+Use the scene that matches your integration needs:
+
+| Scene | Use Case |
+|-------|----------|
+| **Table** | Non-interactive embeds, diagrams, showcases |
+| **Game** | Core game with all controls (composed by other scenes) |
+| **Freeplay** | Zero-config casual play, auto-starts a practice match |
+| **Trainer** | Full experience with menus, scoring, and notifications |
+
+---
+
+## Scene/Table
+
+**Class:** `SceneTable` &mdash; **File:** `src/App/Scene/Table.vue`
+
+Barebones table scene for non-interactive embeds, diagrams, and showcases. Renders only the 3D pool table via `ViewWorld` with no game controls, mode system, or audio management.
+
+**Components:** `ViewWorld`, `ViewDebug` (debug only)
+
+### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `autoActivate` | `boolean` | `false` | Automatically exit low power once the world is ready |
+| `debugMode` | `boolean` | `false` | Show debug overlay |
+| `diagramId` | `string` | `''` | Pad diagram ID to load on mount |
+| `diagramInverse` | `boolean` | `true` | Invert diagram coordinates |
+| `environment` | `string \| undefined` | `undefined` | Environment preset name |
+| `showBreakbox` | `boolean` | `true` | Show the break box on the table |
+| `showTrails` | `boolean \| undefined` | `undefined` | Show ball trails after shots |
+| `startInLowPower` | `boolean` | `true` | Start in low power mode |
+| `tableAppearance` | `string \| undefined` | `undefined` | Table texture preset |
+| `tableAppearanceDefinition` | `ITableAppearanceDefinition \| undefined` | `undefined` | Custom appearance definition |
+| `tableOverlays` | `string[]` | `[]` | Named overlays to show on table |
+
+### Emitted Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `game:ready` | `{ scene, timestamp, world }` | World models finished loading |
+
+### Public Methods
+
+| Method | Description |
+|--------|-------------|
+| `activateInteractiveMode()` | Exit low power mode programmatically |
+| `enterLowPowerMode()` | Enter low power mode programmatically |
+
+### Example
+
+```vue
+<SceneTable
+    v-bind:autoActivate="true"
+    v-bind:diagramId="'abc123'"
+    v-bind:environment="'Chalky'"
+    v-bind:tableAppearance="'Matchroom'"
+    v-on:game:ready="onReady"
+/>
+```
+
+---
+
+## Scene/Game
+
+**Class:** `SceneGame` &mdash; **File:** `src/App/Scene/Game.vue`
+
+Main game scene with all interactive components. Includes the 3D world, power/english meters, cue interaction layer, ball controls, cue selection mode overlay, and english overlay. This is the core scene composed by `Freeplay` and `Trainer`.
+
+**Components:** `ViewWorld`, `ViewPowerEnglish`, `ViewCue`, `ViewBallControl`, `ViewCueSelection`, `ViewEnglishOverlay`, `ViewDebug`, `ViewControls`
+
+### Props
+
+Includes all `SceneTable` props, plus:
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `ambientSound` | `boolean \| undefined` | `undefined` | Enable/disable ambient sounds |
+| `audioVolumes` | `object \| undefined` | `undefined` | Volume overrides per category |
+| `autoStartAmbient` | `boolean \| undefined` | `undefined` | Auto-start ambient when mounted |
+| `autoStartMusic` | `boolean \| undefined` | `undefined` | Auto-start music when mounted |
+| `backgroundMusic` | `boolean \| undefined` | `undefined` | Enable/disable background music |
+| `freelook` | `boolean` | `false` | Enable Shift-key freelook controls |
+| `separateMeters` | `boolean` | `false` | If the power and draw should be compact |
+| `showControls` | `boolean` | `false` | Show the controls overlay (debug) |
+| `showEnglishMeter` | `boolean` | `true` | Show the english meter component |
+| `showPowerMeter` | `boolean` | `true` | Show the power meter component |
+| `showTrajectories` | `boolean \| undefined` | `undefined` | Show ball trajectory predictions |
+| `soundEnabled` | `boolean \| undefined` | `undefined` | Enable/disable all sounds |
+
+### Emitted Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `game:ready` | `{ scene, timestamp, world }` | World loaded and game is ready |
+| `error:importpad` | `{ message, details }` | Pad diagram import failed |
+
+### Example
+
+```vue
+<SceneGame
+    v-bind:autoActivate="true"
+    v-bind:freelook="true"
+    v-bind:showEnglishMeter="true"
+    v-bind:showPowerMeter="true"
+    v-bind:environment="'Chalky'"
+    v-on:game:ready="onReady"
+/>
+```
+
+---
+
+## Scene/Freeplay
+
+**Class:** `SceneFreeplay` &mdash; **File:** `src/App/Scene/Freeplay.vue`
+
+Zero-config casual play scene that auto-starts a practice match. No menus or selection screens &mdash; just a pool table ready to play immediately after the world loads.
+
+**Components:** `SceneGame`
+
+### Props
+
+Includes all `SceneGame` props (except `showControls`), plus:
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `environment` | `string \| undefined` | `'Chalky'` | Default environment preset |
+| `freelook` | `boolean` | `false` | Enable freelook controls |
+| `gameType` | `Enum.RackStrategy` | `NineBall` | Game type to auto-start with |
+| `tableAppearance` | `string \| undefined` | `'Chalky'` | Default table appearance |
+
+### Auto-Start Configuration
+
+When the game is ready, Freeplay automatically configures and starts a match with:
+
+```typescript
+{
+    allowUndo: true,
+    breakRule: Enum.BreakRule.AlternateBreaks,
+    diagramId: this.diagramId,
+    diagramInverse: this.diagramInverse,
+    gameType: this.gameType,
+    mode: Enum.MatchMode.Practice,
+    opponentSkill: 0,
+    playerNames: {
+        playerOne: 'Player',
+        playerTwo: '',
+    },
+    raceToGames: 1,
+    raceToPoints: 0,
+    shotClockSeconds: null,
+}
+```
+
+### Example
+
+```vue
+<SceneFreeplay
+    v-bind:autoActivate="true"
+    v-bind:gameType="Enum.RackStrategy.EightBall"
+    v-bind:environment="'Chalky'"
+    v-on:game:ready="onReady"
+/>
+```
+
+---
+
+## Scene/Trainer
+
+**Class:** `SceneTrainer` &mdash; **File:** `src/App/Scene/Trainer.vue`
+
+Full game experience scene with menus, scoring, and notifications. Composes `Scene/Game` with `MainMenu`, `GameSelection`, lower third scoreboard, and toast notifications for a complete application flow.
+
+**Components:** `SceneGame`, `ViewGameSelection`, `ViewMainMenu`, `ViewOverlayLowerThird`, `ChalkyUiToastGroup`
+
+### Props
+
+Includes all `SceneGame` props, plus:
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `enterMainMenuOnReady` | `boolean` | `true` | Auto-enter MainMenu mode when the world is ready |
+
+### Emitted Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `game:ready` | `readyData` | World loaded and game is ready |
+| `game:end` | `{ result, winner }` | A game within the match ended |
+| `match:end` | `e.data` | The match ended |
+| `match:start` | `e.data` | The match started |
+| `match:won` | `e.data` | A player won the match |
+
+### Application Flow
+
+```
+Main Menu → Game Selection → Gameplay → Scoring → Next Game / Match End
+```
+
+1. World loads, `game:ready` fires
+2. If `enterMainMenuOnReady` is true, enters `MainMenu` scene mode
+3. User configures match through `GameSelection` view
+4. Match starts with configured settings
+5. Foul toasts appear automatically during gameplay
+6. Game end triggers ready-for-next-game prompt
+7. Match end triggers toast notification
+
+### Example
+
+```vue
+<SceneTrainer
+    v-bind:autoActivate="true"
+    v-bind:debugMode="false"
+    v-bind:enterMainMenuOnReady="true"
+    v-bind:freelook="true"
+    v-bind:showEnglishMeter="true"
+    v-bind:showPowerMeter="true"
+    v-on:game:ready="onReady"
+    v-on:game:end="onGameEnd"
+    v-on:match:end="onMatchEnd"
+/>
+```

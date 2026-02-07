@@ -1,0 +1,208 @@
+---
+title: 'Match System'
+description: 'Match configuration, lifecycle, and shot clock management'
+---
+
+## Overview
+
+The match system orchestrates multi-game matches with configurable rules, player management, shot clock enforcement, and break rule logic. It lives primarily in `Service/Match/Manager.ts` and coordinates with the Vuex store modules `match` and `scoreboard`.
+
+```
+Configure → Start Match → Start Game → Game End → Next Game / Match End
+```
+
+## Match Configuration
+
+Matches are configured via `IMatchConfig`, which is passed to `MatchManager.configure()`:
+
+```typescript
+const config: IMatchConfig = {
+    allowUndo: true,
+    breakRule: Enum.BreakRule.WinnerBreaks,
+    diagramId: '',
+    diagramInverse: false,
+    gameType: Enum.RackStrategy.NineBall,
+    mode: Enum.MatchMode.Practice,
+    opponentSkill: 5,
+    playerNames: {
+        playerOne: 'Player 1',
+        playerTwo: 'Player 2',
+    },
+    raceToGames: 5,
+    raceToPoints: 100,
+    shotClockSeconds: 30,
+};
+
+GameService.matchManager.configure(config);
+GameService.matchManager.startMatch();
+```
+
+### Configuration Options
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `allowUndo` | `boolean` | `true` | Allow shot undo during gameplay |
+| `breakRule` | `Enum.BreakRule` | `WinnerBreaks` | Who breaks after each game |
+| `diagramId` | `string` | `''` | Pad diagram ID for custom ball placement |
+| `diagramInverse` | `boolean` | `false` | Invert diagram coordinates |
+| `gameType` | `Enum.RackStrategy` | `NineBall` | Game variant (8-ball, 9-ball, etc.) |
+| `mode` | `Enum.MatchMode` | `Practice` | Match mode (Practice, VersusCpu, VersusLocal, VersusOnline) |
+| `opponentSkill` | `number` | `5` | AI opponent skill level (1-10, clamped) |
+| `playerNames` | `object` | `{ playerOne, playerTwo }` | Display names for players |
+| `raceToGames` | `number` | `5` | Games needed to win match (most game types) |
+| `raceToPoints` | `number` | `100` | Points needed to win match (Straight Pool) |
+| `shotClockSeconds` | `number \| null` | `30` | Shot clock duration, `null` to disable |
+
+### Match Modes
+
+| Mode | Enum | Description |
+|------|------|-------------|
+| Practice | `Enum.MatchMode.Practice` | Solo play, no turn switching |
+| Vs CPU | `Enum.MatchMode.VersusCpu` | Play against AI opponent |
+| Vs Local | `Enum.MatchMode.VersusLocal` | Two players on one device |
+| Vs Online | `Enum.MatchMode.VersusOnline` | Multiplayer (coming soon) |
+
+### Break Rules
+
+| Rule | Enum | Description |
+|------|------|-------------|
+| Winner Breaks | `Enum.BreakRule.WinnerBreaks` | Winner of last game breaks next |
+| Loser Breaks | `Enum.BreakRule.LoserBreaks` | Loser of last game breaks next |
+| Alternate Breaks | `Enum.BreakRule.AlternateBreaks` | Players alternate who breaks |
+
+## Match Lifecycle
+
+### Starting a Match
+
+```typescript
+// 1. Configure
+GameService.matchManager.configure({
+    gameType: Enum.RackStrategy.EightBall,
+    mode: Enum.MatchMode.VersusCpu,
+    opponentSkill: 7,
+    raceToGames: 3,
+});
+
+// 2. Start
+await GameService.matchManager.startMatch();
+```
+
+When `startMatch()` is called:
+
+1. Players are created based on mode (Practice = 1 player, Versus = 2 players)
+2. If `VersusCpu`, player two is marked as AI with the configured skill level
+3. Turn switching is enabled/disabled based on mode
+4. Scoreboard targets are set (race to games/points)
+5. Shot clock is initialized
+6. First game starts with player index 0 breaking
+7. `Event.Match.Start` is dispatched
+
+### Game End and Continuation
+
+When a game ends (`Event.Game.End` fires):
+
+1. Shot clock stops
+2. Winner is determined from event data
+3. `Event.Match.GameEnd` is dispatched
+4. If match target is reached, `endMatch()` is called
+5. Otherwise, next breaker is determined by break rule
+6. `Event.Match.ReadyForNextGame` is dispatched
+7. The embedding application calls `continueToNextGame()` to proceed
+
+```typescript
+// Listen for ready-for-next-game
+ChalkySticks.Core.Event.Bus.on(Event.Match.ReadyForNextGame, (e) => {
+    const { breakerIndex, matchProgress, winnerIndex } = e.data;
+    // Show UI, then continue
+    GameService.matchManager.continueToNextGame(breakerIndex);
+});
+```
+
+### Match Completion
+
+A match is complete when:
+
+- **Most game types:** A player's `gamesWon` reaches `raceToGames`
+- **Straight Pool:** A player's `score` reaches `raceToPoints`
+
+When complete, `Event.Match.End` and `Event.Match.Won` are dispatched.
+
+## Match Status
+
+The match status is tracked in the Vuex store at `store.state.match.status`:
+
+| Status | Enum | Description |
+|--------|------|-------------|
+| Idle | `Enum.MatchStatus.Idle` | No match configured |
+| Configured | `Enum.MatchStatus.Configured` | Match configured but not started |
+| InProgress | `Enum.MatchStatus.InProgress` | Match is actively being played |
+| Complete | `Enum.MatchStatus.Complete` | Match has ended |
+
+## Shot Clock
+
+The shot clock enforces a time limit per shot. It starts when the game state enters `Aiming` and stops when it leaves.
+
+```typescript
+// Enable shot clock (30 second limit)
+GameService.matchManager.configure({
+    shotClockSeconds: 30,
+});
+
+// Disable shot clock
+GameService.matchManager.configure({
+    shotClockSeconds: null,
+});
+```
+
+### Shot Clock Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `Event.Match.ShotClockStart` | `{ duration }` | Clock starts counting |
+| `Event.Match.ShotClockTick` | `{ remaining }` | Every 100ms with remaining seconds |
+| `Event.Match.ShotClockExpired` | &mdash; | Time ran out |
+| `Event.Foul.ShotClock` | `{ reason, type }` | Foul dispatched on expiration |
+
+### Store State
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `match.shotClockActive` | `boolean` | Whether the clock is running |
+| `match.shotClockRemaining` | `number \| null` | Seconds remaining |
+
+## Vuex Store Modules
+
+### Match Module (`store.state.match`)
+
+| State | Type | Description |
+|-------|------|-------------|
+| `config` | `IMatchConfig` | Current match configuration |
+| `lastWinnerIndex` | `number \| null` | Index of last game winner |
+| `nextBreakerIndex` | `number` | Who breaks next game |
+| `shotClockActive` | `boolean` | Shot clock running |
+| `shotClockRemaining` | `number \| null` | Shot clock seconds left |
+| `status` | `Enum.MatchStatus` | Current match status |
+
+### Scoreboard Module (`store.state.scoreboard`)
+
+| State | Type | Description |
+|-------|------|-------------|
+| `currentPlayer` | `IPlayerJSON \| null` | Active player data |
+| `players` | `IPlayerJSON[]` | All player data |
+| `targetGames` | `number` | Games to win (race to X) |
+| `targetPoints` | `number` | Points to win (Straight Pool) |
+
+## Match Events Reference
+
+| Event | Dispatched When |
+|-------|-----------------|
+| `Event.Match.Configured` | Match configured via `configure()` |
+| `Event.Match.Start` | Match started via `startMatch()` |
+| `Event.Match.GameStart` | A new game begins within the match |
+| `Event.Match.GameEnd` | A game ends within the match |
+| `Event.Match.ReadyForNextGame` | Ready for next game, waiting for `continueToNextGame()` |
+| `Event.Match.End` | Match ended (target reached or manual) |
+| `Event.Match.Won` | A player won the match |
+| `Event.Match.ShotClockStart` | Shot clock started |
+| `Event.Match.ShotClockTick` | Shot clock tick (every 100ms) |
+| `Event.Match.ShotClockExpired` | Shot clock time ran out |

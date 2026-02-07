@@ -1,0 +1,444 @@
+---
+title: 'Managers'
+description: 'Pure logic managers for table, balls, lines, rails, and trajectories'
+---
+
+The sdk-pad uses manager classes that contain pure logic with no UI dependencies.
+
+## Table Manager
+
+Main orchestrator that coordinates all sub-managers.
+
+```typescript
+import { Manager } from '@chalkysticks/sdk-pad';
+
+const table = new Manager.Table(bounds, ballSize);
+```
+
+### Sub-Managers
+
+```typescript
+table.ballManager       // Ball operations
+table.lineManager       // Line/connection operations
+table.railManager       // Boundary operations
+table.trajectoryManager // Path visualization
+```
+
+### Ball Operations
+
+```typescript
+// Add a ball
+table.addBall({ x: 0.5, y: 0.5, type: 'solid', number: 1 });
+
+// Remove a ball
+table.removeBall(ball);
+
+// Remove selected balls
+table.removeSelectedBalls();
+
+// Select/deselect
+table.selectBall(ball);
+table.deselectAllBalls();
+```
+
+### Line Operations
+
+```typescript
+// Add line between balls
+table.addLine(ball1, ball2);
+
+// Check if balls are connected
+const connected = table.areBallsConnected(ball1, ball2);
+
+// Get connected balls
+const connectedBall = table.getConnectedBall(ball);
+const allConnected = table.getConnectedBalls(ball);
+```
+
+### Movement
+
+```typescript
+// Move all selected balls
+table.moveBalls(deltaX, deltaY);
+
+// Shuffle ball positions
+table.shuffleBalls();
+```
+
+### Collision
+
+```typescript
+// Calculate collision with another ball
+const collision = table.calculateCollisionWithBall(ball, targetBall);
+
+// Calculate collision with rail
+const railCollision = table.calculateCollisionWithRail(ball);
+```
+
+### State
+
+```typescript
+// Import/export state
+table.importTableState(state);
+table.importDiagram(diagramModel);
+const state = table.exportTableState();
+
+// Rack balls
+table.rackBalls('8ball');
+
+// Clear everything
+table.clearAll();
+
+// Update bounds
+table.updateBounds(newBounds);
+```
+
+### Events
+
+```typescript
+// Subscribe to state changes
+table.onStateChange((state) => {
+    console.log('Table changed');
+});
+
+// Unsubscribe
+table.offStateChange(handler);
+```
+
+---
+
+## Ball Manager
+
+Pure logic for ball management.
+
+```typescript
+const ballManager = table.ballManager;
+```
+
+### CRUD Operations
+
+```typescript
+// Add ball (pixel coordinates)
+ballManager.addBall({ x: 400, y: 200, type: 'solid', number: 1 });
+
+// Add ball (normalized 0-1 coordinates)
+ballManager.addBallNormalized({ x: 0.5, y: 0.5, type: 'cue' });
+
+// Remove ball
+ballManager.removeBall(ball);
+
+// Get ball by ID
+const ball = ballManager.byId('ball-1');
+```
+
+### Specialized Ball Getters
+
+```typescript
+// Get specific ball types
+const cueBall = ballManager.getCueBall();
+const eightBall = ballManager.getEightBall();
+
+// Get ball groups
+const objectBalls = ballManager.getObjectBalls();  // All non-cue balls
+const solids = ballManager.getSolidBalls();        // Balls 1-7
+const stripes = ballManager.getStripedBalls();     // Balls 9-15
+
+// Get special marker balls
+const arrows = ballManager.getArrowBalls();        // Arrow indicators
+const ghosts = ballManager.getGhostBalls();        // Ghost balls
+
+// Get numbered balls only (excludes cue, ghost, arrow)
+const numbered = ballManager.getNumericBalls();
+
+// Get balls by specific type
+const customBalls = ballManager.getBallsByType('ghost');
+
+// Calculate distance between two balls
+const distance = ballManager.getDistanceBetweenBalls(ballIdA, ballIdB);
+```
+
+### Activation
+
+```typescript
+// Activate (select) a ball
+ballManager.activateBall(ball);
+
+// Deactivate all balls
+ballManager.deactivateBalls();
+
+// Toggle activation
+ballManager.toggleBall(ball);
+
+// Get active/inactive balls
+const active = ballManager.getActiveBalls();
+const singleActive = ballManager.getActiveBall();
+const inactive = ballManager.getInactiveBalls();
+```
+
+### Proximity Detection
+
+Distance threshold: 90 pixels
+
+```typescript
+// Get closest ball to coordinates
+const closest = ballManager.getClosestBall(x, y);
+
+// Get multiple closest balls
+const closestBalls = ballManager.getClosestBalls(x, y, count);
+
+// Get closest ball to another ball
+const nearestTo = ballManager.getClosestBallTo(ball);
+
+// Check if balls are nearby
+const nearby = ballManager.hasBallsNearby(x, y);
+
+// Check if two balls are touching
+const touching = ballManager.areBallsTouching(ball1, ball2);
+
+// Get all touching balls
+const touchingBalls = ballManager.getTouchingBalls(ball);
+```
+
+### Movement
+
+```typescript
+// Move ball to position
+ballManager.moveBall(ball, x, y);
+
+// Move ball relative
+ballManager.moveBallRelative(ball, deltaX, deltaY);
+
+// Shuffle all balls
+ballManager.shuffle();
+
+// Reset offsets/positions
+ballManager.resetBallOffsets();
+ballManager.resetBallPositions();
+```
+
+### Special Operations
+
+```typescript
+// Add ball at line midpoint
+ballManager.addBallAtIntersection(line);
+
+// Resolve overlapping balls (push apart)
+ballManager.resolveCollisions();
+```
+
+---
+
+## Line Manager
+
+Pure logic for line/connection management.
+
+```typescript
+const lineManager = table.lineManager;
+```
+
+### CRUD Operations
+
+```typescript
+// Add line between balls
+lineManager.addLine(ball1, ball2);
+
+// Add line with control point (for Bezier curve)
+lineManager.addLine(ball1, ball2, { x: 300, y: 150 });
+
+// Remove line by ID
+lineManager.removeLineById(lineId);
+
+// Remove all lines connected to a ball
+lineManager.removeLinesByBallId(ballId);
+
+// Move line
+lineManager.moveLine(line, deltaX, deltaY);
+```
+
+### Bezier Curve Support
+
+```typescript
+// Set/update control point on existing line
+lineManager.setControlPoint(lineId, { x: 300, y: 150 });
+
+// Get control point
+const controlPoint = lineManager.getControlPoint(lineId);
+
+// Check if line has a curve
+const isCurved = lineManager.hasCurve(lineId);
+
+// Clear control point (make line straight)
+lineManager.clearControlPoint(lineId);
+
+// Get SVG path d attribute
+const pathD = lineManager.getPath(lineId);
+// Straight: "M 100,200 L 400,200"
+// Curved:   "M 100,200 Q 300,150 400,200"
+
+// Get point along curve at parameter t (0-1)
+const point = lineManager.getPointOnCurve(lineId, 0.5);
+
+// Get curve length
+const length = lineManager.getCurveLength(lineId);
+
+// Get curve midpoint
+const midpoint = lineManager.getCurveMidpoint(lineId);
+
+// Get tangent angle at point t
+const angle = lineManager.getCurveTangentAngle(lineId, 0.5);
+```
+
+### Activation
+
+```typescript
+// Activate a line
+lineManager.activateLine(line);
+
+// Deactivate all lines
+lineManager.deactivateLines();
+
+// Get active/inactive lines
+const active = lineManager.getActiveLines();
+const inactive = lineManager.getInactiveLines();
+```
+
+### Queries
+
+Distance threshold: 50 pixels
+
+```typescript
+// Get line by ID
+const line = lineManager.byId(lineId);
+
+// Get lines connected to a ball
+const lines = lineManager.getLinesByBallId(ballId);
+
+// Get nearest line to coordinates
+const nearest = lineManager.getNearestLine(x, y);
+
+// Check if line contains a ball
+const hasBall = lineManager.hasBall(line, ball);
+
+// Get lines by ball type
+const cueShotLines = lineManager.getLinesByBallType('cue');
+const ghostLines = lineManager.getLinesStartingWithType('ghost');
+const toSolidLines = lineManager.getLinesEndingWithType('solid');
+```
+
+### Line Measurements
+
+```typescript
+// Get line angle (compass-style: up=0°, right=90°, down=180°, left=270°)
+const angle = lineManager.getAngle(lineId);
+const angleRadians = lineManager.getAngle(lineId, false);
+
+// Get line length
+const length = lineManager.getLength(lineId);
+
+// Get line midpoint
+const midpoint = lineManager.getMidpoint(lineId);
+
+// Get line slope
+const slope = lineManager.getSlope(lineId);
+
+// Get total length of all lines
+const totalLength = lineManager.getTotalLength();
+```
+
+### Line Relationships
+
+```typescript
+// Check if two lines are parallel
+const parallel = lineManager.isParallelTo(lineIdA, lineIdB);
+
+// Get intersection point of two lines
+const intersection = lineManager.getIntersectionPoint(lineIdA, lineIdB);
+
+// Get angle between two lines
+const angleBetween = lineManager.getAngleBetweenLines(lineIdA, lineIdB);
+
+// Calculate reflection angle off a rail
+const reflectionAngle = lineManager.getReflectionAngle(lineId, railAngle);
+```
+
+### Cleanup
+
+```typescript
+// Remove everything after a ball in the chain
+lineManager.removeEverythingAfterBall(ball);
+
+// Reconnect lines when a ball is removed
+lineManager.reconnectLineDueToRemovedBall(removedBall);
+```
+
+### Position Resolver
+
+```typescript
+// Inject callback to get ball positions (loose coupling)
+lineManager.setBallPositionResolver((ballId) => {
+    return { x: ball.x, y: ball.y };
+});
+```
+
+---
+
+## Rail Manager
+
+Pure logic for rail/boundary management.
+
+```typescript
+const railManager = table.railManager;
+```
+
+### Rail Directions
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+Enum.RailDirection.TOP     // 'top'
+Enum.RailDirection.RIGHT   // 'right'
+Enum.RailDirection.BOTTOM  // 'bottom'
+Enum.RailDirection.LEFT    // 'left'
+```
+
+### Methods
+
+```typescript
+// Get nearest rail to coordinates
+const rail = railManager.getNearestRail(x, y);
+
+// Get nearest rail type for a ball
+const direction = railManager.getNearestRailType(ball);
+
+// Get specific rail coordinates
+const railCoords = railManager.getRail(Enum.RailDirection.TOP);
+
+// Check if position touches rail
+const touching = railManager.isTouchingRail(x, y);
+
+// Update table boundaries
+railManager.updateBounds(newBounds);
+```
+
+---
+
+## Trajectory Manager
+
+Pure logic for trajectory/path management.
+
+```typescript
+const trajectoryManager = table.trajectoryManager;
+```
+
+### Methods
+
+```typescript
+// Clear all trajectories
+trajectoryManager.clearTrajectories();
+
+// Update table boundaries
+trajectoryManager.updateBounds(newBounds);
+
+// Access trajectories array
+const paths = trajectoryManager.trajectories;
+```

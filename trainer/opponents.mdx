@@ -1,0 +1,213 @@
+---
+title: 'Opponent Strategies'
+description: 'Strategy pattern for local, computer, and online opponents'
+---
+
+## Overview
+
+The opponent system uses the Strategy pattern to support different types of opponents. Each strategy handles how a player's turn is managed &mdash; from no-op for local players to full AI orchestration for computer opponents.
+
+```
+Strategy/Opponent/Base.ts       (abstract)
+    ├── Strategy/Opponent/Local.ts      (human, same device)
+    ├── Strategy/Opponent/Computer.ts   (AI-controlled)
+    └── Strategy/Opponent/Online.ts     (remote, coming soon)
+```
+
+Strategies are selected automatically based on the `mode` in `IMatchConfig`:
+
+| Match Mode | Player 1 Strategy | Player 2 Strategy |
+|------------|-------------------|-------------------|
+| `Practice` | Local | &mdash; (no opponent) |
+| `VersusCpu` | Local | Computer |
+| `VersusLocal` | Local | Local |
+| `VersusOnline` | Local | Online |
+
+## Base Strategy
+
+**File:** `src/App/Strategy/Opponent/Base.ts`
+
+All opponent strategies extend the abstract `Base` class, which defines the interface:
+
+```typescript
+abstract class Base extends ChalkySticks.Core.Event.Dispatcher {
+    public abstract readonly name: string;
+    public abstract readonly type: 'computer' | 'local' | 'online';
+
+    public abstract attachEvents(): void;
+    public abstract detachEvents(): void;
+    public abstract onTurnStart(): void;
+    public abstract onTurnEnd(): void;
+    public abstract requiresInputBlocking(): boolean;
+
+    public setPlayer(player: Model.Player): void;
+    public getPlayer(): Model.Player | null;
+}
+```
+
+### Interface
+
+| Method | Description |
+|--------|-------------|
+| `attachEvents()` | Called when the strategy is activated |
+| `detachEvents()` | Called when the strategy is deactivated |
+| `onTurnStart()` | Called when this player's turn begins |
+| `onTurnEnd()` | Called when this player's turn ends |
+| `requiresInputBlocking()` | Whether to block user input during this player's turn |
+| `setPlayer(player)` | Associate a player model with this strategy |
+| `getPlayer()` | Get the associated player model |
+
+## Local Strategy
+
+**File:** `src/App/Strategy/Opponent/Local.ts`
+
+A no-op strategy for human players on the same device. All input handling is done through the normal input system &mdash; no special turn management is needed.
+
+```typescript
+class Local extends Base {
+    public readonly name = 'local';
+    public readonly type = 'local';
+
+    public requiresInputBlocking(): boolean {
+        return false; // Human controls their own input
+    }
+}
+```
+
+- `attachEvents()` &mdash; No-op
+- `detachEvents()` &mdash; No-op
+- `onTurnStart()` &mdash; No-op
+- `onTurnEnd()` &mdash; No-op
+- `requiresInputBlocking()` &mdash; Returns `false`
+
+## Computer Strategy
+
+**File:** `src/App/Strategy/Opponent/Computer.ts`
+
+Delegates to the `AiOpponent/Controller` for decision making and shot execution. The strategy itself is thin &mdash; the heavy lifting happens in the [AI Opponent](/trainer/ai-opponent) system.
+
+```typescript
+class Computer extends Base {
+    public readonly name = 'computer';
+    public readonly type = 'computer';
+
+    public requiresInputBlocking(): boolean {
+        return true; // Block user input during AI turn
+    }
+}
+```
+
+- `attachEvents()` &mdash; Logs attachment
+- `detachEvents()` &mdash; Logs detachment
+- `onTurnStart()` &mdash; Logs turn start (AI Controller handles the actual turn)
+- `onTurnEnd()` &mdash; Logs turn end
+- `requiresInputBlocking()` &mdash; Returns `true`
+
+## Online Strategy (Stub)
+
+**File:** `src/App/Strategy/Opponent/Online.ts`
+
+Placeholder for future multiplayer implementation. Currently logs stub messages.
+
+```typescript
+class Online extends Base {
+    public readonly name = 'online';
+    public readonly type = 'online';
+
+    public requiresInputBlocking(): boolean {
+        return true; // Block input while waiting for remote player
+    }
+}
+```
+
+### Planned Features
+
+When implemented, the Online strategy will handle:
+
+- WebSocket connection for real-time sync
+- REST API fallback for long-polling
+- Shot data serialization/deserialization
+- Opponent waiting UI state
+- Connection state management
+- Reconnection handling
+
+## Player Manager
+
+**File:** `src/App/Service/Player/PlayerManager.ts`
+
+The `PlayerManager` manages player creation, switching, scoring, and state synchronization with the Vuex store.
+
+### Key Methods
+
+| Method | Return | Description |
+|--------|--------|-------------|
+| `addPlayer(player)` | `void` | Add a player to the game |
+| `removePlayer(playerId)` | `boolean` | Remove a player by ID |
+| `setPlayers(players)` | `void` | Replace all players |
+| `getCurrentPlayer()` | `Player \| null` | Get the active player |
+| `getNextPlayer()` | `Player \| null` | Get next player in rotation |
+| `getOpponent()` | `Player \| null` | Get the other player |
+| `getPlayers()` | `Player[]` | Get all players |
+| `getPlayerById(id)` | `Player \| null` | Find player by ID |
+| `getPlayerByIndex(index)` | `Player \| null` | Find player by index |
+| `getPlayerCount()` | `number` | Get total player count |
+| `switchPlayer()` | `Player \| null` | Advance to next player |
+| `switchToPlayer(index)` | `Player \| null` | Switch to specific player |
+| `assignBallTypes(type)` | `void` | Assign solid/stripe for 8-ball |
+| `syncScores()` | `void` | Push score data to store |
+| `reset()` | `void` | Reset all player state |
+| `resetMatch()` | `void` | Reset match-level stats |
+| `restoreState(states)` | `void` | Restore from saved state (undo) |
+
+### Events
+
+The `PlayerManager` dispatches these events:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `player:added` | `{ player }` | A player was added |
+| `player:removed` | `{ player }` | A player was removed |
+| `player:switch` | `{ newPlayer, previousPlayer, playerIndex }` | Active player changed |
+| `players:set` | `{ players }` | Players were replaced |
+
+### Store Sync
+
+The PlayerManager automatically syncs to the `scoreboard` Vuex module whenever players or state change:
+
+```typescript
+Store.commit('scoreboard/setCurrentPlayer', currentPlayer.toJSON());
+Store.commit('scoreboard/setPlayers', players.map(p => p.toJSON()));
+```
+
+## Creating a Custom Strategy
+
+To add a new opponent type, extend `Base` and implement all abstract methods:
+
+```typescript
+import { Base } from './Base';
+
+export class Custom extends Base {
+    public readonly name = 'custom';
+    public readonly type = 'online'; // or 'computer' or 'local'
+
+    public attachEvents(): void {
+        // Set up listeners
+    }
+
+    public detachEvents(): void {
+        // Clean up listeners
+    }
+
+    public onTurnStart(): void {
+        // Handle turn start
+    }
+
+    public onTurnEnd(): void {
+        // Handle turn end
+    }
+
+    public requiresInputBlocking(): boolean {
+        return true; // Block input during this player's turn
+    }
+}
+```

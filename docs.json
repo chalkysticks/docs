@@ -44,7 +44,9 @@
             "group": "Pad",
             "pages": [
               "sdk/pad/index",
-              "sdk/pad/table-manager",
+              "sdk/pad/builders",
+              "sdk/pad/managers",
+              "sdk/pad/geometry",
               "sdk/pad/balls",
               "sdk/pad/lines",
               "sdk/pad/saving"
@@ -112,6 +114,22 @@
               "trainer/racking",
               "trainer/camera",
               "trainer/console"
+            ]
+          },
+          {
+            "group": "Match System",
+            "pages": [
+              "trainer/match-system",
+              "trainer/opponents",
+              "trainer/ai-opponent"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "trainer/scenes",
+              "trainer/events",
+              "trainer/enums"
             ]
           }
         ]

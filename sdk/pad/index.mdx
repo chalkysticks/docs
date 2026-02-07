@@ -14,37 +14,94 @@ npm install @chalkysticks/sdk-pad
 ## Quick Start
 
 ```typescript
-import * as Pad from '@chalkysticks/sdk-pad';
+import { Builder } from '@chalkysticks/sdk-pad';
 
-// Create a new diagram
-const diagram = Pad.Factory.Diagram.create();
+// Create a diagram using the fluent builder
+const table = new Builder.DiagramBuilder()
+    .setBounds({ x: 0, y: 0, width: 800, height: 400 })
+    .setBallSize(20)
+    .addCueBall(0.25, 0.5)
+    .addBall({ x: 0.5, y: 0.3, type: 'solid', number: 1 })
+    .connectLastTwoBalls()
+    .build();
 
-// Add balls, lines, etc.
-// (See subpages for details)
-
-// Save to API
-await diagram.save();
+// Export state for saving
+const state = table.exportTableState();
 ```
+
+## Modules
+
+| Module | Description |
+|--------|-------------|
+| **Builder** | DiagramBuilder (fluent API), TableBuilder (factory methods) |
+| **Manager** | Table, Ball, Line, Rail, Trajectory (pure logic) |
+| **Geometry** | Distance, Intersection, Normalize (math utilities) |
+| **Model** | Diagram model for persistence |
+| **Collection** | Diagram collection |
+| **Factory** | Diagram factory functions |
+| **Enum** | RailDirection (top, right, bottom, left) |
 
 ## Exports
 
 ```typescript
-import { Collection, Model, Factory } from '@chalkysticks/sdk-pad';
-
-// Collection
-Collection.Diagram  // List of diagrams
-
-// Model
-Model.Diagram       // Single diagram
-
-// Factory
-Factory.Diagram     // Create diagrams
+import {
+    Builder,     // DiagramBuilder, TableBuilder
+    Manager,     // Table, Ball, Line, Rail, Trajectory
+    Geometry,    // Distance, Intersection, Normalize
+    Model,       // Diagram
+    Collection,  // Diagram
+    Factory,     // Diagram
+    Enum         // RailDirection
+} from '@chalkysticks/sdk-pad';
 ```
 
 ## Key Concepts
 
+- **Builders** create diagrams programmatically with fluent or factory patterns
+- **Managers** contain pure logic for manipulating table state (no UI)
+- **Geometry** utilities handle coordinate math and normalization
 - **Diagrams** are the main container for pad content
 - **Balls** are positioned on the table (cue, solid, striped, ghost)
 - **Lines** connect balls to show shot paths
 - **Trajectories** visualize ball movement predictions
 - All coordinates are normalized (0-1) relative to table dimensions
+
+## Architecture
+
+```
+Builder (DiagramBuilder, TableBuilder)
+    ↓ creates
+Manager.Table (orchestrator)
+    ├── Manager.Ball (ball operations)
+    ├── Manager.Line (connections)
+    ├── Manager.Rail (boundaries)
+    └── Manager.Trajectory (paths)
+    ↓ exports
+Model.Diagram (persistence)
+```
+
+## Example: Complete Workflow
+
+```typescript
+import { Builder, Model } from '@chalkysticks/sdk-pad';
+
+// 1. Create diagram with builder
+const table = new Builder.DiagramBuilder()
+    .setBounds({ x: 0, y: 0, width: 800, height: 400 })
+    .addCueBall(0.2, 0.5)
+    .addBall({ x: 0.6, y: 0.4, type: 'solid', number: 1 })
+    .connectLastTwoBalls()
+    .build();
+
+// 2. Manipulate via managers
+table.ballManager.addBallNormalized({ x: 0.8, y: 0.6, type: 'striped', number: 9 });
+
+// 3. Export state
+const state = table.exportTableState();
+
+// 4. Create diagram model for persistence
+const diagram = Model.Diagram.fromTableState(state);
+await diagram.save();
+
+console.log('Saved as:', diagram.getHash());
+```

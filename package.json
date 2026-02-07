@@ -1,0 +1,12 @@
+{
+  "author": "",
+  "description": "Use the starter kit to get your docs deployed and ready to customize.",
+  "license": "ISC",
+  "main": "index.js",
+  "name": "documentation",
+  "scripts": {
+    "serve": "mint dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "version": "1.0.0"
+}

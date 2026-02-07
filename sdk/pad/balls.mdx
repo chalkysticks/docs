@@ -76,6 +76,36 @@ const selected = ballManager.getSelectedBalls();
 ballManager.deselectAll();
 ```
 
+## Specialized Ball Getters
+
+```typescript
+// Get specific ball types
+const cueBall = ballManager.getCueBall();
+const eightBall = ballManager.getEightBall();
+
+// Get ball groups
+const objectBalls = ballManager.getObjectBalls();  // All non-cue balls
+const solids = ballManager.getSolidBalls();        // Balls 1-7
+const stripes = ballManager.getStripedBalls();     // Balls 9-15
+
+// Get special marker balls
+const arrows = ballManager.getArrowBalls();        // Arrow indicators
+const ghosts = ballManager.getGhostBalls();        // Ghost balls for aiming
+
+// Get numbered balls only (excludes cue, ghost, arrow)
+const numbered = ballManager.getNumericBalls();
+
+// Get balls by specific type
+const customBalls = ballManager.getBallsByType('ghost');
+```
+
+## Distance Calculations
+
+```typescript
+// Calculate distance between two balls
+const distance = ballManager.getDistanceBetweenBalls(ballIdA, ballIdB);
+```
+
 ## Ball Events
 
 ```typescript

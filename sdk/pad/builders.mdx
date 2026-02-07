@@ -1,0 +1,186 @@
+---
+title: 'Builders'
+description: 'Fluent API and factory methods for creating diagrams'
+---
+
+## DiagramBuilder
+
+Fluent builder for programmatic diagram construction with method chaining.
+
+### Basic Usage
+
+```typescript
+import { Builder } from '@chalkysticks/sdk-pad';
+
+const diagram = new Builder.DiagramBuilder()
+    .setBounds({ x: 0, y: 0, width: 800, height: 400 })
+    .setBallSize(20)
+    .addCueBall(0.25, 0.5)
+    .addBall({ x: 0.5, y: 0.3, type: 'solid', number: 1 })
+    .addBall({ x: 0.7, y: 0.5, type: 'solid', number: 2 })
+    .connectLastTwoBalls()
+    .build();
+```
+
+### Configuration Methods
+
+```typescript
+const builder = new Builder.DiagramBuilder();
+
+// Set table bounds
+builder.setBounds({ x: 0, y: 0, width: 800, height: 400 });
+
+// Set ball size in pixels
+builder.setBallSize(20);
+
+// Set ball type/style
+builder.setBallType('chalkysticks');
+
+// Set table type
+builder.setTableType('table-horizontal-9');
+```
+
+### Adding Balls
+
+```typescript
+// Add cue ball (normalized 0-1 coordinates)
+builder.addCueBall(0.25, 0.5);
+
+// Add ghost ball for aiming
+builder.addGhostBall(0.55, 0.45);
+
+// Add ball with options
+builder.addBall({
+    x: 0.5,
+    y: 0.3,
+    type: 'solid',
+    number: 1
+});
+
+// Add multiple balls
+builder.addBalls([
+    { x: 0.3, y: 0.3, type: 'solid', number: 1 },
+    { x: 0.5, y: 0.5, type: 'striped', number: 9 }
+]);
+```
+
+### Connecting Balls
+
+```typescript
+// Connect two balls by ID
+builder.connectBalls('ball-0', 'ball-1');
+
+// Connect the last two added balls
+builder.connectLastTwoBalls();
+```
+
+### Preset Racks
+
+```typescript
+// 8-ball rack (15 balls, 8-ball in center)
+builder.useEightBallRack();
+
+// 9-ball diamond rack (9 balls, 9-ball in center)
+builder.useNineBallRack();
+
+// Straight pool rack
+builder.useStraightPoolRack();
+```
+
+### Building Output
+
+```typescript
+// Get Table manager instance
+const tableManager = builder.build();
+
+// Convert to Diagram model (for API persistence)
+const diagramModel = builder.toDiagram();
+
+// Export as ITableState object
+const state = builder.toTableState();
+```
+
+---
+
+## TableBuilder
+
+Factory-style builder with static methods for common table setups.
+
+### Empty Table
+
+```typescript
+import { Builder } from '@chalkysticks/sdk-pad';
+
+const bounds = { x: 0, y: 0, width: 800, height: 400 };
+const ballSize = 20;
+
+const table = Builder.TableBuilder.empty(bounds, ballSize);
+```
+
+### Preset Racks
+
+```typescript
+// 8-ball rack
+const table8 = Builder.TableBuilder.eightBallRack(bounds, ballSize);
+
+// 9-ball rack
+const table9 = Builder.TableBuilder.nineBallRack(bounds, ballSize);
+
+// Straight pool rack
+const tableStraight = Builder.TableBuilder.straightPoolRack(bounds, ballSize);
+```
+
+### Custom Configuration
+
+```typescript
+const table = Builder.TableBuilder.custom({
+    bounds: { x: 0, y: 0, width: 800, height: 400 },
+    ballSize: 20,
+    balls: [
+        { x: 0.25, y: 0.5, type: 'cue' },
+        { x: 0.5, y: 0.3, type: 'solid', number: 1 }
+    ],
+    lines: [
+        { startId: 'ball-0', endId: 'ball-1' }
+    ]
+});
+```
+
+### Restore from State
+
+```typescript
+// From saved table state
+const table = Builder.TableBuilder.fromTableState(savedState, bounds, ballSize);
+
+// From Diagram model layout data
+const table = Builder.TableBuilder.fromDiagramModel(layoutData, bounds, ballSize);
+```
+
+---
+
+## Example: Complete Diagram
+
+```typescript
+import { Builder } from '@chalkysticks/sdk-pad';
+
+// Create a shot diagram
+const diagram = new Builder.DiagramBuilder()
+    .setBounds({ x: 0, y: 0, width: 800, height: 400 })
+    .setBallSize(20)
+    // Add cue ball
+    .addCueBall(0.2, 0.5)
+    // Add object balls
+    .addBall({ x: 0.5, y: 0.4, type: 'solid', number: 1 })
+    .addBall({ x: 0.7, y: 0.3, type: 'solid', number: 2 })
+    // Add ghost ball for aim point
+    .addGhostBall(0.48, 0.42)
+    // Connect cue to ghost (aim line)
+    .connectBalls('ball-0', 'ball-3')
+    // Connect ghost to target (ball path)
+    .connectBalls('ball-3', 'ball-1')
+    // Build and get table manager
+    .build();
+
+// Export for saving
+const state = diagram.exportTableState();
+```

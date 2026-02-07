@@ -1,6 +1,6 @@
 ---
 title: 'Lines & Trajectories'
-description: 'Drawing coach lines and visualizing shot paths'
+description: 'Drawing coach lines, curved paths, and visualizing shot trajectories'
 ---
 
 ## Coach Lines
@@ -27,6 +27,84 @@ lineManager.addLine(cueBall, targetBall, {
 | Coach line | Direct line between balls |
 | Aim line | Line from cue through ghost ball |
 | Trajectory | Predicted ball path after impact |
+| Curved line | Bezier curve for massé shots |
+
+---
+
+## Line Styles
+
+Lines can be styled as solid, dashed, or dotted.
+
+| Style | Description | Dash Array |
+|-------|-------------|------------|
+| `Solid` | Continuous line | `none` |
+| `Dashed` | Long dashes | `8,4` |
+| `Dotted` | Small dots | `2,4` |
+
+```typescript
+import * as Enum from '@chalkysticks/sdk-pad/Enum';
+
+// Add line with style
+lineManager.addLine(startBallId, endBallId, undefined, Enum.LineStyle.Dashed);
+
+// Set/update style on existing line
+lineManager.setLineStyle(lineId, Enum.LineStyle.Dotted);
+
+// Get current line style
+const style = lineManager.getLineStyle(lineId);
+
+// Get stroke-dasharray for SVG rendering
+const dashArray = lineManager.getStrokeDashArray(lineId);
+// "8,4" for dashed, "2,4" for dotted, "none" for solid
+```
+
+---
+
+## Curved Lines (Bezier)
+
+For massé shots and curved paths, you can add a control point to create a quadratic Bezier curve.
+
+```typescript
+// Add line with a control point for curve
+lineManager.addLine(startBallId, endBallId, { x: 300, y: 150 });
+
+// Set/update control point on existing line
+lineManager.setControlPoint(lineId, { x: 300, y: 150 });
+
+// Get control point
+const controlPoint = lineManager.getControlPoint(lineId);
+
+// Check if line has a curve
+const isCurved = lineManager.hasCurve(lineId);
+
+// Clear control point (make line straight)
+lineManager.clearControlPoint(lineId);
+```
+
+### SVG Path Generation
+
+```typescript
+// Get SVG path d attribute for rendering
+const pathD = lineManager.getPath(lineId);
+// Straight: "M 100,200 L 400,200"
+// Curved:   "M 100,200 Q 300,150 400,200"
+```
+
+### Curve Calculations
+
+```typescript
+// Get point along curve at parameter t (0-1)
+const point = lineManager.getPointOnCurve(lineId, 0.5);
+
+// Get total curve length
+const length = lineManager.getCurveLength(lineId);
+
+// Get midpoint of curve
+const midpoint = lineManager.getCurveMidpoint(lineId);
+
+// Get tangent angle at point t (compass-style)
+const angle = lineManager.getCurveTangentAngle(lineId, 0.5);
+```
 
 ## Managing Lines
 
@@ -39,6 +117,51 @@ lineManager.clearLines();
 
 // Get all lines
 const lines = lineManager.getLines();
+
+// Get lines by ball type
+const cueShotLines = lineManager.getLinesByBallType('cue');
+const ghostLines = lineManager.getLinesStartingWithType('ghost');
+const toSolidLines = lineManager.getLinesEndingWithType('solid');
+```
+
+---
+
+## Line Measurements
+
+```typescript
+// Get line angle (compass-style: up=0°, right=90°, down=180°, left=270°)
+const angle = lineManager.getAngle(lineId);
+const angleRadians = lineManager.getAngle(lineId, false);
+
+// Get line length
+const length = lineManager.getLength(lineId);
+
+// Get line midpoint
+const midpoint = lineManager.getMidpoint(lineId);
+
+// Get line slope
+const slope = lineManager.getSlope(lineId);
+
+// Get total length of all lines
+const totalLength = lineManager.getTotalLength();
+```
+
+---
+
+## Line Relationships
+
+```typescript
+// Check if two lines are parallel
+const parallel = lineManager.isParallelTo(lineIdA, lineIdB);
+
+// Get intersection point of two lines
+const intersection = lineManager.getIntersectionPoint(lineIdA, lineIdB);
+
+// Get angle between two lines
+const angleBetween = lineManager.getAngleBetweenLines(lineIdA, lineIdB);
+
+// Calculate reflection angle off a rail
+const reflectionAngle = lineManager.getReflectionAngle(lineId, railAngle);
 ```
 
 ## Trajectories

@@ -1,0 +1,413 @@
+---
+title: 'Events Reference'
+description: 'Complete catalog of event bus events and their string values'
+---
+
+## Overview
+
+All events are dispatched via `ChalkySticks.Core.Event.Bus` and defined as enums in `src/App/Event/`. Import them as:
+
+```typescript
+import * as Event from '../Event';
+
+// Listen
+ChalkySticks.Core.Event.Bus.on(Event.Shot.Complete, handler);
+
+// Dispatch
+ChalkySticks.Core.Event.Bus.dispatch(Event.GameControl.Shoot);
+```
+
+There are 30 event namespaces covering every aspect of the game engine.
+
+---
+
+## Aim
+
+Aiming system events for angle and position changes.
+
+| Constant | String Value |
+|----------|-------------|
+| `Aim.AngleChange` | `aim:angle:change` |
+| `Aim.Change` | `aim:change` |
+| `Aim.GameAngleChange` | `game.aim:angle:change` |
+| `Aim.GameChange` | `game.aim:change` |
+| `Aim.LocalChanged` | `aim:local:changed` |
+| `Aim.ModeChanged` | `aim:mode:changed` |
+
+## Audio
+
+Sound system control events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Audio.RefreshSettings` | `audio:refreshSettings` |
+| `Audio.RestartBackgroundMusic` | `audio:restartBackgroundMusic` |
+| `Audio.SetCategoryVolume` | `audio:setCategoryVolume` |
+| `Audio.SetEnabled` | `audio:setEnabled` |
+| `Audio.SetTypeEnabled` | `audio:setTypeEnabled` |
+| `Audio.SetVolumes` | `audio:setVolumes` |
+| `Audio.SkipBackgroundMusic` | `audio:skipBackgroundMusic` |
+| `Audio.StartAmbientSound` | `audio:startAmbientSound` |
+| `Audio.StartBackgroundMusic` | `audio:startBackgroundMusic` |
+| `Audio.StopAll` | `audio:stopAll` |
+| `Audio.StopAmbientSound` | `audio:stopAmbientSound` |
+| `Audio.StopBackgroundMusic` | `audio:stopBackgroundMusic` |
+| `Audio.ToggleEnabled` | `audio:toggleEnabled` |
+| `Audio.ToggleTypeEnabled` | `audio:toggleTypeEnabled` |
+
+## Camera
+
+Camera positioning and behavior events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Camera.CyclePreset` | `camera:preset:cycle` |
+| `Camera.FreelookDisabled` | `camera:freelook:disabled` |
+| `Camera.FreelookEnabled` | `camera:freelook:enabled` |
+| `Camera.SetBehavior` | `camera:behavior:set` |
+| `Camera.SetFirstPerson` | `camera:set:first-person` |
+| `Camera.SetPreset` | `camera:set:preset` |
+| `Camera.SetTarget` | `camera:target:set` |
+| `Camera.SetZoom` | `camera:zoom:set` |
+| `Camera.TransitionComplete` | `camera:transition:complete` |
+| `Camera.ZoomChanged` | `camera:zoom:changed` |
+| `Camera.ZoomIn` | `camera:zoom:in` |
+| `Camera.ZoomOut` | `camera:zoom:out` |
+
+## Collision
+
+Physics collision events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Collision.BallBall` | `collision:ball-ball` |
+| `Collision.BallRail` | `collision:ball-rail` |
+| `Collision.BallPocket` | `collision:ball-pocket` |
+
+## Cue
+
+Cue stick appearance and state events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Cue.AppearanceChanged` | `cue:appearance:changed` |
+| `Cue.CycleAppearance` | `cue:appearance:cycle` |
+| `Cue.SetAppearance` | `cue:appearance:set` |
+| `Cue.Shoot` | `shoot` |
+| `Cue.StateUpdateRequested` | `cue:state-update-requested` |
+| `Cue.StateUpdated` | `cue:state-updated` |
+| `Cue.UpdateTarget` | `cue:update-target` |
+
+## Debug
+
+Debug toggle events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Debug.ToggleBoundary` | `debug:toggle-boundary` |
+
+## Elevation
+
+Cue elevation (jump/masse) events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Elevation.Change` | `game.elevation:change` |
+
+## Environment
+
+Scene environment preset events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Environment.CycleCue` | `environment:preset:cue` |
+| `Environment.CyclePreset` | `environment:preset:cycle` |
+| `Environment.SetPreset` | `environment:preset:set` |
+| `Environment.Switch` | `environment:switch` |
+
+## Flythrough
+
+Cinematic flythrough recording and playback events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Flythrough.Export` | `flythrough:export` |
+| `Flythrough.Import` | `flythrough:import` |
+| `Flythrough.Pause` | `flythrough:pause` |
+| `Flythrough.Play` | `flythrough:play` |
+| `Flythrough.PlaybackComplete` | `flythrough:playback:complete` |
+| `Flythrough.RecordingCancel` | `flythrough:recording:cancel` |
+| `Flythrough.RecordingFinish` | `flythrough:recording:finish` |
+| `Flythrough.RecordingStart` | `flythrough:recording:start` |
+| `Flythrough.Resume` | `flythrough:resume` |
+| `Flythrough.Stop` | `flythrough:stop` |
+| `Flythrough.WaypointAdd` | `flythrough:waypoint:add` |
+| `Flythrough.WaypointReached` | `flythrough:waypoint:reached` |
+| `Flythrough.WaypointRemove` | `flythrough:waypoint:remove` |
+| `Flythrough.WaypointSeek` | `flythrough:waypoint:seek` |
+| `Flythrough.WaypointUpdate` | `flythrough:waypoint:update` |
+
+## Foul
+
+Foul detection events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Foul.Any` | `foul:any` |
+| `Foul.EarlyEightBall` | `foul:earlyeightball` |
+| `Foul.NoContact` | `foul:nocontact` |
+| `Foul.NoRail` | `foul:norail` |
+| `Foul.OffTable` | `foul:offtable` |
+| `Foul.Scratch` | `foul:scratch` |
+| `Foul.ShotClock` | `foul:shotclock` |
+| `Foul.WrongBall` | `foul:wrongball` |
+| `Foul.WrongPocket` | `foul:wrongpocket` |
+
+## Frame
+
+Render frame events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Frame.Render` | `frame:render` |
+
+## Game
+
+Game lifecycle events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Game.Abandon` | `game:abandon` |
+| `Game.Coach` | `game:coach` |
+| `Game.End` | `game:end` |
+| `Game.Extension` | `game:extension` |
+| `Game.Forfeit` | `game:forfeit` |
+| `Game.InputMode` | `game:input-mode` |
+| `Game.Pause` | `game:pause` |
+| `Game.Rack` | `game:rack` |
+| `Game.RerackNeeded` | `game:rerack-needed` |
+| `Game.Resume` | `game:resume` |
+| `Game.Start` | `game:start` |
+| `Game.Tie` | `game:tie` |
+
+## GameBall
+
+Ball management events.
+
+| Constant | String Value |
+|----------|-------------|
+| `GameBall.Add` | `game:ball:add` |
+
+## GameControl
+
+Commands dispatched to control game state.
+
+| Constant | String Value |
+|----------|-------------|
+| `GameControl.AimAt` | `game.control:aimAt` |
+| `GameControl.FreelookDisable` | `game.control:freelookDisable` |
+| `GameControl.FreelookEnable` | `game.control:freelookEnable` |
+| `GameControl.Jump` | `game.control:jump` |
+| `GameControl.Rack` | `game.control:rack` |
+| `GameControl.RackAnalyze` | `game.control:rackAnalyze` |
+| `GameControl.RackCustom` | `game.control:rackCustom` |
+| `GameControl.RackPad` | `game.control:rackPad` |
+| `GameControl.Redo` | `game.control:redo` |
+| `GameControl.RestoreState` | `game.control:restoreState` |
+| `GameControl.Rules` | `game.control:rules` |
+| `GameControl.Shoot` | `game.control:shoot` |
+| `GameControl.Shuffle` | `game.control:shuffle` |
+| `GameControl.ToggleFpsCounter` | `game.control:toggleFpsCounter` |
+| `GameControl.ToggleGhostBall` | `game.control:toggleGhostBall` |
+| `GameControl.ToggleGuides` | `game.control:toggleGuides` |
+| `GameControl.ToggleInputMode` | `game.control:toggleInputMode` |
+| `GameControl.Undo` | `game.control:undo` |
+
+## GameState
+
+Game state transition events.
+
+| Constant | String Value |
+|----------|-------------|
+| `GameState.Change` | `game.state:change` |
+| `GameState.Export` | `game.state:export` |
+| `GameState.Exported` | `game.state:exported` |
+
+## Match
+
+Match lifecycle and shot clock events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Match.Configured` | `match:configured` |
+| `Match.End` | `match:end` |
+| `Match.GameEnd` | `match:game-end` |
+| `Match.GameStart` | `match:game-start` |
+| `Match.Lost` | `match:lost` |
+| `Match.ReadyForNextGame` | `match:ready-for-next-game` |
+| `Match.ShotClockExpired` | `match:shotclock-expired` |
+| `Match.ShotClockStart` | `match:shotclock-start` |
+| `Match.ShotClockTick` | `match:shotclock-tick` |
+| `Match.Start` | `match:start` |
+| `Match.Won` | `match:won` |
+
+## Motion
+
+Physics motion events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Motion.Stopped` | `motion:stopped` |
+
+## OpponentState
+
+AI opponent state machine events.
+
+| Constant | String Value |
+|----------|-------------|
+| `OpponentState.Aiming` | `opponent:aiming` |
+| `OpponentState.Error` | `opponent:error` |
+| `OpponentState.Executing` | `opponent:executing` |
+| `OpponentState.ShotSelected` | `opponent:shot-selected` |
+| `OpponentState.Thinking` | `opponent:thinking` |
+| `OpponentState.ThinkingComplete` | `opponent:thinking-complete` |
+| `OpponentState.TurnEnd` | `opponent:turn-end` |
+| `OpponentState.TurnStart` | `opponent:turn-start` |
+
+## Performance
+
+Performance monitoring and low power events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Performance.Frame` | `performance:frame` |
+| `Performance.LowPowerChanged` | `performance:lowpowerchanged` |
+| `Performance.LowPowerEnter` | `performance:lowpower:enter` |
+| `Performance.LowPowerExit` | `performance:lowpower:exit` |
+| `Performance.LowPowerToggle` | `performance:lowpower:toggle` |
+| `Performance.ModeChanged` | `performance:modechanged` |
+
+## Player
+
+Player turn events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Player.Timeout` | `player:timeout` |
+| `Player.TurnEnd` | `player:turnend` |
+| `Player.TurnStart` | `player:turnstart` |
+
+## Power
+
+Shot power events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Power.Change` | `game.power:change` |
+
+## Rack
+
+Racking lifecycle events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Rack.Break` | `rack:break` |
+| `Rack.Complete` | `rack:complete` |
+| `Rack.Rerack` | `rack:rerack` |
+| `Rack.Start` | `rack:start` |
+
+## Render
+
+Rendering pipeline events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Render.Frame` | `render:frame` |
+| `Render.Reset` | `render:reset` |
+
+## Rules
+
+Rules engine events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Rules.FirstBallContacted` | `rules:first-ball:contacted` |
+| `Rules.FoulDetected` | `rules:foul:detected` |
+| `Rules.GameComplete` | `rules:game:complete` |
+| `Rules.HighlightedBallChanged` | `rules:highlighted-ball:changed` |
+| `Rules.LowestBallChanged` | `rules:lowest-ball:change` |
+| `Rules.PocketNominated` | `rules:pocket:nominated` |
+
+## SceneMode
+
+Scene mode lifecycle events.
+
+| Constant | String Value |
+|----------|-------------|
+| `SceneMode.Enter` | `scene-mode:enter` |
+| `SceneMode.Entered` | `scene-mode:entered` |
+| `SceneMode.Exit` | `scene-mode:exit` |
+| `SceneMode.Exited` | `scene-mode:exited` |
+
+## Shot
+
+Shot execution lifecycle events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Shot.Cancel` | `shot:cancel` |
+| `Shot.Complete` | `shot:complete` |
+| `Shot.MotionStopped` | `shot:motion-stopped` |
+| `Shot.Requested` | `shot:requested` |
+| `Shot.Start` | `shot:start` |
+| `Shot.Strike` | `shot:strike` |
+| `Shot.Undo` | `shot:undo` |
+
+## Spin
+
+Cue ball spin (english) events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Spin.Change` | `game.spin:change` |
+
+## Table
+
+Table appearance events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Table.ApplyAppearance` | `table:appearance:apply` |
+| `Table.CycleAppearance` | `table:appearance:cycle` |
+| `Table.SetAppearance` | `table:appearance:set` |
+| `Table.SwitchAppearance` | `table:appearance:switch` |
+
+## Update
+
+Engine update and physics tick events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Update.AllStopped` | `update:all:stopped` |
+| `Update.BallOutOfBounds` | `update:ball:out-of-bounds` |
+| `Update.BallStarted` | `update:ball:started` |
+| `Update.BallStopped` | `update:ball:stopped` |
+| `Update.MotionStarted` | `update:motion:started` |
+| `Update.MotionTimeout` | `update:motion:timeout` |
+| `Update.Reset` | `update:reset` |
+
+## Visual
+
+Visual state and aids events.
+
+| Constant | String Value |
+|----------|-------------|
+| `Visual.ClearTrails` | `visual:clear-trails` |
+| `Visual.HideAids` | `game:hide-visual-aids` |
+| `Visual.HideCue` | `visual:hide-cue` |
+| `Visual.RecordTrails` | `visual:record-trails` |
+| `Visual.ShowAids` | `game:show-visual-aids` |
+| `Visual.ShowCue` | `visual:show-cue` |
+| `Visual.StateChange` | `visual-state:change` |
+| `Visual.StopTrailRecording` | `visual:stop-trail-recording` |
+| `Visual.UpdateCueVisibility` | `visual:update-cue-visibility` |

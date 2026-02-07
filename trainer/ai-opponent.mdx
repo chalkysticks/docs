@@ -1,0 +1,237 @@
+---
+title: 'AI Opponent'
+description: 'AI decision making, shot evaluation, and skill-based execution'
+---
+
+## Overview
+
+The AI opponent system lives in `Service/Player/AiOpponent/` and handles all aspects of computer-controlled play. It is composed of four classes that form a pipeline:
+
+```
+Controller → ShotEvaluator → DecisionMaker → EnglishCalculator
+```
+
+| Class | Responsibility |
+|-------|---------------|
+| **Controller** | Orchestrates the AI turn sequence |
+| **ShotEvaluator** | Analyzes table state and scores all possible shots |
+| **DecisionMaker** | Selects a shot and applies skill-based execution error |
+| **EnglishCalculator** | Recommends spin for position play |
+
+## AI Turn Pipeline
+
+When it is the AI player's turn, the Controller runs this sequence:
+
+1. **Detect AI turn** &mdash; `player:switch` or `Shot.Complete` event triggers check
+2. **Start turn** &mdash; Dispatch `OpponentState.TurnStart`, set emergency timeout (10s)
+3. **Think** &mdash; Wait for skill-based thinking time, dispatch `OpponentState.Thinking`
+4. **Evaluate shots** &mdash; ShotEvaluator scores all possible shots
+5. **Select shot** &mdash; DecisionMaker picks a shot (may choose suboptimal based on skill)
+6. **Apply error** &mdash; DecisionMaker applies aim error, power variance, english variance
+7. **Animate aiming** &mdash; Smooth visual movement to aim point
+8. **Execute shot** &mdash; Set power/english in store, dispatch `GameControl.Shoot`
+9. **End turn** &mdash; Dispatch `OpponentState.TurnEnd`
+
+### Emergency Timeout
+
+If the AI takes longer than 10 seconds (due to complex evaluation or errors), it forces an emergency shot: aim at the first legal ball and shoot softly at power 0.3.
+
+### OpponentState Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `OpponentState.TurnStart` | `{ player }` | AI turn begins |
+| `OpponentState.Thinking` | `{ duration, player }` | AI is evaluating shots |
+| `OpponentState.ThinkingComplete` | `{ player, shotCount }` | Evaluation finished |
+| `OpponentState.ShotSelected` | `{ decision, player }` | Shot chosen |
+| `OpponentState.Aiming` | `{ aimLocal }` | AI is animating aim movement |
+| `OpponentState.Executing` | `{ decision }` | Shot being executed |
+| `OpponentState.TurnEnd` | `{}` | AI turn finished |
+| `OpponentState.Error` | `{ error }` | Something went wrong |
+
+---
+
+## Shot Evaluator
+
+**File:** `Service/Player/AiOpponent/ShotEvaluator.ts`
+
+Evaluates all possible shots and produces scored candidates. Examines every combination of legal ball and pocket, then optionally adds kick shots, bank shots, and safety plays.
+
+### Shot Types
+
+| Type | When Evaluated | Score Penalty |
+|------|----------------|---------------|
+| **Direct** | Always | None |
+| **Kick** | No direct shots found, or skill 7+ | 25% reduction |
+| **Bank** | No direct shots found, or skill 6+ | 20% reduction (+ distance penalty) |
+| **Safety** | No other shots found | Fixed score of 15 |
+
+### Scoring Components
+
+Each shot is scored out of a maximum of 100 points across five factors:
+
+| Factor | Max Points | Description | Skill Gate |
+|--------|------------|-------------|------------|
+| Angle Difficulty | 25 | Lower cut angle = higher score. 0&deg; = 25 pts, 80&deg; = 0 pts | Always |
+| Distance | 20 | Closer shots score higher. Normalized to table length | Always |
+| Pocket Difficulty | 15 | Corner pockets = 15 pts, side pockets = 10 pts | Always |
+| Position Score | 25 | Prefers center-table ghost ball positions | Skill 6+ |
+| Safety Score | 15 | Low cut angle = high safety (low risk) | Skill 5+ |
+
+### Shot Candidate Filtering
+
+Shots are rejected before scoring if:
+
+- Cut angle exceeds 80&deg; (direct) or 70&deg; (bank)
+- Path from cue ball to target is blocked by another ball
+- Kick/bank reflection point is geometrically impossible
+
+### Evaluation Flow
+
+```typescript
+const scoredShots = evaluator.evaluateAllShots(cueBall, legalBalls, allBalls, skillLevel);
+
+// scoredShots is sorted best-first, each containing:
+// - ballNumber, pocket, score, scoreBreakdown
+// - aimLocal, ghostBallPosition, cutAngle, distance
+// - suggestedPower, suggestedEnglish
+// - shotType (Direct, Kick, Bank, Safety)
+```
+
+---
+
+## Decision Maker
+
+**File:** `Service/Player/AiOpponent/DecisionMaker.ts`
+
+Takes scored shots from the ShotEvaluator and applies skill-based selection and execution error.
+
+### Difficulty Configurations
+
+Each skill level (1-10) has a distinct configuration:
+
+| Skill | Aim Error | Power Variance | Suboptimal Chance | Thinking Time | Position | Safety |
+|-------|-----------|---------------|-------------------|---------------|----------|--------|
+| 1 | 0.15 | 0.15 | 50% | 2.5-3.5s | No | No |
+| 2 | 0.12 | 0.12 | 40% | 2.0-3.0s | No | No |
+| 3 | 0.10 | 0.10 | 35% | 1.8-2.5s | No | No |
+| 4 | 0.08 | 0.08 | 30% | 1.5-2.2s | No | No |
+| 5 | 0.06 | 0.06 | 25% | 1.3-2.0s | No | Yes |
+| 6 | 0.05 | 0.05 | 20% | 1.0-1.8s | Yes | Yes |
+| 7 | 0.04 | 0.04 | 15% | 0.8-1.5s | Yes | Yes |
+| 8 | 0.03 | 0.03 | 10% | 0.6-1.2s | Yes | Yes |
+| 9 | 0.02 | 0.02 | 5% | 0.5-1.0s | Yes | Yes |
+| 10 | 0.01 | 0.01 | 2% | 0.4-0.9s | Yes | Yes |
+
+### What Each Parameter Does
+
+| Parameter | Description |
+|-----------|-------------|
+| `aimErrorMax` | Maximum random offset applied to aim point (scaled by ball diameter) |
+| `powerVariance` | Maximum random variance added to suggested power |
+| `suboptimalChance` | Probability of choosing a non-best shot from top 5 candidates |
+| `thinkingTimeMin/Max` | Range for random delay before evaluating (seconds) |
+| `considersPosition` | Whether position play scoring is active |
+| `attemptsSafeties` | Whether safety scoring is active |
+| `evaluationDepth` | Evaluation depth (1-3, for future multi-shot lookahead) |
+
+### Selection Flow
+
+```typescript
+const decision = decisionMaker.selectShot(scoredShots, skillLevel);
+
+// decision contains:
+// - shot: the selected IAIScoredShot
+// - actualAimLocal: aim point with error applied
+// - actualPower: power with variance applied
+// - actualEnglish: english with variance applied
+// - confidence: 0-1 confidence score
+```
+
+### Fallback Shots
+
+If no viable shots are found, `generateFallbackShot()` creates a defensive shot aimed at the closest legal ball with low power (0.25-0.40) and no english.
+
+---
+
+## English Calculator
+
+**File:** `Service/Player/AiOpponent/EnglishCalculator.ts`
+
+Calculates recommended spin for position play. Only active for skill level 4 and above.
+
+### English Types
+
+| Type | English | Effect |
+|------|---------|--------|
+| Center | `{ x: 0, y: 0 }` | No spin, maximum accuracy |
+| Draw | `{ x: 0, y: -0.7 }` | Cue ball returns toward shooter |
+| Follow | `{ x: 0, y: 0.7 }` | Cue ball follows object ball |
+| Left | `{ x: -0.5, y: 0 }` | Cue ball curves left off rails |
+| Right | `{ x: 0.5, y: 0 }` | Cue ball curves right off rails |
+| Draw-Left | `{ x: -0.4, y: -0.6 }` | Draw with left spin |
+| Draw-Right | `{ x: 0.4, y: -0.6 }` | Draw with right spin |
+| Follow-Left | `{ x: -0.4, y: 0.6 }` | Follow with left spin |
+| Follow-Right | `{ x: 0.4, y: 0.6 }` | Follow with right spin |
+
+### Position Play Logic
+
+The calculator uses tangent line analysis to determine where the cue ball will naturally travel after contact, then recommends english to modify that path:
+
+1. **Straight shots** (cut angle < 20&deg;):
+   - Near table edge: draw to pull back to center
+   - Near center: slight follow
+
+2. **Medium cuts** (20-50&deg;, skill 6+):
+   - Checks if tangent line leads to edge
+   - Draw if tangent goes to edge, follow otherwise
+
+3. **High cuts** (> 50&deg;):
+   - Center ball for accuracy (too risky for english)
+
+4. **Skill gating**:
+   - Skill < 4: Always center ball
+   - Skill 4-6: Draw/follow only
+   - Skill 7+: Full english including left/right spin
+
+### API
+
+```typescript
+const recommendation = englishCalculator.calculateForPosition(
+    cueBallPos,
+    ghostBallPos,
+    pocketPos,
+    desiredPosition, // null for basic position play
+    skillLevel,
+);
+
+// recommendation: { english, type, description, confidence }
+```
+
+### Preset Methods
+
+For direct access to specific english types:
+
+```typescript
+englishCalculator.getDrawEnglish(strength);
+englishCalculator.getFollowEnglish(strength);
+englishCalculator.getLeftSpinEnglish(strength);
+englishCalculator.getRightSpinEnglish(strength);
+englishCalculator.getCenterBallEnglish();
+englishCalculator.getDrawLeftEnglish(drawStrength, spinStrength);
+englishCalculator.getDrawRightEnglish(drawStrength, spinStrength);
+englishCalculator.getFollowLeftEnglish(followStrength, spinStrength);
+englishCalculator.getFollowRightEnglish(followStrength, spinStrength);
+```
+
+## Aiming Animation
+
+The AI visually animates its aim before shooting. Animation speed varies by skill level:
+
+| Skill | Duration | Feel |
+|-------|----------|------|
+| 1 | ~1.1s | Hesitant, uncertain |
+| 5 | ~0.75s | Moderate |
+| 10 | ~0.3s | Quick, decisive |
+
+The formula is: `duration = 1.2 - skillLevel * 0.09` seconds, using `power2.inOut` easing.
