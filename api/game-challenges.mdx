@@ -1,0 +1,77 @@
+---
+title: 'Game Challenges'
+description: 'Daily and curated pool puzzles'
+---
+
+Game challenges are curated puzzles (often daily) anchored to a date and slug. They can be authored from an existing diagram or seeded for procedural generation.
+
+## List Challenges
+
+```bash
+GET /v3/game-challenges
+GET /v3/game-challenges?date=2026-05-11
+GET /v3/game-challenges?date_from=2026-05-01&date_to=2026-05-11
+GET /v3/game-challenges?slug=daily-8ball
+```
+
+## Get Challenge
+
+```bash
+GET /v3/game-challenges/{gameChallenge}
+```
+
+## Create Challenge
+
+Requires permission to create game challenges.
+
+```bash
+POST /v3/game-challenges
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "slug": "daily-8ball",
+  "active_on": "2026-05-11",
+  "diagram_id": 42,
+  "difficulty": "medium",
+  "game_type": "8ball",
+  "rules": {},
+  "seed": "abc123",
+  "time_limit_ms": 60000,
+  "override": false
+}
+```
+
+`slug` and `active_on` are required. Provide either `diagram_id` (curator mode) or `seed` (procedural mode).
+
+## Update Challenge
+
+```bash
+PUT /v3/game-challenges/{gameChallenge}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Delete Challenge
+
+```bash
+DELETE /v3/game-challenges/{gameChallenge}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Regenerate Challenge
+
+Re-roll the procedurally-generated content for a challenge.
+
+```bash
+POST /v3/game-challenges/{gameChallenge}/regenerate
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "difficulty": "hard"
+}
+```

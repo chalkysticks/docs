@@ -1,0 +1,108 @@
+---
+title: 'Admin'
+description: 'Moderation queues and admin tooling'
+---
+
+Admin endpoints require an authenticated session with a specific permission. All routes use `cache.none` to bypass Varnish.
+
+## Billing
+
+View aggregated transaction data.
+
+```bash
+GET /v3/admin/billing
+Authorization: Bearer YOUR_TOKEN
+```
+
+Permission: `transactions.view`.
+
+## Venue Creation
+
+Helper endpoint that drives the admin venue-create UI.
+
+```bash
+GET /v3/admin/create-venue
+Authorization: Bearer YOUR_TOKEN
+```
+
+Permission: `venues.create`.
+
+## Duplicate Venues
+
+Manage detected duplicate clusters. Permission: `venues.approve`.
+
+### List Duplicates
+
+```bash
+GET /v3/admin/venues/duplicates
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Duplicate Stats
+
+```bash
+GET /v3/admin/venues/duplicates/stats
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Preview Merge
+
+```bash
+GET /v3/admin/venues/duplicates/{venue}/preview
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Merge Venue
+
+```bash
+POST /v3/admin/venues/duplicates/{venue}/merge
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Dismiss Duplicate
+
+```bash
+POST /v3/admin/venues/duplicates/{venue}/dismiss
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Venue Candidates
+
+Approval queue for venues sourced from external systems. Permission: `venues.approve`.
+
+### List Candidates
+
+```bash
+GET /v3/venues/candidates
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Candidate Stats
+
+```bash
+GET /v3/venues/candidates/stats
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Get Candidate
+
+```bash
+GET /v3/venues/candidates/{venueCandidate}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Approve Candidate
+
+Promotes the candidate to a real venue (dispatches `ImportVenueCandidate` job).
+
+```bash
+POST /v3/venues/candidates/{venueCandidate}/approve
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Deny Candidate
+
+```bash
+POST /v3/venues/candidates/{venueCandidate}/deny
+Authorization: Bearer YOUR_TOKEN
+```

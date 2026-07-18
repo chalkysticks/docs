@@ -1,0 +1,146 @@
+Now:
+
+	☐ empty pad in web-app should have call out of what to do
+
+	☐ Fix Android Scanner camera crash.
+		☐ Reproduce while taking a scanner photo.
+		☐ Capture Android logs and confirm whether the crash is camera, file format, memory, or scanner analysis.
+		☐ Add a fallback path that leaves the user in the scanner with a recoverable error.
+
+	☐ Fix signup "Games Played" step.
+		☐ Continue button currently fails.
+		☐ Skip works; compare payloads and validation.
+
+	☐ Fix Homepage "Venues Near You" not updating.
+		☐ Compare with the Venues page, which appears to show the correct list.
+		☐ Check location freshness, cache keys, and view reactivity.
+
+	☐ Fix View Users on Tap a Keg showing blank.
+		☐ Check for a `@nonReactive` or stale collection issue.
+
+	☐ Fix Pad Practice freezing Android after rotation to portrait.
+		☐ Confirm whether the freeze is Pad, Trainer, or app shell orientation handling.
+
+	☐ Fix TV rotation regression.
+		☐ Rotating landscape on TV can start playing a homepage video.
+		☐ First TV rotation crashed once, then worked after retry.
+
+	☐ Add a pull-to-refresh or visible refresh button for stale app views.
+
+
+Release & Accounts:
+
+	☐ Finish RevenueCat subscriptions.
+		☐ Submit a new app build.
+		☐ Use a unique non-sequential RevenueCat app user id.
+		☐ Ensure login includes the required `appUserId` param.
+		☐ Create test products and subscriptions in Google Play Store.
+		☐ Create test products and subscriptions in Apple App Store.
+
+	☐ Test push notifications on real devices.
+		☐ Confirm the second-load permission prompt timing.
+		☐ Test Android through Firebase Cloud Messaging.
+		☐ Test iOS through APNs/Firebase.
+
+	☐ Set up TestFlight for iOS.
+		✔ AppDevConsole: Create APNs Authentication Key (`.p8`) under Keys. @done(26-01-09 15:36)
+		✔ Firebase: open Project Settings -> Cloud Messaging -> iOS app. @done(26-01-09 15:36)
+		✔ Firebase: upload APNs `.p8`, Key ID, and Team ID. @done(26-01-09 15:36)
+
+	☐ Set up Android tester distribution.
+		☐ Confirm Fastlane path for Android testers.
+		☐ Keep USB deployment available for device-only testing.
+
+	☐ Fix Sam's iOS login showing "Hide my Email" twice.
+
+	☐ Fix reset-password links from the app opening the website unexpectedly.
+
+
+Friendly Faces & Media:
+
+	☐ Improve Friendly Faces upload flow.
+		☐ Automatically set current location for "where are you".
+		☐ Replace the image-selection module.
+		☐ Use a circular image selector from `vue2-components`.
+		☐ Hide or disable the description field when not needed.
+		☐ After upload, show the new image on the board immediately.
+		☐ Remove stale CTA after upload.
+		☐ Remove stale "View All" CTA after upload.
+
+	☐ Build image and video uploads.
+		☐ Add media validation feedback directly in uploader forms.
+		☐ Add user image gallery.
+		☐ Add venue image gallery.
+		☐ Add upload video flow.
+		☐ Add basic pinch-to-zoom in gallery and slideshow views.
+
+	☐ Add user image controls.
+		☐ Design "Photos of You".
+		☐ Design settings for image deletion and privacy.
+		☐ Allow multiple user tags in search forms.
+
+	☐ Make "Submitted by" clickable on individual photo pages.
+
+
+Navigation, Layout & Device Polish:
+
+	☐ Revisit Pad shortcuts on device.
+		☐ Current hints are computer-oriented.
+
+	☐ Reduce footer padding on iPhone.
+
+	☐ Look at `PagePlace` and `PageGalleryItem`.
+		☐ Decide when to use `navigatingVenueModel` versus fetching.
+
+	☐ Add back-button behavior to close user menu / about panels before navigating away.
+
+	☐ Fix keybindings on `/watch` doubling up after navigation.
+
+	☐ Check `end_air_at` behavior for old TV schedules.
+
+
+Next Shipment:
+
+	☐ Remove ChalkyFeed from TV surfaces.
+		☐ Remove from homepage.
+		☐ Remove from default TV.
+		☐ Jump ahead of live feeds where needed.
+
+	☐ Validate core app smoke flows.
+		☐ Signup.
+		☐ Login.
+		☐ Scanner photo.
+		☐ Venue comments.
+		☐ Friendly Faces upload.
+		☐ TV rotation.
+		☐ Pad open / save.
+		☐ Trainer open / exit.
+
+
+Lower Priority:
+
+	☐ Add auto-check-in exploration.
+		☐ Decide whether push notifications should suggest it.
+
+	☐ Gate feature prompts by version-open history.
+
+
+Archive: Completed Highlights:
+
+	✔ Push Notifications. @started(26-05-03 16:43) @done(26-05-11 15:12) @lasted(1w22h29m33s)
+	✔ Add News to app. @done(26-05-03 16:43)
+	✔ Add new "+" bar to footer. @done(26-04-02 11:31)
+	✔ Friendly Faces ready to add. @done(26-04-02 11:31)
+	✔ Comments on venue work.
+	✔ Comment form on venue works.
+	✔ Reply form on venue works.
+	✔ Upload image to Friendly Faces works.
+	✔ Fix iPhones not orienting photos correctly in API. @done(26-05-12 01:04)
+	✔ iPhone image uploads are rotated. @done(26-05-12 01:04)
+	✔ iOS table scanner HEIC issue. @done(26-05-11 14:41)
+	✔ Add no-connection banner. @done(26-05-11 10:23)
+	✔ Hide fullscreen buttons on Play and Create / SceneTrainer. @done(26-04-13 00:29)
+	✔ Rotating the Trainer keeps making it disappear. @done(26-05-08 12:38)
+	✔ iOS trainer UI gets chuggy in landscape. @done(26-05-08 12:39)
+	✔ iOS trainer crashes in Practice mode. @done(26-05-08 12:39)
+	✔ TV vertical schedule updates on orientation change. @done(26-05-09 14:31)

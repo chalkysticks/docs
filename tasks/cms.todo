@@ -1,0 +1,60 @@
+Now:
+
+	☐ Build a general CMS media manager.
+		☐ Upload images for content.
+		☐ Browse existing media.
+		☐ Reuse media across content, venues, and promos.
+		☐ Surface moderation state and validation results.
+
+	☐ Add image ordering controls.
+		☐ Bust cache after ordering changes.
+		☐ Verify CMS reflects the saved order immediately.
+
+	☐ Add revision review tools.
+		☐ Apply individual revisions.
+		☐ Create diff view for revisions.
+		☐ Only show fields that changed.
+		☐ Support accept and decline actions.
+
+	☐ Create a "share venue" flow in CMS.
+
+	☐ Add live infrastructure cost reporting.
+		☐ S3.
+		☐ EC2.
+		☐ Rekognition.
+		☐ ChatGPT / model usage.
+
+
+Venue & Partner Admin:
+
+	☐ Explore venue ownership pages.
+		☐ Claim a listing.
+		☐ Upload official venue photos.
+		☐ Add business hours, table counts, and amenities.
+		☐ Mark league nights and tournaments.
+
+	☐ Add venue event management.
+		☐ CMS area for venues to create events.
+		☐ Mark up league night details.
+		☐ Prepare event data for app notifications and venue pages.
+
+	☐ Add featured-bar / deep-dive controls.
+		☐ Offer promo banners.
+		☐ Add check-in discounts.
+		☐ Support paid venue promotion experiments.
+
+
+Billing & Products:
+
+	☐ Add product and subscription administration.
+		☐ Map App Store / Play Store products to ChalkySticks features.
+		☐ Mark features as rentable, purchasable, or subscription-gated.
+		☐ Track entitlement display names and descriptions.
+
+
+Moderation:
+
+	☐ Add tools for offensive image cleanup.
+		☐ Queue flagged uploads.
+		☐ Review moderation model output.
+		☐ Remove bad legacy uploads.

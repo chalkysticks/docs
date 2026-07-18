@@ -1,0 +1,158 @@
+---
+title: 'Sound'
+description: 'Howler-backed playback with categories and muffling, plus mic capture and speech recognition'
+---
+
+The `Sound` namespace covers three areas:
+
+| Export | Purpose |
+|--------|---------|
+| `Sound.Playback` | Static sound manager — pooling, categories, presets, muffle bus |
+| `Sound.Sound` | Individual sound instance (wraps a `Howl`) |
+| `Sound.Capture` | Microphone recording via `MediaRecorder` |
+| `Sound.Recognition` | Speech-to-text (Web Speech API or Capacitor native) |
+
+Playback is backed by **howler** (since v1.65.1).
+
+## Playback
+
+```typescript
+import { Enum, Sound } from '@chalkysticks/sdk-core';
+
+// Play a one-shot (pooled by default for non-looping sounds)
+Sound.Playback.play('/audio/click.mp3', { category: Enum.SoundCategory.UI, volume: 0.5 });
+
+// Looping music — single instance, not pooled
+Sound.Playback.play('/audio/theme.mp3', {
+    category: Enum.SoundCategory.MUSIC,
+    loop: true,
+});
+
+// Variations, fades, crossfades
+Sound.Playback.playRandom(['/audio/hit1.mp3', '/audio/hit2.mp3']);
+Sound.Playback.fadeIn('/audio/ambience.mp3', 1000);
+await Sound.Playback.crossfade('/audio/menu.mp3', '/audio/game.mp3', 1000);
+
+// Preloading
+await Sound.Playback.preload('/audio/break.mp3');
+await Sound.Playback.preloadMultiple(['/audio/a.mp3', '/audio/b.mp3']);
+
+// Transport
+Sound.Playback.pause('/audio/theme.mp3');
+Sound.Playback.stopAll(Enum.SoundCategory.SFX);   // or omit for everything
+Sound.Playback.pauseAll();
+Sound.Playback.resumeAll();
+```
+
+`ISoundPlaybackOptions`: `category`, `cooldown`, `cooldownKey`, `crossfadeDuration`, `loop`, `maxPoolSize`, `playbackRate`, `preload`, `sprite`, `usePool`, `volume`.
+
+### Categories & Volume
+
+Volumes are per-category (`Enum.SoundCategory`: `MASTER`, `MUSIC`, `SFX`, `UI`, `VOICE`, `AMBIENT`) and multiply against `MASTER`.
+
+```typescript
+Sound.Playback.setCategoryVolume(Enum.SoundCategory.MASTER, 0.8);
+Sound.Playback.setCategoryVolume(Enum.SoundCategory.MUSIC, 0.4);
+Sound.Playback.getCategoryVolume(Enum.SoundCategory.MUSIC);
+Sound.Playback.setGlobalMute(true);
+```
+
+### Presets
+
+Define sounds as content — files, volume, category, throttling — and play them by recipe:
+
+```typescript
+const ballCollision: Sound.ISoundPreset = {
+    baseVolume: 0.25,
+    category: Enum.SoundCategory.SFX,
+    cooldown: 50,          // ms throttle
+    files: ['/audio/clack1.mp3', '/audio/clack2.mp3'],
+};
+
+// Velocity-scaled volume (e.g. from the physics engine)
+Sound.Playback.playPreset(ballCollision, { velocity: impactSpeed });
+```
+
+### Muffling
+
+A lowpass "muffle bus" dampens configured categories (default `MUSIC` + `AMBIENT`) — used when menus open over gameplay (v1.65.x).
+
+```typescript
+await Sound.Playback.muffleIn(400);    // animate to fully muffled
+await Sound.Playback.muffleOut(400);   // back to clear
+Sound.Playback.setMuffle(0.5);         // 0 = clear, 1 = fully muffled
+Sound.Playback.getMuffleState();       // { amount, frequency, gain }
+
+Sound.Playback.muffleCategories.add(Enum.SoundCategory.SFX);
+```
+
+### Pooling
+
+Rapid-fire sounds reuse a pool of `Howl` instances instead of re-instantiating.
+
+```typescript
+Sound.Playback.setDefaultPoolSize(4);
+Sound.Playback.getPoolStats();   // [{ url, poolSize, playing }]
+Sound.Playback.cleanupPools();
+Sound.Playback.dispose('/audio/click.mp3');
+Sound.Playback.disposeAll();
+```
+
+## Sound Instances
+
+`play()` returns a `Sound` (an `Event.Dispatcher`) for per-instance control:
+
+```typescript
+const sound = Sound.Playback.play('/audio/theme.mp3', { loop: true, usePool: false });
+
+sound.setVolume(0.5);          // scaled by its category volume
+sound.setPlaybackRate(1.25);
+sound.seek(30);
+sound.pause();
+sound.mute();
+sound.isPlaying;               // boolean
+```
+
+## Capture
+
+Microphone recording with a singleton shorthand.
+
+```typescript
+await Sound.Capture.start();               // request mic + begin recording
+const blob = await Sound.Capture.stop();   // Blob of the recording
+Sound.Capture.play();                      // play back the last recording
+
+// Instance API
+const capture = new Sound.Capture();
+await capture.start();
+const recording = await capture.stop();
+capture.toUrl();      // object URL for the blob
+capture.cancel();
+```
+
+## Recognition
+
+Speech-to-text over the Web Speech API in browsers or the Capacitor plugin natively — the adapter is selected automatically.
+
+```typescript
+const recognition = new Sound.Recognition({ lang: 'en-US' });
+
+await recognition.setup();
+
+recognition.on('result', (e) => console.log('interim:', e.data));
+recognition.on('result:full', (e) => console.log('final:', e.data));
+
+recognition.start();
+recognition.stop();
+recognition.clearTranscripts();
+
+await Sound.Recognition.isSupported();   // static capability check
+```
+
+Results also broadcast on the global bus as `recognition:result`, with adapter lifecycle events under `recognition.adapter:*` (`start`, `end`, `result`, `error`, `speechstart`, `speechend`, …).
+
+## Recent Changes
+
+- `1.66.0` — Circular dependency removed; howler playback fixes.
+- `1.65.1` — Playback engine moved to **howler**.
+- `1.65.0` — Muffle API (`muffleIn` / `muffleOut` / `setMuffle`) with the lowpass muffle bus; master-volume fix.

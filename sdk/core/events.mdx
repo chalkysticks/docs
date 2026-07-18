@@ -1,62 +1,135 @@
 ---
 title: 'Events'
-description: 'Event system for pub/sub messaging'
+description: 'Dispatcher pattern with priority listeners and preventDefault support'
 ---
 
-## Event Bus
+The event system is built around:
 
-The SDK uses a centralized event bus for communication between components.
+- `Event.Dispatcher` — the dispatcher class, mixed into most ChalkySticks classes.
+- `Event.Bus` — a shared global `Dispatcher` instance (the app-wide event bus).
+- `Event.DispatcherEvent` — internal per-event callback registry. Listeners receive an `IDispatcherEvent<T>` envelope, not this class directly.
+
+## Creating a Dispatcher
+
+Most SDK classes already extend `Event.Dispatcher` (via `Core`). Standalone usage:
 
 ```typescript
 import { Event } from '@chalkysticks/sdk-core';
 
-const bus = Event.Bus;
+const dispatcher = new Event.Dispatcher();
+
+// Or use the global bus
+Event.Bus.on('location:change', (e) => console.log(e.data));
 ```
 
-## Subscribing to Events
+## Subscribing
 
 ```typescript
-// Subscribe to an event
-bus.on('user:login', (user) => {
-    console.log('User logged in:', user.name);
+dispatcher.on('user:login', (e) => {
+    console.log('User logged in:', e.data);
 });
 
-// Subscribe once (auto-unsubscribe after first trigger)
-bus.once('app:ready', () => {
+dispatcher.once('app:ready', () => {
     console.log('App is ready');
 });
 ```
 
-## Publishing Events
+Callbacks can be typed with a generic:
 
 ```typescript
-// Trigger an event
-bus.trigger('user:login', currentUser);
+import { IGeolocationPayload } from '@chalkysticks/sdk-core';
 
-// Trigger with multiple arguments
-bus.trigger('game:shot', { power: 0.8, english: 0.2 });
+Event.Bus.on<IGeolocationPayload>('location:change', (e) => {
+    // e.data is IGeolocationPayload
+});
+```
+
+### Listener Priority
+
+Higher priority fires first. Default priority is `0`. Equal priorities preserve registration order.
+
+```typescript
+dispatcher.on('shot:taken', criticalHandler, 100);
+dispatcher.on('shot:taken', analyticsHandler, 0);
+dispatcher.on('shot:taken', debugHandler, -10);
+```
+
+## Dispatching
+
+```typescript
+const wasPrevented = dispatcher.dispatch('user:login', currentUser);
+
+if (wasPrevented) {
+    // A listener called e.preventDefault()
+}
+```
+
+`dispatch(eventName, data?)` returns `true` if any listener called `preventDefault()` (and `false` when nothing was prevented or no listeners exist).
+
+## The Event Envelope
+
+Listeners receive an `IDispatcherEvent<T>` envelope carrying the payload, metadata, and flow-control methods:
+
+```typescript
+dispatcher.on('shot:taken', (e) => {
+    console.log(e.data);               // payload
+    console.log(e.event.name);         // 'shot:taken'
+    console.log(e.event.time);         // dispatch timestamp (ms)
+    console.log(e.target);             // the dispatcher that fired
+    console.log(e.defaultPrevented);   // boolean
+    console.log(e.propagationStopped); // boolean
+
+    if (someCondition) {
+        e.preventDefault();            // flag the default action as suppressed
+    }
+
+    if (otherCondition) {
+        e.stopPropagation();           // stop lower-priority listeners from firing
+    }
+});
 ```
 
 ## Unsubscribing
 
 ```typescript
-// Store reference to handler
-const handler = (data) => console.log(data);
+const handler = (e) => console.log(e.data);
 
-// Subscribe
-bus.on('my:event', handler);
+dispatcher.on('my:event', handler);
+dispatcher.off('my:event', handler);
 
-// Unsubscribe
-bus.off('my:event', handler);
+dispatcher.off('my:event');   // remove all listeners for this event
 ```
 
-## Common Events
+## Aliases
+
+Vue-friendly aliases exist on every dispatcher: `$on()`, `$off()`, `$emit()`, and `trigger()` (both aliases of `dispatch()`).
+
+## Introspection
+
+```typescript
+dispatcher.hasListeners('shot:taken');   // boolean
+dispatcher.listenerCount('shot:taken');  // number for one event
+dispatcher.listenerCount();              // total across all events
+```
+
+## Global Bus Events
+
+Events sdk-core itself dispatches on `Event.Bus`:
 
 | Event | Description |
 |-------|-------------|
-| `user:login` | User logged in |
-| `user:logout` | User logged out |
-| `venue:checkin` | User checked into venue |
-| `media:upload` | Media upload completed |
-| `pad:change` | Pad diagram changed |
-| `game:shot` | Shot executed in trainer |
+| `app.config` | AppConfig payload loaded |
+| `location:change` / `location:error` | Geolocation updates and failures |
+| `media:upload:start` / `:progress` / `:complete` / `:error` / `:credentials` | Media upload lifecycle |
+| `request:loading` / `:loaded` / `:error` | API request lifecycle |
+| `request:unauthorized` / `:forbidden` / `:conflict` / `:not_allowed` / `:not_acceptable` / `:service_unavailable` | API error statuses |
+| `subscription:initialized` / `:status:updated` / `:purchase:*` / `:restore:*` / `:error` | RevenueCat subscription lifecycle |
+| `queryParameter:set` / `:unset`, `queryParameters:set` / `:unset` | URL query parameter changes |
+| `recognition:result`, `recognition.adapter:*` | Speech recognition lifecycle |
+
+Per-package events (auth login, pad changes, game shots) are documented under each package's own Events section (e.g. [Pad Events](/sdk/pad/events)).
+
+## Recent Changes
+
+- `1.56.0` — `preventDefault()` / `stopPropagation()` flow control, listener priority, `once()`, `hasListeners()`, and `listenerCount()` added; dispatch loop hardened against callbacks unregistering themselves mid-fire.
+- `1.52.1` — `fire()` optimized to avoid per-dispatch allocations.

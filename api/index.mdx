@@ -11,12 +11,14 @@ https://api.chalkysticks.com/v3
 
 ## Authentication
 
-Most endpoints require authentication via Bearer token:
+Most endpoints require authentication via a Sanctum Bearer token:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
      https://api.chalkysticks.com/v3/users/me
 ```
+
+Tokens are obtained via `POST /v3/auth/login` or `POST /v3/auth/register`. See [Authentication](/api/authentication).
 
 ## Response Format
 
@@ -68,11 +70,46 @@ GET /v3/venues?page=2&limit=25
 | `page` | 1 | - | Page number |
 | `limit` | 15 | 128 | Items per page |
 
+## Caching
+
+Most public read endpoints sit behind Varnish with surrogate-key invalidation. Query parameters and public includes are part of the cache key. Authenticated clients may reuse a public response only when Laravel explicitly guarantees that the representation is identity-independent.
+
+Private account resources use authenticated user-scoped URLs and never enter shared storage. See [API Cache Safety](/infrastructure/api-cache-safety) for the complete contract.
+
 ## Rate Limiting
 
 - 60 requests per minute for authenticated users
 - 30 requests per minute for unauthenticated
 
+## Endpoint Groups
+
+| Group | Description |
+|-------|-------------|
+| [Authentication](/api/authentication) | Login, register, password reset, OAuth |
+| [Users](/api/users) | Profiles, roles, media, notifications, wallet |
+| [Venues](/api/venues) | Venues, media, check-ins, revisions, search |
+| [Games](/api/games) | Single games, shots, innings |
+| [Matches](/api/matches) | Multi-game matches and matchmaking |
+| [Shots](/api/shots) | Global shots index |
+| [Innings](/api/innings) | Global innings lookup |
+| [Game Challenges](/api/game-challenges) | Daily / curated puzzles |
+| [Media](/api/media) | Uploads, shares, tags, presigned URLs |
+| [Diagrams](/api/diagrams) | Diagram storage and rendering |
+| [Comments](/api/comments) | Polymorphic comments |
+| [Reactions](/api/reactions) | Polymorphic reactions |
+| [Stats & Leaderboards](/api/stats) | User statistics and ranked boards |
+| [TV](/api/tv) | Channels, schedules, live streams |
+| [Content](/api/content) | Articles, videos, rulebooks |
+| [Facts](/api/facts) | Pool trivia and historical facts |
+| [Accomplishments](/api/accomplishments) | Achievements awarded to users |
+| [Check-ins](/api/checkins) | Global venue check-in feed |
+| [Push Notifications](/api/notifications) | Device registration for push |
+| [Settings](/api/settings) | Server-driven configuration (admin) |
+| [Admin](/api/admin) | Moderation queues and admin tooling |
+| [Billing](/api/billing) | RevenueCat webhooks |
+| [Config & Utility](/api/config) | App config, health, redirects |
+| [Services & Data](/api/services) | Ads, beacons, feed, third-party data |
+
 ## Postman Collection
 
-Full API collection available in `.memory/v3-2026-01-07.postman_collection.json`
+Full API collection available in `.memory/v3-2026-01-07.postman_collection.json`.

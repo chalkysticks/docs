@@ -1,0 +1,47 @@
+---
+title: 'Wallet'
+description: 'Wallet balance display and collection action'
+---
+
+Two components for the points / wallet feature. Both target a `ChalkySticks.Model.User`.
+
+## WalletBalance
+
+Animated wallet-balance display. Pulses on change (GSAP) and applies an earning / spending CSS class while a transaction is in flight.
+
+```html
+<ChalkyWalletBalance
+    :user-model="user"
+    :additional-amount="bonus"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `userModel` | `Model.User` | — |
+| `additionalAmount` | number | `0` |
+
+`additionalAmount` is layered on top of the user's balance for "+X coins" previews before a transaction commits.
+
+## WalletCollection
+
+Daily-collection interface — shows the time until the next collect is available and dispatches the collect API call. Handles 429 rate-limit responses.
+
+```html
+<ChalkyWalletCollection :user-model="user" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `userModel` | `Model.User` | `Factory.User.model()` |
+
+Pair the two:
+
+```html
+<section>
+    <ChalkyWalletBalance :user-model="user" />
+    <ChalkyWalletCollection :user-model="user" />
+</section>
+```
+
+Under the hood, both rely on `POST /v3/users/{user}/wallet/collect` and `POST /v3/users/{user}/wallet/spend`. See the [Users API](/api/users#wallet).

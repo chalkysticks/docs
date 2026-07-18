@@ -1,0 +1,161 @@
+---
+title: 'Test isolation with container reset'
+description: 'Use flush and reset for clean state between tests'
+---
+
+## The Problem
+
+The container is a module-level singleton. Without cleanup, bindings and cached instances leak between tests and cause flaky results.
+
+## Reset Between Tests
+
+`ChalkySticks.reset()` flushes the container (all bindings, factories, and Identity Map entries) and clears the provider list:
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+
+beforeEach(() => {
+    ChalkySticks.configure({
+        apiUrl: 'https://api.chalkysticks.com',
+    });
+});
+
+afterEach(() => {
+    ChalkySticks.reset();
+});
+```
+
+## Flush Just the Identity Map
+
+If you want to keep your bindings but clear cached instances:
+
+```typescript
+afterEach(() => {
+    ChalkySticks.getContainer().flushIdentityMap();
+});
+```
+
+## Flush a Single Class
+
+Clear cached instances for one class without affecting anything else:
+
+```typescript
+import { Model } from '@chalkysticks/sdk-core';
+
+afterEach(() => {
+    ChalkySticks.getContainer().flushClass(Model.Venue);
+});
+```
+
+## Mock a Service in a Test
+
+Bind a mock implementation before each test, reset after:
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+
+describe('Dashboard', () => {
+    beforeEach(() => {
+        ChalkySticks.configure({
+            apiUrl: 'https://api.chalkysticks.com',
+        });
+
+        // Replace the analytics service with a mock
+        ChalkySticks.getContainer().instance('analytics', {
+            trackEvent: jest.fn(),
+            trackError: jest.fn(),
+        });
+    });
+
+    afterEach(() => {
+        ChalkySticks.reset();
+    });
+
+    it('tracks page view on mount', () => {
+        const analytics = ChalkySticks.make<any>('analytics');
+
+        mountComponent();
+
+        expect(analytics.trackEvent).toHaveBeenCalledWith('page:view');
+    });
+});
+```
+
+## Test a Custom Provider
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+import { AppServiceProvider } from '../Provider/AppServiceProvider';
+
+describe('AppServiceProvider', () => {
+    afterEach(() => {
+        ChalkySticks.reset();
+    });
+
+    it('registers the logger as a singleton', () => {
+        ChalkySticks.configure({
+            apiUrl: 'https://api.chalkysticks.com',
+            providers: [AppServiceProvider],
+        });
+
+        const loggerA = ChalkySticks.make('logger');
+        const loggerB = ChalkySticks.make('logger');
+
+        expect(loggerA).toBe(loggerB);
+    });
+
+    it('works without the core provider', () => {
+        ChalkySticks.configure({
+            apiUrl: 'https://api.chalkysticks.com',
+            providers: false,
+        });
+
+        ChalkySticks.registerProvider(AppServiceProvider);
+        ChalkySticks.boot();
+
+        expect(ChalkySticks.getContainer().bound('logger')).toBe(true);
+    });
+});
+```
+
+## Verify Identity Map Caching
+
+```typescript
+import ChalkySticks, { Model } from '@chalkysticks/sdk-core';
+
+describe('Identity Map', () => {
+    beforeEach(() => {
+        ChalkySticks.configure({
+            apiUrl: 'https://api.chalkysticks.com',
+        });
+    });
+
+    afterEach(() => {
+        ChalkySticks.reset();
+    });
+
+    it('returns the same instance for matching args', () => {
+        const a = ChalkySticks.resolve(Model.Venue, { id: 1 });
+        const b = ChalkySticks.resolve(Model.Venue, { id: 1 });
+
+        expect(a).toBe(b);
+    });
+
+    it('returns different instances for different args', () => {
+        const a = ChalkySticks.resolve(Model.Venue, { id: 1 });
+        const b = ChalkySticks.resolve(Model.Venue, { id: 2 });
+
+        expect(a).not.toBe(b);
+    });
+
+    it('creates a fresh instance after flushing', () => {
+        const a = ChalkySticks.resolve(Model.Venue, { id: 1 });
+
+        ChalkySticks.getContainer().flushResolved(Model.Venue, { id: 1 });
+
+        const b = ChalkySticks.resolve(Model.Venue, { id: 1 });
+
+        expect(a).not.toBe(b);
+    });
+});
+```

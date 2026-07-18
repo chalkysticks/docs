@@ -1,0 +1,150 @@
+---
+title: 'Roboflow Sidecar'
+description: 'Self-hosted Roboflow inference server via Docker Compose — setup, caching, offline mode, and model updates'
+---
+
+## What It Is
+
+The sidecar is Roboflow's official open-source inference server (`roboflow/roboflow-inference-server-cpu:latest`) running as a Docker container next to the Laravel API. It speaks the **exact same HTTP contract** as `serverless.roboflow.com` — `POST /{slug}/{version}` with base64 body and `api_key` query param — so the PHP `Services\Roboflow` class works unchanged.
+
+## How It Works
+
+```
+Laravel API ──POST──▶ http://127.0.0.1:9001/{slug}/{version}
+                       │
+                       ▼
+                Roboflow inference server (local container)
+                       │
+                       ├── cache hit  → reply from /tmp/cache
+                       └── cache miss → fetch weights from Roboflow once,
+                                        store in /tmp/cache, reply
+```
+
+First call per model version fetches weights from Roboflow (a few seconds). Every subsequent call — including all calls after a Roboflow outage — is served entirely from the local cache.
+
+## Start the Sidecar
+
+From `bin/api-v2/`:
+
+```bash
+docker compose -f docker/inference/compose.cpu.yml up -d
+```
+
+This starts two containers:
+
+1. **`chalkysticks-inference`** — the inference server on port 9001 (bound to localhost only)
+2. **`chalkysticks-inference-warmup`** — a one-shot init container that pre-downloads model weights so the first real request doesn't pay the cold-cache penalty
+
+The warmup container reads `ROBOFLOW_API_KEY` from `bin/api-v2/.env` automatically (via `env_file: ../../.env` in the compose file).
+
+Watch the warmup download models:
+
+```bash
+docker compose -f docker/inference/compose.cpu.yml logs -f warmup
+```
+
+Expected output:
+
+```
+[warmup] Inference server: http://inference:9001
+[warmup] Models to warm:   my-first-project-2-qvkxb/8 ball-detection-feb-2026/11
+[warmup] -> my-first-project-2-qvkxb/8
+[warmup]    cached (200)
+[warmup] -> ball-detection-feb-2026/11
+[warmup]    cached (200)
+[warmup] All models warmed successfully. Sidecar is ready for offline operation.
+```
+
+## Point the Laravel API at the Sidecar
+
+Update `bin/api-v2/.env`:
+
+```bash
+ROBOFLOW_MODEL_URL=http://127.0.0.1:9001/my-first-project-2-qvkxb/8
+ROBOFLOW_BALLDETECTION_MODEL_URL=http://127.0.0.1:9001/ball-detection-feb-2026/11
+```
+
+Restart PHP-FPM. The Laravel API now talks to your local sidecar instead of `serverless.roboflow.com`. No PHP code changes needed — `Services\Roboflow` is already parameterized by URL.
+
+## Model Cache
+
+Model weights are stored in a Docker named volume `chalkysticks-model-cache` mounted at `/tmp/cache` inside the container. The cache persists across container restarts.
+
+Inspect the cache:
+
+```bash
+docker exec chalkysticks-inference ls -la /tmp/cache/
+docker exec chalkysticks-inference du -sh /tmp/cache/shared-blobs/
+```
+
+Expected: two large files in `shared-blobs/` (~109 MB + ~120 MB) — the RF-DETR YOLO weights for each model.
+
+## Offline Mode
+
+Once the cache is populated, the sidecar works without internet:
+
+```bash
+# Block Roboflow DNS inside the container
+docker exec chalkysticks-inference sh -c 'echo "127.0.0.1 api.roboflow.com" >> /etc/hosts'
+
+# Verify inference still works
+curl -F image=@/path/to/table.jpg http://localhost:8000/v3/data/table-scan-full
+
+# Restore (easier than editing /etc/hosts back)
+docker compose -f docker/inference/compose.cpu.yml up -d --force-recreate inference
+```
+
+Telemetry is disabled via `METRICS_ENABLED=False` in the compose file, so there are no other outbound dependencies after models are cached.
+
+## GPU Variant
+
+For NVIDIA hosts with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html):
+
+```bash
+docker compose -f docker/inference/compose.cpu.yml down
+docker compose -f docker/inference/compose.gpu.yml up -d
+```
+
+Both compose files share the same `chalkysticks-model-cache` volume, so weights from the CPU sidecar carry over to the GPU variant without re-downloading.
+
+## Updating Models
+
+When Roboflow publishes a new model version:
+
+1. Update the version number in `.env` (e.g. `/my-first-project-2-qvkxb/8` → `/my-first-project-2-qvkxb/9`)
+2. Restart the Laravel API
+3. The first `tableScanFull` call triggers a one-time fetch of the new weights into the existing cache volume
+
+No sidecar rebuild needed. The cache accumulates model versions.
+
+## Standalone Image (Air-Gapped)
+
+For distribution or air-gapped deployments, the model cache can be baked into a Docker image:
+
+```bash
+./docker/tool/run
+# → Build standalone image
+```
+
+This produces `chalkysticks/inference:latest` — a self-contained image with both model versions already on disk. Run it anywhere with no Roboflow access needed:
+
+```bash
+docker run -d --name chalkysticks-inference -p 9001:9001 chalkysticks/inference:latest
+```
+
+## Environment Variables (Container-Side)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `MODEL_CACHE_DIR` | `/tmp/cache` | Where weights are stored. Mapped to the named volume. |
+| `NUM_WORKERS` | `1` | uvicorn workers. Bump for concurrent scans. |
+| `MAX_DETECTIONS` | `300` | Cap per request. Fine for pool tables (~30-40 objects max). |
+| `METRICS_ENABLED` | `False` | Disables Roboflow telemetry pingback. |
+| `HOST` | `0.0.0.0` | Bind address. |
+| `PORT` | `9001` | Bind port. |
+
+## Important Notes
+
+- **RF-DETR models require PyTorch.** The regular `roboflow-inference-server-cpu` image includes PyTorch + CUDA libs (~10 GB). The dedicated `arm-cpu` slim variant (~855 MB) strips PyTorch and **will not work** with our RF-DETR models — you'll get `Model type not supported: ('object-detection', 'rfdetr-nano')`.
+- **Port 9001 is bound to localhost only** (`127.0.0.1:9001:9001` in compose) so nothing outside the host can reach it. This is intentional — the sidecar is an internal dependency, not a public endpoint.
+- **The warmup container uses `curlimages/curl:latest`** (~10 MB) and exits after caching. It's recreated on every `docker compose up` but runs in less than 1 second if models are already cached.

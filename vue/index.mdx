@@ -1,7 +1,9 @@
 ---
 title: 'Vue Components'
-description: 'Reusable Vue 2.7 component library'
+description: 'Vue 2.7 component library for ChalkySticks'
 ---
+
+`@chalkysticks/vue2-components` is the shared Vue 2.7 component library used by the website, web-app (Capacitor), and CMS. It depends on `@chalkysticks/sdk` and `@chalkysticks/sass`.
 
 ## Installation
 
@@ -16,55 +18,126 @@ npm install @chalkysticks/vue2-components
 import Vue from 'vue';
 import ChalkySticks from '@chalkysticks/vue2-components';
 
-Vue.use(ChalkySticks);
+Vue.use(ChalkySticks, {
+    provide: {
+        router: myRouterInstance,   // optional, hooked into Core/Router
+    },
+});
 ```
 
-## Component Prefix
+`Vue.use()` does the following:
 
-All components use the `Chalky` prefix:
+- Registers every component globally under the `Chalky` prefix
+- Imports `@chalkysticks/sass/build/app.css` + the package's own theme
+- Registers the `v-pointer` and `v-tooltip` directives
+- Installs the `ToastPlugin`
+- Disables REST methods on chat models in favor of the Ably service
+
+## Naming Convention
+
+Components register globally with `Chalky` + the barrel export name (`{Section}{Component}`):
 
 ```html
-<ChalkyBrandingBadge />
-<ChalkyAuthPanel />
-<ChalkyVenueFeed />
+<ChalkyAuthenticationAuthPanel />
+<ChalkyUserCard :user-model="user" />
+<ChalkyVenueList :venue-collection="venues" />
+<ChalkyUiToast type="info" message="Saved" />
 ```
 
-## Technology Stack
+## Categories
 
-- Vue 2.7.14
-- TypeScript
-- vue-property-decorators (class-based)
-- GSAP for animations
-- Video.js for media
-- Google Maps integration
-- Ably chat integration
-
-## Component Categories
-
-| Category | Components |
-|----------|------------|
-| Authentication | AuthPanel, BasicLogin, BasicSignup, Modal, Navigation |
-| UI Elements | Badge, BarGraph, CoachMark, ProgressBar, Tooltip |
-| Media | Feed, CardSwipe, ImageUploader, VideoUploader |
-| Social | Comments, Reactions, Chat |
-| Venue | Feed, Card, List, Map |
-| Branding | Standard, Badge, Splash |
+| Section | Components | Doc |
+|---------|------------|-----|
+| Authentication | 7 | [/vue/authentication](/vue/authentication) |
+| Branding | 3 | [/vue/branding](/vue/branding) |
+| Button | 10 | [/vue/button](/vue/button) |
+| Chat / Comment / Reaction | 13 | [/vue/social](/vue/social) |
+| Content / Feed / Fact / Event | 9 | [/vue/media](/vue/media) |
+| Form | 3 | [/vue/form](/vue/form) |
+| Input | 11 | [/vue/input](/vue/input) |
+| Media | 6 | [/vue/media](/vue/media) |
+| Modal | 2 | [/vue/ui-elements](/vue/ui-elements) |
+| TV | 12 | [/vue/tv](/vue/tv) |
+| Ui | 13 | [/vue/ui-elements](/vue/ui-elements) |
+| User | 8 | [/vue/user](/vue/user) |
+| Utility | 13 | [/vue/utility](/vue/utility) |
+| Venue | 11 | [/vue/venue](/vue/venue) |
+| Wallet | 2 | [/vue/wallet](/vue/wallet) |
 
 ## Individual Imports
 
+For tree-shaken bundles, import components directly:
+
 ```typescript
-// Import specific component
-import { ChalkyBrandingBadge } from '@chalkysticks/vue2-components';
+import { VenueCard, UserCard, AuthenticationAuthPanel } from '@chalkysticks/vue2-components';
 
 export default {
-    components: {
-        ChalkyBrandingBadge
-    }
+    components: { VenueCard, UserCard, AuthenticationAuthPanel },
 };
 ```
 
-## Dependencies
+Note: imports use the barrel name without the `Chalky` prefix. The prefix is only applied for global registration.
 
-The component library requires:
-- `@chalkysticks/sdk`
-- `@chalkysticks/sass` (for theming)
+## Technology Stack
+
+- Vue 2.7 (`vue-property-decorator`, class-based components)
+- TypeScript with `@chalkysticks/sdk` types
+- GSAP for animations
+- Video.js + HLS.js for video playback
+- Google Maps for the venue map
+- Ably for realtime chat
+- Roboflow / ONNX Runtime for in-browser ML (table detection)
+
+## ViewBase
+
+Every component extends `Core/Base.ts` (`ViewBase`), which provides:
+
+- `this.$chalky` — SDK access via Vue's prototype
+- Access to Vuex store (`authentication`, `location`, `userGuidance`)
+- Asset URL resolver
+- Lifecycle hooks shared across the library
+
+## Directives
+
+| Directive | Purpose |
+|-----------|---------|
+| `v-pointer` | Pointer / touch / gesture events (tap, swipe, pinch) |
+| `v-tooltip` | Lightweight tooltip on hover / focus |
+
+## Plugin: Toast
+
+```typescript
+import { ToastPlugin, ToastTemplates } from '@chalkysticks/vue2-components';
+
+Vue.use(ToastPlugin);
+
+// Anywhere in a component
+this.$toast.show({ message: 'Saved', type: 'success' });
+this.$toast.show(ToastTemplates.error('Something went wrong'));
+```
+
+Render the toast container once near the root:
+
+```html
+<ChalkyUiToastGroup position="top-right" direction="down" />
+```
+
+## Vuex Store Modules
+
+Installed automatically. Access via `this.$store.state.<module>` or via the typed getters exposed on each component.
+
+| Module | Purpose |
+|--------|---------|
+| `authentication` | Logged-in user, token, auth state |
+| `location` | Geolocation, distance calculations |
+| `userGuidance` | Coach-mark dismissal state |
+
+`persist` plugin syncs select state to localStorage.
+
+## Services
+
+| Service | Purpose |
+|---------|---------|
+| `Service/Ably` | Realtime channel adapter for chat / game |
+| `Service/Avatar` | Avatar URL resolution with fallback chain |
+| `Manager/Asset` | Asset URL registry (`Asset.createIndex()` is called on install) |

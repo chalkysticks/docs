@@ -1,0 +1,29 @@
+---
+title: 'Config & Utility'
+description: 'App configuration, health checks, and redirects'
+---
+
+## App Config
+
+Public app configuration: feature flags, feed layout, version gates.
+
+```bash
+GET /v3/config/app
+```
+
+## Health Check
+
+Lightweight liveness probe.
+
+```bash
+GET /v3/config/health
+```
+
+## Redirect Helper
+
+Returns a device-appropriate target URL (app deep link, Instagram, Facebook, etc.).
+
+```bash
+GET /v3/utility/redirect?target=app
+GET /v3/utility/redirect?type=instagram
+```

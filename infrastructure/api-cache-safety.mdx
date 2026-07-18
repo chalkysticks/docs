@@ -1,0 +1,209 @@
+---
+title: 'API Cache Safety'
+description: 'Public versus restricted responses, user isolation, Varnish partitions, and surrogate-key invalidation'
+---
+
+The v3 API caches most public reads aggressively without allowing account data,
+moderator-only fields, or request-dependent representations to enter shared
+storage. This page is the contract API, SDK, Vue, and infrastructure changes
+must preserve.
+
+## The Core Rule
+
+> One public URL must have one public representation, independent of the
+> caller's bearer token or session cookie.
+
+If authentication changes the body, use an authenticated URL for that resource
+and mark the response restricted. Do not make a nominally public URL return a
+different body to its owner.
+
+| Response type | Shared by Varnish? | Examples |
+|---|---:|---|
+| Public representation | Yes | venues, content, parent-scoped comments, reactions, public match listings, geocoding |
+| Account resource | No | `/users/me`, wallet, owned products, entitlements, private match history |
+| Viewer-dependent include | No | moderator flags and other request-specific nested state |
+| Mutation, error, redirect, or TTL-zero response | No | login, writes, authorization failures, IP-derived data |
+
+Authentication alone does not make a public response private. A client that
+sends its bearer token globally may reuse a byte-identical public object. Varnish
+stores that object only when Laravel explicitly marks the completed response as
+public.
+
+## Public and Restricted Scope
+
+Laravel's `VarnishCache` middleware maintains a two-valued response scope:
+
+- `public` means the exact representation is safe for every caller in the same
+  trust partition.
+- `restricted` means the representation depends on the request, identity, or
+  authorization context and must not enter shared storage.
+
+Public is the normal API-read default. Controllers and transformers call
+`markRestricted()` at the point where viewer-specific behavior is introduced.
+Authenticated routes, admin requests, errors, non-GET methods, no-cache policy,
+and responses with cookies also fail closed.
+
+Laravel communicates the result to Varnish with an internal
+`X-Cache-Scope: public` header. Varnish requires that marker both when serving a
+hit and when storing a miss. It strips the marker and other internal cache
+headers before delivery.
+
+<Warning>
+Never accept `X-Cache-Scope`, trust classification, or purge authorization from
+the client. Varnish removes client-supplied values and creates its own internal
+markers.
+</Warning>
+
+## Query Parameters and Includes
+
+The complete normalized query string is part of the cache key. Parameters such
+as `page`, `limit`, `address`, `include`, filters, and sort order therefore create
+distinct cache entries.
+
+Examples:
+
+```text
+/v3/data/geocode?address=new%20york
+/v3/data/geocode?address=boston
+/v3/venues/635?include=checkins
+/v3/venues/635?include=comments,reactions
+```
+
+An `include` parameter does not automatically make a response unsafe. Public
+relationships such as venue check-ins, content comments, and reactions remain
+cacheable. An include that exposes request-specific or moderator-only state must
+mark the representation restricted in its transformer.
+
+## Match History Contract
+
+Match listings have two deliberately separate URLs:
+
+```bash
+# Public matches involving a user. Same representation for every caller.
+GET /v3/matches?user_id=8
+
+# Complete private history for the owner or an administrator.
+GET /v3/users/8/matches
+Authorization: Bearer YOUR_TOKEN
+```
+
+The public URL never becomes more complete because the caller owns user `8`.
+This prevents an owner's private body from being stored at a URL another caller
+can request.
+
+The Vue `GameMatchInbox` component uses the user-scoped collection endpoint via
+`collection.useModifiedEndpoint(userModel)` and performs an authenticated fetch.
+Other clients that need complete history must do the same. Public challenges,
+profiles, and metrics may continue using `/matches?user_id=...`.
+
+## User-Owned Resources
+
+Private inventory and account state live under the user URL so their identity is
+visible in the resource path:
+
+```text
+/v3/users/{user}/matches
+/v3/users/{user}/products
+/v3/users/{user}/entitlements
+/v3/users/{user}/wallet
+/v3/users/{user}/notifications
+```
+
+These routes require authentication and enforce owner-or-administrator access.
+Equipped loadouts are public profile presentation data when read, while loadout
+writes remain owner-or-administrator only.
+
+## Trust Partitions
+
+The edge cache has separate `clean` and `poison` objects for the same URL. The
+partition is part of the Varnish hash, currently under cache schema v4. A body
+generated for one partition can never satisfy the other partition's lookup.
+
+Varnish and Laravel independently classify the request, then Varnish verifies
+that the response agrees before storing it. A disagreement fails closed instead
+of risking a cross-partition object.
+
+Changing the cache-schema string makes old objects unreachable without requiring
+a full-cache purge. Do this only when the hash or safety contract changes.
+
+## Surrogate-Key Invalidation
+
+Model-backed responses carry compact surrogate keys internally. Common examples:
+
+| Key | Meaning |
+|---|---|
+| `u.8` | User 8 |
+| `v.635` | Venue 635 |
+| `co.240` | Content 240 |
+| `c.48` | Comment 48 |
+| `co.240.c` | Comments relationship for content 240 |
+
+Model retrieval adds keys to the response. Model mutations enqueue targeted
+purges, and one surrogate-key purge invalidates both clean and poison copies.
+
+Comment creation, update, and deletion purge:
+
+1. The comment's own key.
+2. The parent's comments-relationship key, such as `co.240.c`.
+3. The root parent key, such as `co.240`.
+4. Relevant user-to-parent relationship keys.
+
+The root parent key is essential: it invalidates an article that embeds comments
+even when the old cached response contained no comments. It also handles deleting
+the final comment from a list.
+
+Purges are processed by the `default` or `high` Laravel queue, depending on the
+mutation. Brief eventual consistency is expected while the job is picked up;
+failed purge jobs must be retried and alerted.
+
+## Client Guidance
+
+- Treat a URL as one representation. Do not rely on a bearer token silently
+  changing a public collection.
+- Put user identity in the path for private account resources.
+- Keep meaningful query parameters; Varnish includes them in the cache key.
+- Do not add cache-busting timestamps to normal application traffic.
+- Do not send `Cache-Control: no-cache` routinely; it defeats shared hits.
+- After a mutation, let the API's surrogate-key event invalidate related reads.
+- Never store bearer tokens in URLs, logs, analytics, or browser history.
+
+## Diagnosing Production
+
+Use a unique diagnostic parameter to observe a fresh public object without
+purging unrelated cache entries:
+
+```bash
+curl -sS -D - -o /dev/null \
+  -H 'Referer: https://www.chalkysticks.com/' \
+  'https://api.chalkysticks.com/v3/venues?limit=12&page=1&cache_contract_probe=example'
+```
+
+The first response should report `X-Cache-Hits: 0`; the next should be greater
+than zero. A restricted URL should remain at zero across repeated requests.
+
+Do not diagnose scope from the public `Cache-Control` header alone. The deployed
+VCL's authoritative storage decision is the internal scope contract, which is
+removed before delivery. Making restricted responses advertise
+`private, no-store` externally is still a worthwhile defense-in-depth follow-up.
+
+## Production Verification
+
+The schema-v4 policy was verified against production on July 17, 2026 with two
+real test accounts:
+
+- `/users/me` differed by account, remained stable per account, and never hit
+  shared cache.
+- `/matches?user_id=8` returned one identity-independent body with cache hits
+  increasing `0 → 1 → 2` across owner and non-owner requests.
+- `/users/8/matches` returned `200` to the owner, `403` to another account, and
+  `401` without authentication; every response remained outside shared cache.
+- Cross-account profile, loadout, wallet, product, entitlement, and match-history
+  operations were rejected.
+- Content, comments, reactions, includes, geocoding, and randomized media all
+  produced stable public cache hits.
+- A queued `co.240` plus `co.240.c` purge invalidated both an article and its
+  comments endpoint, after which both re-warmed normally.
+
+Operational commands, rollback instructions, and the full verifier live in the
+`infrastructure` repository under `docs/cache-operations.md` and
+`deploy/verify/cache-policy-verify.sh`.

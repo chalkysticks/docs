@@ -3,86 +3,178 @@ title: 'Collections'
 description: 'Data collections for fetching and managing lists of models'
 ---
 
+Collections extend `Collection.Base<T>`, which wraps `restmc`'s Collection with ChalkySticks-specific helpers: request-event broadcasting, auth token wiring, a reactive framework hook, and a default `limit` sourced from `Environment.app.limit` (default 32).
+
 ## Available Collections
 
 | Collection | Description |
 |------------|-------------|
-| `User` | List of users |
-| `Venue` | List of venues |
-| `Media` | List of media items |
-| `UserMedia` | User's media |
-| `VenueMedia` | Venue's media |
-| `Comment` | Comments list |
-| `Reaction` | Reactions list |
-| `Content` | Content items |
-| `Feed` | User feed |
+| `Accomplishment` | Achievement definitions |
+| `Advertisement` | Ad campaign rows |
+| `Comment` | Polymorphic comments |
+| `Content` | Articles, videos, channels |
+| `ContentTag` | Content tags |
+| `EmbeddingSearch` | Vector search over media images (`search()` helper) |
+| `Feed` | Activity feed |
+| `LibraryMedia` | CMS media library (`images()` / `documents()` / tag filters) |
+| `Media` | Cross-cutting media listings |
+| `MediaShare` | Media share/transfer records |
+| `MediaTag` | Tags applied to media |
 | `Message` | Chat messages |
+| `Meta` | Key/value metadata |
+| `Product` | Purchasable catalog items |
+| `Reaction` | Polymorphic reactions |
+| `User` | Users |
+| `UserAccomplishment` | Per-user achievements |
+| `UserMedia` | User-owned media |
+| `UserStat` | Per-user counters (`toScopedMap()`) |
+| `UserWallet` | Wallet transactions |
+| `Venue` | Venues (coordinate-aware fetching) |
 | `VenueCheckin` | Venue check-ins |
+| `VenueDetail` | Extended venue details |
+| `VenueHour` | Venue hours (timezone-aware, `isOpenNow()`) |
+| `VenueMedia` | Venue media (`getTables()`, `getInterior()`, ...) |
+| `VenueRevision` | Pending venue edits |
+| `VenueSearch` | Natural-language venue search (`search()` helper) |
 
 ## Basic Usage
 
 ```typescript
 import { Collection } from '@chalkysticks/sdk-core';
 
-// Create a collection
 const venues = new Collection.Venue();
-
-// Fetch from API
 await venues.fetch();
 
-// Access models
-venues.models.forEach(venue => {
-    console.log(venue.name);
+venues.each((venue) => {
+    console.log(venue.getName());
 });
 ```
 
-## Filtering
+Or via the container so the correct `baseUrl` is injected automatically:
 
 ```typescript
-// Search by query
-venues.setQuery({ q: 'pool hall' });
+import { ChalkySticks, Collection } from '@chalkysticks/sdk-core';
+
+const venues = ChalkySticks.resolve(Collection.Venue);
+await venues.fetch();
+```
+
+## Query Parameters
+
+Filtering goes through `restmc` query params — there is no `setQuery()`:
+
+```typescript
+venues.setQueryParams({ lat: 40.7128, lon: -74.006 });
 await venues.fetch();
 
-// Filter by location
-venues.setQuery({
-    lat: 40.7128,
-    lon: -74.0060,
-    distance: 10
-});
-await venues.fetch();
+venues.setQueryParam('include', 'hours,media');
+venues.unsetQueryParam('include');
 ```
 
 ## Pagination
 
+`limit` and `page` are constructor options (also settable later); page walking comes from `restmc`:
+
 ```typescript
-// Set limit
-venues.setLimit(25);
+const venues = new Collection.Venue({ limit: 25, page: 1 });
+await venues.fetch();
 
-// Fetch next page
-await venues.fetchNext();
-
-// Check if more pages exist
-if (venues.hasMore()) {
-    await venues.fetchNext();
+if (venues.hasNext()) {
+    await venues.fetchNext();       // replace models
+    await venues.fetchNext(true);   // append models
 }
+
+await venues.nextPage();            // no-op returning null when there is no next page
+await venues.previousPage();
+```
+
+## Reactive Hooks
+
+`useReactiveHook` is a **static** method registered once per framework — it runs for every subsequently constructed instance (`Model.Base` has the identical hook):
+
+```typescript
+import Vue from 'vue';
+import { Collection, Model } from '@chalkysticks/sdk-core';
+
+// e.g. Vue 2.7: make every SDK instance observable
+Collection.Base.useReactiveHook((instance) => Vue.observable(instance));
+Model.Base.useReactiveHook((instance) => Vue.observable(instance));
 ```
 
 ## Collection Methods
 
-```typescript
-// Get model by ID
-const venue = venues.getById(123);
+From `restmc`:
 
-// Get first/last model
+```typescript
+const venue = venues.get(123);          // by id (or cid / model)
 const first = venues.first();
 const last = venues.last();
-
-// Get count
 const count = venues.length;
 
-// Filter models locally
-const filtered = venues.filter(v => v.city === 'New York');
+const filtered = venues.filter((v) => v.getCity() === 'New York');
+const found = venues.findWhere({ slug: 'amsterdam-billiards' });
+const names = venues.pluck('name');
 
-// Find single model
-const found = venues.find(v => v.id === 123);
+venues.each((v) => { /* ... */ });
+venues.sort({ key: 'distance' });
 ```
+
+`Collection.Base` additions:
+
+```typescript
+venues.auth();          // chainable: applies token from Provider.Store
+venues.shouldFetch();   // true when not loading and nothing fetched yet
+venues.getBaseUrl();    // localUrl override > baseUrl
+venues.getCreatedAtTimeAgo(id); // timestamp helpers addressed by model id
+venues.isDeleted(id);
+```
+
+Collections dispatch the same request lifecycle events as models (`request:loading`, `request:loaded`, `request:error`, `request:unauthorized`, ...) both locally and on the global `Event.Bus`.
+
+## Venue Coordinate Fetching
+
+`Collection.Venue.beforeFetch()` rounds `lat`/`lon` query params to ~0.01° (better cache hits) and sorts results by `distance` after parse — pass coordinates and it handles the rest.
+
+## Natural-Language Search
+
+`VenueSearch` (`/v3/venues/fuzzy-search`) and `EmbeddingSearch` (`/v3/media/search`) are AI-embedding searches with a `search()` convenience method:
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-core';
+
+const results = Factory.VenueSearch.collection();
+await results.search('outdoor patio with billiards', 20);
+
+results.each((venue) => {
+    console.log(venue.getName(), venue.getSimilarityPercentage());
+});
+```
+
+`VenueSearch` returns unique venues ranked by their best-matching image; `EmbeddingSearch` returns the individual matching images.
+
+## Domain Helpers
+
+```typescript
+// LibraryMedia — chainable filters
+const library = new Collection.LibraryMedia();
+await library.images().fetch();       // type=image
+await library.documents().fetch();    // type=document
+
+// UserStat — flat lookup map keyed by `${stat_key}|${scope_type}|${scope_id}`
+// (global unscoped rows are mirrored under the raw stat_key)
+const stats = user.stats;
+await stats.fetch();
+stats.toScopedMap();                  // e.g. { total_checkins: 42, 'total_checkins|global|': 42 }
+
+// VenueHour — timezone-aware opening hours
+venue.hours.setTimezone('America/New_York');
+venue.hours.isOpenNow();
+venue.hours.getTodayHours();
+```
+
+## Recent Changes
+
+- `~1.63.0` — `Collection.Product` added.
+- `~1.62.1` — `Collection.UserStat.toScopedMap()` added.
+- `~1.61.x` — `Collection.LibraryMedia` added (`images()`, `documents()`, tag filtering).
+- `1.55.0` — `EmbeddingSearch` / `VenueSearch` collections with `search(query, limit)`.

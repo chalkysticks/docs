@@ -1,91 +1,106 @@
 ---
-title: 'Venues Package'
-description: 'Venue data, search, and check-ins'
+title: 'Venues (in sdk-core)'
+description: 'Venue model, collection, and search'
 ---
 
-## Installation
-
-```bash
-npm install @chalkysticks/sdk-venues
-```
+There is no standalone `sdk-venues` package — venue types live in `@chalkysticks/sdk-core`. This page is a quick reference for the venue surface area; the canonical pages are [Models](/sdk/core/models) and [Collections](/sdk/core/collections).
 
 ## Searching Venues
 
 ```typescript
-import { Collection } from '@chalkysticks/sdk-venues';
+import { ChalkySticks, Collection } from '@chalkysticks/sdk-core';
 
-const venues = new Collection.Venue();
+const venues = ChalkySticks.resolve(Collection.Venue);
 
-// Search by location
-venues.setQuery({
-    lat: 40.7128,
-    lon: -74.0060,
-    distance: 25  // km
-});
-await venues.fetch();
-
-// Search by city/state
-venues.setQuery({
-    city: 'New York',
-    state: 'NY'
-});
-await venues.fetch();
-
-// Search by name
-venues.setQuery({ q: 'Amsterdam Billiards' });
+// Coordinate search — beforeFetch() rounds lat/lon to ~0.01° for better
+// caching and sorts results by distance after parse
+venues.setQueryParams({ lat: 40.7128, lon: -74.006 });
 await venues.fetch();
 ```
+
+## Fuzzy / Embedding Search
+
+`Collection.VenueSearch` hits `/v3/venues/fuzzy-search` and returns unique venues ranked by their best-matching image:
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-core';
+
+const results = Factory.VenueSearch.collection();
+await results.search('outdoor patio with billiards', 20);
+
+results.each((venue) => {
+    console.log(venue.getName(), venue.getSimilarityPercentage(), venue.getMatchedMediaUrl());
+});
+```
+
+`Model.VenueSearch` extends `Model.Venue`, adding `getSimilarity()` (0.0–1.0), `getSimilarityPercentage()`, and `getMatchedMediaUrl()`. For per-image results use `Collection.EmbeddingSearch` (`/v3/media/search`) with the same `search(query, limit)` API.
 
 ## Venue Model
 
 ```typescript
-import { Model } from '@chalkysticks/sdk-venues';
+import { ChalkySticks, Model } from '@chalkysticks/sdk-core';
 
-const venue = new Model.Venue({ id: 123 });
+const venue = ChalkySticks.resolve(Model.Venue, { id: 123 });
 await venue.fetch();
 
-// Properties
-console.log(venue.name);
-console.log(venue.address);
-console.log(venue.city, venue.state, venue.zip);
-console.log(venue.phone);
-console.log(venue.website);
-console.log(venue.latitude, venue.longitude);
-console.log(venue.tableCount);
-console.log(venue.rating);
+console.log(venue.getName(), venue.getCity(), venue.getState());
+console.log(venue.getLatitude(), venue.getLongitude());
+console.log(venue.getDistance(40.7128, -74.006, 'mi'));
+console.log(venue.isOpenNow());
 ```
 
-## Venue Types
+Decorator-backed virtual props read from the `details` / `hours` / `meta` relationships: table inventory (`table7`, `table8`, `table9`, `snooker`, `billiards`, `freeTable`), amenities (`hasFood`, `hasLeague`, `cashOnly`, `pingPong`, `shuffleboard`, `darts`, `foosball`, `skeeball`, `livemusic`, `smoking`, `tournaments`, `gambling`), hours (`hoursMonday`–`hoursSunday`), and `website`.
 
-| Type | Description |
-|------|-------------|
-| `pool_hall` | Dedicated pool hall |
-| `bar` | Bar with tables |
-| `club` | Private club |
-| `recreation` | Recreation center |
+Relationships: `checkins`, `comments`, `details`, `hours`, `media`, `meta`, `reactions`, `revisions`, `taggedMedia`.
 
 ## Check-ins
 
+The model has a one-call action that posts and appends to `venue.checkins`:
+
 ```typescript
-// Check into a venue
-await venue.checkin();
-
-// Get check-in history
-const checkins = venue.checkins;
-await checkins.fetch();
-
-// Get who's currently at venue
-checkins.setQuery({ active: true });
-await checkins.fetch();
+await venue.checkin(); // POST /v3/venues/{venue}/checkins
 ```
+
+To list check-ins, scope the collection to the venue with a modified endpoint (there is no `venue_id` query param):
+
+```typescript
+import { Collection, Factory } from '@chalkysticks/sdk-core';
+
+const checkins = Factory.VenueCheckin.collection(venue); // uses venues/{id}/checkins
+await checkins.fetch();
+
+// Equivalent manual form
+const manual = new Collection.VenueCheckin();
+manual.useModifiedEndpoint(venue);
+await manual.fetch();
+```
+
+See the [API docs](/api/venues#check-ins) for the endpoint contract.
 
 ## Venue Media
 
+Simplest via the relationship, which scopes the endpoint automatically:
+
 ```typescript
-// Get venue photos
-const media = venue.media;
+const media = venue.media; // Collection.VenueMedia → venues/{id}/media
 await media.fetch();
 
-// First photo URL
-const photoUrl = media.first().url;
+media.getTables();      // Enum.VenueMediaType filters
+media.getInterior();
+media.getExterior();
 ```
+
+## Hours
+
+`Collection.VenueHour` is timezone-aware:
+
+```typescript
+venue.hours.setTimezone('America/New_York');
+venue.hours.isOpenNow();
+venue.hours.getTodayHours();
+venue.hours.getHoursForDay('friday');
+```
+
+## Recent Changes
+
+- `~1.55.0` — `VenueSearch` / `EmbeddingSearch` natural-language search collections added.

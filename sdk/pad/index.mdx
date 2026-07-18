@@ -3,13 +3,17 @@ title: 'Pad Package'
 description: 'SDK for creating and managing pool table diagrams'
 ---
 
-The `sdk-pad` package provides functionality for creating, editing, and persisting pool table diagrams.
+The `sdk-pad` package provides functionality for creating, editing, and persisting pool table diagrams, plus a custom-rules engine for authoring drill rules.
+
+Current version: **2.0.0**
 
 ## Installation
 
 ```bash
 npm install @chalkysticks/sdk-pad
 ```
+
+`@chalkysticks/sdk-core` (^1.61.5) is a peer dependency.
 
 ## Quick Start
 
@@ -21,7 +25,7 @@ const table = new Builder.DiagramBuilder()
     .setBounds({ x: 0, y: 0, width: 800, height: 400 })
     .setBallSize(20)
     .addCueBall(0.25, 0.5)
-    .addBall({ x: 0.5, y: 0.3, type: 'solid', number: 1 })
+    .addBall({ type: '1', x: 0.5, y: 0.3 })
     .connectLastTwoBalls()
     .build();
 
@@ -29,31 +33,41 @@ const table = new Builder.DiagramBuilder()
 const state = table.exportTableState();
 ```
 
+Ball types are strings: `'cue'`, `'1'`–`'15'`, `'ghost'`, `'arrow'`. There is no separate `number` field.
+
 ## Modules
 
 | Module | Description |
 |--------|-------------|
 | **Builder** | DiagramBuilder (fluent API), TableBuilder (factory methods) |
-| **Manager** | Table, Ball, Line, Rail, Trajectory (pure logic) |
-| **Geometry** | Distance, Intersection, Normalize (math utilities) |
-| **Model** | Diagram model for persistence |
+| **Manager** | Table, Ball, Line, Shape, Sticker, Text, Rail, Trajectory, Base (pure logic) |
+| **Geometry** | Bezier, distance, intersection, and normalization functions (flat exports) |
+| **Model** | Diagram model for persistence, customization, and rules |
 | **Collection** | Diagram collection |
-| **Factory** | Diagram factory functions |
-| **Enum** | RailDirection (top, right, bottom, left) |
+| **Constant** | TABLE_CONFIGS, BALL_SIZE, BallLineColor, DIAGRAM_CUSTOMIZATION_DEFAULTS, DEFAULT_RULES_PHRASES |
+| **Enum** | DiagramState, LineStyle, PocketLocation, RailDirection, RailLocation |
+| **Factory** | `Factory.Diagram.model()` / `Factory.Diagram.collection()` pre-wired to the v3 API |
+| **Rules** | Custom-rules shorthand compiler, drill rule parser, human-readable summaries |
+| **Core** | Re-export of `@chalkysticks/sdk-core` |
 
 ## Exports
 
 ```typescript
 import {
     Builder,     // DiagramBuilder, TableBuilder
-    Manager,     // Table, Ball, Line, Rail, Trajectory
-    Geometry,    // Distance, Intersection, Normalize
-    Model,       // Diagram
     Collection,  // Diagram
-    Factory,     // Diagram
-    Enum         // RailDirection
+    Constant,    // TABLE_CONFIGS, BALL_SIZE, BallLineColor, DIAGRAM_CUSTOMIZATION_DEFAULTS, ...
+    Core,        // @chalkysticks/sdk-core re-export
+    Enum,        // DiagramState, LineStyle, PocketLocation, RailDirection, RailLocation
+    Factory,     // Diagram.model(), Diagram.collection()
+    Geometry,    // quadraticBezierPoint, lineDistance, normalizeCoordinates, ...
+    Manager,     // Table, Ball, Line, Shape, Sticker, Text, Rail, Trajectory, Base
+    Model,       // Diagram
+    Rules,       // CustomRulesShorthandCompiler, DrillRuleParser, ShorthandSummaryFormatter, ...
 } from '@chalkysticks/sdk-pad';
 ```
+
+Importing the package also auto-registers a `User.diagrams` relationship on the core `User` model (via an internal plugin), so `user.diagrams` works when diagrams are included in an API response.
 
 ## Key Concepts
 
@@ -61,23 +75,47 @@ import {
 - **Managers** contain pure logic for manipulating table state (no UI)
 - **Geometry** utilities handle coordinate math and normalization
 - **Diagrams** are the main container for pad content
-- **Balls** are positioned on the table (cue, solid, striped, ghost)
-- **Lines** connect balls to show shot paths
-- **Trajectories** visualize ball movement predictions
-- All coordinates are normalized (0-1) relative to table dimensions
+- **Balls** are positioned on the table (`'cue'`, `'1'`–`'15'`, `'ghost'`, `'arrow'`)
+- **Lines** connect balls to show shot paths (optional Bezier control point, color, style)
+- **Rules** are authored as a shorthand DSL string stored on the diagram (`diagram.getRules()`)
+- All builder/import coordinates are normalized (0-1) relative to table dimensions
+
+## Table Configurations
+
+`Constant.TABLE_CONFIGS` maps table size keys to render configuration (viewBox, playable bounds, ball size, grid size):
+
+```typescript
+import { Constant, Manager } from '@chalkysticks/sdk-pad';
+
+const config = Constant.getTableConfig('nine-foot');
+// { ballSize: 18, dataTableType: 'table-horizontal-9', gridSize: 98.5,
+//   playableBounds: { x: 57, y: 57, width: 790, height: 395 }, ... }
+
+const table = new Manager.Table(config.playableBounds, config.ballSize);
+
+// Resolve by data table type instead (falls back to table-horizontal-9)
+const byType = Constant.getTableConfigByDataType('table-horizontal-8');
+```
+
+Available keys: `six-foot`, `seven-foot`, `eight-foot`, `nine-foot`, `billiards-ten-foot`.
 
 ## Architecture
 
 ```
 Builder (DiagramBuilder, TableBuilder)
     ↓ creates
-Manager.Table (orchestrator)
+Manager.Table (orchestrator, extends Event.Dispatcher)
     ├── Manager.Ball (ball operations)
     ├── Manager.Line (connections)
+    ├── Manager.Shape (geometric shapes)
+    ├── Manager.Sticker (sticker images)
+    ├── Manager.Text (text annotations)
     ├── Manager.Rail (boundaries)
     └── Manager.Trajectory (paths)
     ↓ exports
-Model.Diagram (persistence)
+Model.Diagram (persistence, customization, rules)
+    ↕ compiles
+Rules (shorthand DSL → ICustomRulesConfig, human summaries)
 ```
 
 ## Example: Complete Workflow
@@ -89,12 +127,12 @@ import { Builder, Model } from '@chalkysticks/sdk-pad';
 const table = new Builder.DiagramBuilder()
     .setBounds({ x: 0, y: 0, width: 800, height: 400 })
     .addCueBall(0.2, 0.5)
-    .addBall({ x: 0.6, y: 0.4, type: 'solid', number: 1 })
+    .addBall({ type: '1', x: 0.6, y: 0.4 })
     .connectLastTwoBalls()
     .build();
 
 // 2. Manipulate via managers
-table.ballManager.addBallNormalized({ x: 0.8, y: 0.6, type: 'striped', number: 9 });
+table.ballManager.addBallNormalized({ type: '9', x: 0.8, y: 0.6 });
 
 // 3. Export state
 const state = table.exportTableState();
@@ -105,3 +143,17 @@ await diagram.save();
 
 console.log('Saved as:', diagram.getHash());
 ```
+
+## Recent Changes
+
+- **2.0.0** — Major rework of the `Rules` namespace (introduced in 1.6.0): [shorthand DSL compiler, drill parser, and human-readable summaries](/sdk/pad/rules)
+- **1.7.1** — `DrillRuleParser` (guided builder ↔ shorthand)
+- **1.7.0** — Remote rules persistence (`Diagram.getRules()` / `setRules()`)
+- **1.6.4** — Rail adjacency helpers (`ADJACENT_RAILS`, `isRailAdjacentToPocket`, `railsAdjacentToPocket`)
+- **1.6.0** — Custom rules compilation, shorthand summaries, `PocketLocation` / `RailLocation` enums, `DEFAULT_RULES_PHRASES`
+- **1.5.19** — Snap-to-grid customization (`Diagram.setSnapToGrid()`)
+- **1.5.14–1.5.18** — Billiards table config, `gridSize`/`label` on table configs, subgrid divisions/opacity
+- **1.5.13** — Cue ball alias normalization (`'0'`, `'cue'`, `'w'`, `'white'`, ... all resolve to the cue ball)
+- **1.5.6** — Per-diagram customization surface (theme, colors, ball set, visibility flags) and `change:customization` on `Model.Diagram`
+- **1.5.5** — `customization` field added to `Model.Diagram`
+- **1.5.4** — Diagram relationships: `comments`, `owner`, `reactions`, `tags` (the auto-registered `User.diagrams` plugin predates this — present since 1.3.9)

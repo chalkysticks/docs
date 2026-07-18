@@ -1,0 +1,201 @@
+---
+title: 'ImageAnalyzer'
+description: 'Main orchestrator class that drives the full inference pipeline'
+---
+
+`ImageAnalyzer` is the primary entry point for the inference SDK. It owns the source element, drives the per-frame pipeline (`requestVideoFrameCallback`), and dispatches processed results as events.
+
+## Import
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+const analyzer = new Core.ImageAnalyzer();
+```
+
+`ImageAnalyzer` extends `Event.Dispatcher` from `@chalkysticks/sdk-core`, so all standard event methods (`on`, `off`, `dispatch`) are available.
+
+## Constructor Options
+
+```typescript
+const analyzer = new Core.ImageAnalyzer({
+    autoOrient: false,
+    autoTransform: true,
+    confidence: 0.4,
+    remote: { endpoint: 'https://api.chalkysticks.com/v3/data/table-scan-full' },
+    stabilization: {
+        cameraFingerprint: true,
+        cameraType: true,
+    },
+});
+```
+
+All fields of `Inference.IImageAnalyzerConfig` are optional; defaults come from `Config.Roboflow`:
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `autoOrient` | `false` | Rotate normalized table-space output for portrait display containers |
+| `autoTransform` | `false` | Compute homography and attach `transformedData` to each frame |
+| `cameraIndex` | `{}` | Overrides for the fingerprint `CameraIndex` (see [Camera Fingerprint](/sdk/inference/camera-fingerprint)) |
+| `confidence` | `Config.Roboflow.Confidence` (0.4) | Minimum model confidence |
+| `modelName` | `Config.Roboflow.ModelName` | Roboflow project slug |
+| `orientation` | `Config.Roboflow.Orientation` | `'portrait'` or `'landscape'` |
+| `overlap` | `Config.Roboflow.Overlap` (0.3) | NMS overlap |
+| `publishableKey` | `Config.Roboflow.PublishableKey` | Roboflow browser key |
+| `remote` | — | `{ endpoint }` to POST frames to an HTTP inference endpoint instead of running locally |
+| `stabilization` | all `true` | Per-stage kill switches: `ballIdentity`, `ballPosition`, `ballTracking`, `cameraFingerprint`, `cameraType`, `homography`, `pockets` |
+| `version` | `Config.Roboflow.Version` (7) | Roboflow model version |
+
+## Processing
+
+### `process(source, continuous)`
+
+Unified entry point for images and video.
+
+```typescript
+// Single image (one-shot)
+const predictions = await analyzer.process(imageElement);
+
+// Single video frame
+await analyzer.process(videoElement);
+
+// Continuous video loop — schedules per-frame work via requestVideoFrameCallback
+await analyzer.process(videoElement, true);
+```
+
+Accepts `File | Blob | ArrayBuffer | Uint8Array | HTMLImageElement | HTMLVideoElement`. A source argument is required on every call — `process()` throws immediately when called without one, even if an element was set previously (the remembered element is only used internally by the continuous loop). Continuous mode skips frames while a previous inference is still running rather than queueing.
+
+Returns `Promise<Inference.IPrediction[]>` (raw predictions; empty array in continuous mode — subscribe to the `frame` event instead).
+
+### `processDetections(predictions, dimensions, options)`
+
+Feeds externally-sourced predictions (remote API response, recorded clip replay) through the same internal pipeline — dedupe, camera type, pocket identification, tracking, identity stabilization, optional transform — and dispatches a `frame` event.
+
+```typescript
+const frame = await analyzer.processDetections(predictions, { height: 720, width: 1280 });
+
+// One-off still image out of sequence — skip the stateful tracker
+const still = await analyzer.processDetections(predictions, dimensions, { applyTracking: false });
+```
+
+Returns `Promise<Inference.IProcessedFrame>`.
+
+### Inference backends
+
+`ImageAnalyzer` picks the backend automatically:
+
+| Environment | Backend |
+|-------------|---------|
+| `config.remote.endpoint` set | Multipart POST of the frame as JPEG; expects a predictions JSON array |
+| Browser | Local InferenceJS worker (`InferenceEngine` + `CVImage`) |
+| Node | `@chalkysticks/sdk-extras` `Model.TableScan` against the local API |
+
+```typescript
+analyzer.isRemote; // true when a remote endpoint is configured
+```
+
+## Lifecycle
+
+```typescript
+analyzer.stop();     // stops the continuous loop and pending frame work
+analyzer.reset();    // stop() + clears tracker, stabilizers, fingerprint index, and camera memory
+analyzer.dispose();  // stop() only — inference engine/worker teardown is currently a no-op
+```
+
+`isRunning` (public boolean) reflects whether the continuous loop is active.
+
+## Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `frame` | `Inference.IProcessedFrame` | After each pipeline run (including empty frames for untrusted scenes) |
+| `cameraChanged` | `Inference.ICameraChangedEvent` | When the camera fingerprint detects a cut to a different camera or trust changes |
+
+Handlers receive the standard `Event.Dispatcher` envelope — the payload is on `e.data`:
+
+```typescript
+analyzer.on('frame', (e) => {
+    const frame: Inference.IProcessedFrame = e.data;
+    console.log(frame.balls.length, frame.pockets.length, frame.cameraType);
+});
+
+analyzer.on('cameraChanged', (e) => {
+    const change: Inference.ICameraChangedEvent = e.data;
+    console.log(`Camera ${change.previousId} → ${change.currentId}`, change.restoredFromMemory);
+});
+```
+
+### IProcessedFrame
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `balls` | `INormalizedDetection[]` | Deduped, bounds-filtered, tracked (`trackId`, `ballType` when stabilized) |
+| `pockets` | `INormalizedDetection[]` | Raw pocket detections |
+| `cameraType` | `CameraType?` | Stabilized classification |
+| `cameraTypeConfidence` | `number?` | 0 when using the cached type |
+| `identifiedPockets` | `IPocketPositions \| null` | Six labeled slots (`topLeft` … `bottomRight`) |
+| `pocketInferenceDiagnostics` | `IPocketInferenceDiagnostics \| null` | Strategy, confidence, temporal-prior usage |
+| `predictions` | `IPrediction[]` | Raw model output |
+| `sourceWidth` / `sourceHeight` | `number` | Source dimensions |
+| `timestamp` | `number` | `Date.now()` at processing |
+| `transformedData` | `ITransformedData \| null` | Table-space output; only with `autoTransform: true` and a trusted camera |
+
+## Camera Awareness
+
+The fingerprint stage runs before inference on every frame (disable via `stabilization.cameraFingerprint: false`):
+
+- A **cut** to a different camera resets the tracker and all stabilizers so stale geometry cannot leak across scenes.
+- A cut to a **known** camera replays memorized state (camera type, homography, pocket layout) so frame 1 has correct geometry instead of waiting for stabilizers to re-lock.
+- **Untrusted** transient scenes (a few-frame cutaway) emit an empty frame and never mutate table state.
+
+```typescript
+analyzer.getCameraIndex();       // CameraIndex — roster, current id, thresholds
+analyzer.getCameraStateMemory(); // CameraStateMemory — inspect or clear per-camera entries
+```
+
+See [Camera Fingerprint](/sdk/inference/camera-fingerprint) for the full API.
+
+## Debugging
+
+```typescript
+const snapshot = analyzer.getDebugSnapshot();
+// {
+//     freeze: { aggregateSpeed: number, isFrozen: boolean },
+//     tracks: [{
+//         trackId, state, hitFrames, missedFrames,
+//         lastDetectionBallType, lastDetectionConfidence,
+//         resolvedIdentity, resolvedConfidence, isLocked,
+//         topScores: [{ ballType, score }],
+//     }],
+// }
+```
+
+Joins per-track lifecycle data from `BallTracker` with identity-ledger data from `BallIdentityStabilizer` — this feeds the camera-aware-inference example's debug panel.
+
+## Example: Live Video
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+const analyzer = new Core.ImageAnalyzer({ autoTransform: true });
+
+analyzer.on('frame', (e) => {
+    const frame: Inference.IProcessedFrame = e.data;
+
+    if (frame.transformedData) {
+        updateTableDiagram(frame.transformedData.balls);
+    }
+});
+
+await analyzer.process(document.querySelector('video')!, true);
+
+// later
+analyzer.stop();
+analyzer.dispose();
+```
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — Camera fingerprint stage, `cameraChanged` event, `CameraStateMemory` restore/persist, `reset()`, `getCameraIndex()`, `getCameraStateMemory()`, `getDebugSnapshot()`, `processDetections()` now runs the full temporal stack by default (`applyTracking` option), `stabilization.cameraFingerprint` kill switch.
+- **1.13.0** — `requestAnimationFrame` loop replaced with `requestVideoFrameCallback`; transformation work delegated to `TransformationPipeline`; `remote` endpoint support and the `stabilization` kill-switch map shipped.
+- **~1.11.0** — `setVideoElement`/`analyze` folded into the unified `process()` API.

@@ -1,0 +1,33 @@
+---
+title: 'Webhooks'
+description: 'Inbound webhooks from external services'
+---
+
+Inbound webhook endpoints. None of these use Bearer authentication — each verifies its sender via signature or service-specific shared secret.
+
+## BunnyStream
+
+Video processing notifications. See [Media](/api/media#webhooks).
+
+```bash
+POST /v3/webhooks/bunny
+```
+
+## RevenueCat
+
+Subscription and purchase events. See [Billing](/api/billing).
+
+```bash
+POST /v3/webhooks/revenuecat
+```
+
+## YouTube WebSub
+
+PubSubHubbub callbacks for subscribed YouTube channels. Used to detect newly published or newly live videos.
+
+```bash
+GET  /v3/youtube/webhook
+POST /v3/youtube/webhook
+```
+
+The `GET` form responds to the hub challenge; the `POST` form receives feed updates.

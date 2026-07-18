@@ -1,97 +1,124 @@
 ---
-title: 'Shot Execution'
-description: 'Power, english, and shot control'
+title: 'Shots'
+description: 'Working with shot records'
 ---
 
-## Shot Parameters
+Shots are represented by `Model.GameShot` and `Collection.GameShot` (endpoint `/shots`). Shot **physics** (power, english, trajectories) lives in [`@chalkysticks/sdk-physics`](/sdk/physics); this page covers the data-layer concerns.
 
-| Parameter | Range | Description |
-|-----------|-------|-------------|
-| Power | 0-1 | Shot force (0 = soft, 1 = break) |
-| English X | -1 to 1 | Left/right spin |
-| English Y | -1 to 1 | Top/back spin |
-| Elevation | 0-90 | Cue angle in degrees |
+## Fields
 
-## Executing a Shot
+| Field | Type | Notes |
+|-------|------|-------|
+| `game_id` | number | Parent game |
+| `inning_id` | number \| null | Parent inning |
+| `player_id` | number | Shooter |
+| `shot_number` | number | Sequence within the game |
+| `shot_type` | `Enum.ShotType` \| string | Backend may introduce new values |
+| `result` | `Enum.ShotResult` \| string | |
+| `is_foul` / `is_safety` | boolean | |
+| `pocketed_balls` | number[] | Ball numbers; `0` = cue ball |
+| `cue_params` | `ICueParameters` | `{ aim, english, position, power }` |
+| `table_state_before` / `table_state_after` | `IGameShotState` | Full ball layout snapshots |
+| `player_state` | object | Free-form per-player state JSON |
+| `shot_time` | string \| null | |
+
+## Recording A Shot
 
 ```typescript
-const shotExecutor = game.shotExecutor;
+import { ChalkySticks } from '@chalkysticks/sdk-core';
+import { Enum, Model } from '@chalkysticks/sdk-game';
 
-// Basic shot
-shotExecutor.shoot({
-    power: 0.5,
-    angle: 45  // degrees
+const shot = ChalkySticks.resolve(Model.GameShot, {
+    game_id:        game.id,
+    is_foul:        false,
+    player_id:      1,
+    pocketed_balls: [3],
+    result:         Enum.ShotResult.Made,
+    shot_type:      Enum.ShotType.Standard,
 });
 
-// Shot with english
-shotExecutor.shoot({
-    power: 0.6,
-    angle: 30,
-    english: { x: 0.3, y: -0.2 }  // Right english, draw
-});
-
-// Jump shot
-shotExecutor.shoot({
-    power: 0.7,
-    angle: 45,
-    elevation: 35
-});
+await shot.save();
 ```
 
-## Aiming
+## Listing Shots
 
 ```typescript
-// Set aim direction
-game.setAimAngle(45);
+import { Factory } from '@chalkysticks/sdk-game';
 
-// Aim at a specific ball
-game.aimAt(targetBall);
-
-// Aim at a point on the table
-game.aimAtPoint({ x: 0.75, y: 0.5 });
+const shots = Factory.GameShot.collection();
+shots.setQueryParams({ game_id: game.id });
+await shots.fetch();
 ```
 
-## Power Control
+## Reading A Shot
+
+Getters parse JSON columns defensively (string or pre-parsed object):
 
 ```typescript
-// Set power (0-1)
-game.setPower(0.6);
-
-// Get current power
-const power = game.getPower();
+shot.getShotType();         // Enum.ShotType | string (default: Standard)
+shot.getResult();           // Enum.ShotResult | string (default: Missed)
+shot.getPocketedBalls();    // number[]
+shot.getCueParameters();    // ICueParameters | null
+shot.getTableStateBefore(); // IGameShotState | null
+shot.getTableStateAfter();  // IGameShotState | null
+shot.getPlayerState();      // Record<string, any> | null
+shot.isFoul();              // boolean
+shot.isSafety();            // boolean
 ```
 
-## English/Spin Control
+Relationships: `shot.player` (default include), `shot.game`, `shot.inning`.
+
+## Shot State Parsing
+
+`Utility.ShotStateParser` decodes and diffs state payloads:
 
 ```typescript
-// Set english (both axes -1 to 1)
-game.setEnglish(0.3, -0.2);  // Right, draw
+import { Enum, Utility } from '@chalkysticks/sdk-game';
 
-// Get current english
-const english = game.getEnglish();
-console.log(english.x, english.y);
+// Normalize a payload that may be a JSON string or object
+const state = Utility.ShotStateParser.parseState(rawPayload); // IGameShotState | null
 
-// Reset english to center
-game.resetEnglish();
+// Diff two states → newly pocketed ball numbers
+const pocketed = Utility.ShotStateParser.determinePocketedBalls(before, after); // number[]
+
+// Best-effort result classification from the state delta
+const result = Utility.ShotStateParser.calculateShotResult(before, after, Enum.ShotResult.Missed);
 ```
 
-## Elevation (Jump/Masse)
+`calculateShotResult()` returns `Scratch` when the cue ball (number `0`) was pocketed, `Made` when anything else was, `Safety` when nothing was pocketed and `turnCount` did not change, otherwise the fallback.
+
+`Utility.GameRules` layers rule checks on top:
 
 ```typescript
-// Set cue elevation (degrees)
-game.setElevation(15);  // Slightly elevated
-game.setElevation(45);  // Jump shot
-game.setElevation(70);  // Masse shot
+Utility.GameRules.isLegalShot(game.getGameType(), afterState, { beforeState }); // boolean
+Utility.GameRules.inferResult(before, after);                                   // Enum.ShotResult
 ```
 
-## Shot Events
+## Enums
 
-```typescript
-game.on('shot:start', ({ power, angle, english }) => {
-    console.log('Shot fired with power:', power);
-});
+| `Enum.ShotType` | Value |
+|---|---|
+| `Bank` | `'bank'` |
+| `Break` | `'break'` |
+| `Combination` | `'combination'` |
+| `Jump` | `'jump'` |
+| `Kick` | `'kick'` |
+| `Misc` | `'misc'` |
+| `Push` | `'push'` |
+| `Safety` | `'safety'` |
+| `Standard` | `'standard'` |
 
-game.on('shot:complete', () => {
-    console.log('Shot animation complete');
-});
-```
+| `Enum.ShotResult` | Value |
+|---|---|
+| `Foul` | `'foul'` |
+| `Made` | `'made'` |
+| `Missed` | `'missed'` |
+| `Safety` | `'safety'` |
+| `Scratch` | `'scratch'` |
+
+For aim-line / ghost-ball calculations, see [`TrajectoryPredictor`](/sdk/physics#trajectory-prediction).
+
+## Recent Changes
+
+- `0.4.0` — `GameRules.isLegalShot()` no longer accepts `GameType.Custom` (`Custom` is a `RackStrategy`, not a `GameType`); per-ruleset legality should dispatch on `Game.ruleset`
+- `0.3.1` — `player_state` field and `getPlayerState()` added to `GameShot`

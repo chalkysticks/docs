@@ -1,0 +1,192 @@
+---
+title: 'Input'
+description: 'Form input primitives with v-model bindings'
+---
+
+Eleven input primitives. Every one of them supports `v-model` and emits an `input` event on change. They are deliberately small and stylistically neutral so they compose well inside [Form](/vue/form) layouts.
+
+## InputAffix
+
+Wrapper for a text input with decorative prefix / suffix pills (currency symbol, units, domain fragment).
+
+```html
+<ChalkyInputAffix prefix="$" suffix="USD">
+    <input v-model="amount" />
+</ChalkyInputAffix>
+```
+
+## InputChips
+
+Selectable pill / chip set. Use `multi` for a multi-select.
+
+```html
+<ChalkyInputChips
+    v-model="selected"
+    :options="[{ label: '8-ball', value: 'EightBall' }, { label: '9-ball', value: 'NineBall' }]"
+    :multi="true"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `options` | `IChipOption[]` | `[]` |
+| `multi` | boolean | `false` |
+| `removable` | boolean | — |
+
+## InputFile
+
+Drop-zone file picker wrapping a hidden `<input type="file">` with drag-and-drop support.
+
+```html
+<ChalkyInputFile
+    v-model="files"
+    accept="image/*"
+    :multiple="true"
+    title="Drop photos here"
+    hint="or click to browse"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `accept` | string | `''` |
+| `disabled` | boolean | `false` |
+| `multiple` | boolean | `false` |
+| `title` | string | — |
+| `hint` | string | `'or click to browse your device'` |
+
+Emits: `input` (v-model), `change`.
+
+## InputOtp
+
+One-time-passcode entry with auto-advancing focus and paste handling.
+
+```html
+<ChalkyInputOtp v-model="code" :length="6" :numeric="true" @complete="onComplete" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `length` | number | `6` |
+| `numeric` | boolean | `true` |
+| `uppercase` | boolean | — |
+| `disabled` | boolean | `false` |
+
+Emits: `input`, `complete`.
+
+## InputRangeDual
+
+Dual-thumb range slider. v-modeled value is an `{ min, max }` pair.
+
+```html
+<ChalkyInputRangeDual
+    v-model="bounds"
+    :min="0"
+    :max="100"
+    :step="1"
+/>
+```
+
+## InputRating
+
+Star rating input (CSS-only hover preview). Readonly mode for display.
+
+```html
+<ChalkyInputRating v-model="stars" :max="5" />
+<ChalkyInputRating :value="venue.rating" :readonly="true" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `character` | string | `'★'` |
+| `max` | number | `5` |
+| `readonly` | boolean | `false` |
+
+## InputSegmented
+
+iOS-style segmented control. Drop-in replacement for a short `<select>`.
+
+```html
+<ChalkyInputSegmented
+    v-model="view"
+    :options="[{ label: 'Grid', value: 'grid' }, { label: 'List', value: 'list' }]"
+    :full="true"
+/>
+```
+
+## InputStepped
+
+Range slider with discrete stops — native range provides the drag, the tick row shows labels and click targets.
+
+```html
+<ChalkyInputStepped
+    v-model="skillLevel"
+    :options="[{ label: '1', value: 1 }, { label: '2', value: 2 }, …]"
+/>
+```
+
+## InputStepper
+
+Numeric stepper with ± buttons. Clamps to `min` / `max`.
+
+```html
+<ChalkyInputStepper v-model="raceTo" :min="1" :max="25" :step="1" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `min`, `max`, `step` | number | — |
+| `dark` | boolean | `false` |
+| `disabled` | boolean | `false` |
+
+Emits: `input`, `change`.
+
+## InputSwatches
+
+Color-swatch radio group.
+
+```html
+<ChalkyInputSwatches
+    v-model="ballColor"
+    :options="[{ color: '#FFFF00', value: 'yellow' }, { color: '#0000FF', value: 'blue' }]"
+/>
+```
+
+## InputTableDetector
+
+In-browser pool-table detector using the camera and an ML model. Streams confidence values and emits `table:detected` when threshold criteria are met.
+
+```html
+<ChalkyInputTableDetector
+    :auto-start="true"
+    :auto-stop="true"
+    model-url="/model/"
+    :detection-duration="3000"
+    :detection-samples="30"
+    :detection-threshold="0.7"
+    :enable-auto-exposure="true"
+    @table:detected="onDetected"
+    @table:progress="onProgress"
+/>
+```
+
+Key props (selected — see source for the full set):
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `autoStart` / `autoStop` | boolean | start / stop on mount / unmount |
+| `modelUrl` | string | path to model directory |
+| `detectionDuration` | number | ms over which samples are aggregated |
+| `detectionSamples` | number | required passing samples |
+| `detectionThreshold` | number | confidence threshold (0–1) |
+| `enableAutoExposure` | boolean | auto-tune exposure |
+| `autoExposureSpeed`, `autoExposureTarget` | number | exposure tuning |
+| `enableControlClose`, `enableControlFacingMode` | boolean | camera UI controls |
+| `facingMode` | string | `'user'` / `'environment'` |
+| `overexposureThreshold` | number | |
+| `showControls`, `showFeedback`, `showOverlay` | boolean | UI toggles |
+| `scanMessage`, `successMessage` | string | overlay text |
+
+Emits: `table:detected`, `table:progress`, `detection:started`, `detection:stopped`, `prediction`, `camera:capture`, `camera:close`, `camera:error`, `file:selected`, `model:loaded`, `model:error`.
+
+For a modal wrapper with success state and camera close button, use [`ModalTableDetector`](/vue/ui-elements#modaltabledetector).

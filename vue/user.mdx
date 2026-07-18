@@ -1,0 +1,126 @@
+---
+title: 'User'
+description: 'User cards, avatars, menus, lists, and attribution'
+---
+
+Eight components for displaying users — avatars, cards, lists, attribution, and the settings menu.
+
+## UserAvatar
+
+Avatar with an intelligent fallback chain (user avatar → seeded default → generic backup). Optional name + active indicator.
+
+```html
+<ChalkyUserAvatar
+    :user-model="user"
+    size="md"
+    :show-name="true"
+    :show-active="true"
+    :use-full-name="false"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `userModel` | `Model.User` | empty User |
+| `size` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` |
+| `showName` | boolean | `false` |
+| `showActive` | boolean | `true` |
+| `useFullName` | boolean | `false` |
+
+## UserCard
+
+Comprehensive user profile card: gallery, bio, games, wallet balance, favorites, check-ins.
+
+```html
+<ChalkyUserCard
+    :user-model="user"
+    :show-favorites="true"
+    :show-checkins="true"
+    @venue:select="goToVenue"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `userModel` | `Model.User` | empty User |
+| `interactiveGallery` | boolean | `true` |
+| `maxGalleryImages` | number | — |
+| `showCheckins` | boolean | — |
+| `showFavorites` | boolean | — |
+
+Slots: `before`, `content:before`, `content:after`, `after`.
+
+Emits: `click:gallery`, `venue:select`.
+
+## UserCardPreview
+
+Compact square card — avatar, name, last-seen status. Use in horizontal scrollers.
+
+```html
+<ChalkyUserCardPreview :user-model="user" />
+```
+
+## UserRow
+
+Horizontal row layout — avatar, name, status badge, slots for custom actions.
+
+```html
+<ChalkyUserRow :user-model="user" @click="goToUser">
+    <template #actions>
+        <ChalkyVenueButtonCall :venue-model="venue" />
+    </template>
+</ChalkyUserRow>
+```
+
+Slots: `before`, `user` (scoped), `actions`, `after`.
+
+## UserList
+
+User collection with grid / list view modes.
+
+```html
+<ChalkyUserList
+    :user-collection="userCollection"
+    view="grid"
+    @user:select="goToUser"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `userCollection` | `Collection.User` | factory |
+| `view` | `'grid' \| 'list'` | `'grid'` |
+
+## UserAttribution
+
+Compact attribution chip — avatar + caption (e.g. "Submitted by") + name. CSS class `is-active` while the user is online.
+
+```html
+<ChalkyUserAttribution :user-model="author" caption="Submitted by" />
+```
+
+## UserFormattedGames
+
+Renders the user's preferred games as an icon-rich list. Supports 14 game types; defaults to 8-ball if none.
+
+```html
+<ChalkyUserFormattedGames :user-model="user" />
+```
+
+## UserMenu
+
+User settings menu — slide-in panel with sub-views for profile, password, notifications, billing, and about. Used by [`AuthenticationModal`](/vue/authentication#authenticationmodal).
+
+```html
+<ChalkyUserMenu
+    :auth-model="authModel"
+    @click:close="closeMenu"
+    @click:logout="logout"
+/>
+```
+
+Methods: `animateInStart()`, `animateIn()`, `animateOut()`.
+
+Emits: `click:close`, `close`, `click:logout`.
+
+Sub-views (under `User/Menu/*`, not directly registered): `UserMenuLanding`, `UserMenuProfile`, `UserMenuPassword`, `UserMenuNotifications`, `UserMenuBilling`, `UserMenuAbout`.

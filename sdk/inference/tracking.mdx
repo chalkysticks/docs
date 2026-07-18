@@ -1,0 +1,237 @@
+---
+title: 'Tracking & Stabilization'
+description: 'Multi-frame object tracking with Kalman filtering and temporal stabilization'
+---
+
+Single-frame detection is noisy — balls jitter, pockets flicker, and camera type oscillates between frames. The `Tracking` and `Stabilization` namespaces smooth all of this out over time.
+
+## Import
+
+```typescript
+import { Tracking, Stabilization } from '@chalkysticks/sdk-inference';
+```
+
+## BallTracker
+
+Maintains persistent track IDs across frames using greedy nearest-cost assignment between Kalman predictions and new detections.
+
+```typescript
+const tracker = new Tracking.BallTracker();
+
+// Each frame, feed in the latest detections
+const tracked: Inference.ITrackedBall[] = tracker.update(ballDetections);
+
+tracked.forEach((ball) => {
+    console.log(`Track #${ball.trackId} at (${ball.x}, ${ball.y}) state=${ball.state}`);
+});
+```
+
+Each `ITrackedBall` carries `trackId`, `state` (`'tentative' | 'confirmed' | 'lost'`), `vx`/`vy` velocity, `history`, `isColliding`, and the detection fields.
+
+### How It Works
+
+1. **Predict** — each existing track's Kalman filter predicts where the ball should be this frame
+2. **Cost matrix** — distances between predictions and new detections
+3. **Greedy assignment** — repeatedly picks the cheapest remaining prediction–detection pair (capped at `MaxDistance`); not a full Hungarian solve, so total cost is not guaranteed minimal
+4. **Update** — matched tracks get their Kalman filters corrected with the measurement
+5. **Create/Remove** — unmatched detections spawn tentative tracks; unmatched tracks age out
+
+### Anti-Swap & Stationary Window
+
+Two protections against identity churn on dense racks (tuned in `Config.Tracking`):
+
+- **Anti-swap logic** rejects assignments that would trade two adjacent balls when they are within collision distance (2 × `CollisionThresholdMultiplier` × `BallDiameter` — 72 px with defaults; the un-doubled `CollisionThresholdMultiplier` × `BallDiameter` figure is what sets the `isColliding`/`willCollide` flags).
+- **Stationary frame window** keeps an unmatched stationary track alive for `MaxMissedFramesStationary` (60) frames instead of the moving-ball limit `MaxMissedFrames` (5) — a ball standing still while a player walks over it is not dropped.
+
+### Other Methods
+
+```typescript
+tracker.getTrackedBalls(); // current confirmed tracks without feeding a frame
+tracker.reset();           // clear all tracks
+tracker.getDebugSnapshot();// per-track lifecycle rows for debug UIs
+```
+
+The `BallTrack` class (individual track: `predict()`, `update()`, `markMissed()`, `getPosition()`, `getKalman()`) is also exported.
+
+## KalmanFilter
+
+A 2D position+velocity Kalman filter used internally by `BallTracker`, available standalone.
+
+```typescript
+const kf = new Tracking.KalmanFilter({ processNoise: 1.0, measurementNoise: 10.0 });
+
+kf.init(150, 300);                 // seed state at a position
+const predicted = kf.predict();    // optional dt argument, default 1
+const corrected = kf.update(152, 298);
+const state = kf.getState();       // { x, y, vx, vy }
+```
+
+## Stabilizers
+
+Five stabilizers participate in the pipeline. Method names differ per class — they are not a uniform `update()` interface.
+
+| Class | Per-frame method | Input |
+|-------|------------------|-------|
+| `CameraTypeStabilizer` | `processFrame(result)` | `Inference.ICameraTypeResult` from `CameraTypeDetector.detect()` |
+| `HomographyStabilizer` | `stabilize(matrix, confidence?)` | `Inference.THomographyMatrix` |
+| `PocketStabilizer` | `processFrame(pockets)` | `Inference.IPocketPositions` |
+| `BallIdentityStabilizer` | `stabilize(trackedBalls)` | `Inference.ITrackedBall[]` (after `BallTracker`) |
+| `TransformedBallStabilizer` | `smooth(balls)` | `Inference.ITransformedBall[]` (after homography) |
+
+All have `reset()`.
+
+### CameraTypeStabilizer
+
+Prevents the camera classification from flickering between overhead and freehand on borderline angles.
+
+```typescript
+const stabilizer = new Stabilization.CameraTypeStabilizer({
+    consensusThreshold: 0.8,   // vote share required to lock
+    maxHistoryFrames: 15,
+    minimumConfidence: 0.6,
+    stableFramesRequired: 5,
+});
+
+// Each frame — pass the full detector result, not just the type string
+const detection = Detection.CameraTypeDetector.detect(pockets);
+const stableType = stabilizer.processFrame(detection); // CameraType
+```
+
+- Accumulates votes over recent frames; once consensus is reached the type **locks**
+- Locked type persists until evidence overwhelmingly disagrees
+
+```typescript
+stabilizer.isCurrentlyLocked();
+stabilizer.getCurrentType();
+stabilizer.getStableFrameCount();
+stabilizer.forceUnlock();                       // e.g., user physically moved the camera
+stabilizer.seedLock(CameraType.Overhead, 0.9);  // replay memorized state (1.13.7+)
+```
+
+### HomographyStabilizer
+
+Reduces frame-to-frame jitter in the homography matrix. Without it, the entire overlay wobbles even with a stationary camera, because pocket detections shift a pixel or two per frame.
+
+```typescript
+const stabilizer = new Stabilization.HomographyStabilizer({
+    smoothingFactor: 0.3,
+    stabilizationStrategy: 'exponential',
+});
+
+const smoothMatrix = stabilizer.stabilize(rawMatrix, confidence);
+```
+
+```typescript
+stabilizer.seedMatrix(matrix, confidence); // replay memorized matrix (1.13.7+)
+stabilizer.getCurrentMatrix();
+stabilizer.getLastGoodMatrix();
+```
+
+### PocketStabilizer
+
+Locks pocket positions after `stableFramesRequired` (7) stable frames and returns the locked layout during occlusion or detection dropouts. Maintains a single **trusted layout**, tagged with the camera type it was captured under, that other stages use as a temporal prior — `peekTrustedLayout(cameraType)` returns `null` on a camera-type mismatch, and updating with a new camera type overwrites the previous layout.
+
+```typescript
+const stabilizer = new Stabilization.PocketStabilizer();
+const smoothPockets = stabilizer.processFrame(completePockets);
+```
+
+```typescript
+stabilizer.peekTrustedLayout(cameraType);                     // read prior without mutating
+stabilizer.updateTrustedLayout(layout, diagnostics, cameraType);
+stabilizer.clearTrustedLayout();
+stabilizer.isCurrentlyLocked();
+```
+
+### BallIdentityStabilizer
+
+Resolves ball **identities** (`cue`, `'1'`–`'15'`) onto tracks. Rewritten in 1.13.7+ as a ledger-based system: raw model labels are treated as *evidence*, scored per track, and final identities are chosen by constrained table-level assignment — each legal identity is unique across the table by construction.
+
+```typescript
+const stabilizer = new Stabilization.BallIdentityStabilizer();
+const stableBalls = stabilizer.stabilize(trackedBalls);
+// each ball's ballType / identityConfidence reflect the resolved identity
+```
+
+Behavior highlights (tuned in `Config.Identity`):
+
+- Score decay per frame (`ScoreDecay`), softer decay within a color family (`FamilyDecay`) — solids and their stripe counterparts (`1`↔`9`, `2`↔`10`, …) share evidence
+- Identities **lock** after `LockFrames` of dominance at `LockRatio`; unlocking requires `UnlockFrames` of contrary evidence
+- Scoring pauses for colliding balls (`SkipScoringWhileColliding`) and during fast motion (`MotionSpeedThreshold`); identity changes are penalized during motion and contact
+- A frame-level **freeze** suppresses identity churn while the whole table is in motion
+
+Static helpers:
+
+```typescript
+Stabilization.BallIdentityStabilizer.normalizeBallType('Cue');  // 'cue'
+Stabilization.BallIdentityStabilizer.normalizeBallType('none'); // 'unknown'
+Stabilization.BallIdentityStabilizer.isLegalIdentity('9');      // true
+Stabilization.BallIdentityStabilizer.COLOR_FAMILIES;            // { blue: ['2','10'], ... }
+```
+
+Debug:
+
+```typescript
+stabilizer.getDebugSnapshot();    // per-track ledger rows (resolvedIdentity, isLocked, topScores)
+stabilizer.getDebugFreezeState(); // { aggregateSpeed, isFrozen }
+```
+
+### TransformedBallStabilizer
+
+Adaptive EMA applied to ball positions **after** homography, in normalized table space. Alpha ramps from 0.05 (stationary — rock solid) to 0.2 (clearly moving — responsive); tracks are matched by proximity and expire after 5 missed frames.
+
+```typescript
+const stabilizer = new Stabilization.TransformedBallStabilizer();
+const smoothBalls = stabilizer.smooth(transformedBalls);
+```
+
+## When To Use What
+
+| Scenario | Class |
+|----------|-------|
+| Track ball positions across video frames | `BallTracker` |
+| Smooth noisy position measurements | `KalmanFilter` |
+| Lock camera type to avoid UI flickering | `CameraTypeStabilizer` |
+| Stabilize the perspective overlay | `HomographyStabilizer` |
+| Hold pocket layout through occlusions | `PocketStabilizer` |
+| Resolve ball numbers uniquely | `BallIdentityStabilizer` |
+| Kill residual table-diagram jitter | `TransformedBallStabilizer` |
+
+`ImageAnalyzer` wires all of these up internally — you only instantiate them directly for custom pipelines. Each can be disabled per-stage via the analyzer's `stabilization` config.
+
+## Example: Custom Stabilized Pipeline
+
+```typescript
+import { Detection, Homography, Stabilization, Tracking } from '@chalkysticks/sdk-inference';
+
+const tracker = new Tracking.BallTracker();
+const cameraStabilizer = new Stabilization.CameraTypeStabilizer();
+const identityStabilizer = new Stabilization.BallIdentityStabilizer();
+const pipeline = new Homography.TransformationPipeline();
+
+function processFrame(predictions: Inference.IPrediction[]) {
+    // Camera type — pass the full detector result
+    const pockets = Detection.PocketDetector.extractPockets(predictions);
+    const detection = Detection.CameraTypeDetector.detect(pockets);
+    const cameraType = cameraStabilizer.processFrame(detection);
+
+    // Balls — dedupe, track, resolve identities
+    const balls = Detection.BallDetector.removeDuplicates(Detection.BallDetector.extractBalls(predictions));
+    const tracked = tracker.update(balls);
+    const identified = identityStabilizer.stabilize(tracked);
+
+    // Table space — pipeline handles pocket/homography/ball stabilization
+    const transformed = pipeline.transform(identified as any, pockets as any, cameraType);
+
+    return {
+        balls: identified,
+        cameraType: cameraType,
+        transformed: transformed,
+    };
+}
+```
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — `BallIdentityStabilizer` rewritten (evidence ledgers, constrained unique assignment, color families, motion/contact penalties, freeze state); `CameraTypeStabilizer.seedLock()` and `HomographyStabilizer.seedMatrix()` added for camera-state restore; `BallTracker.getDebugSnapshot()` added.
+- **1.13.0** — `BallIdentityStabilizer` and `TransformedBallStabilizer` introduced; `BallTracker` gained anti-swap logic and the stationary missed-frame window.

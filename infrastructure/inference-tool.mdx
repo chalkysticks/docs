@@ -1,0 +1,163 @@
+---
+title: 'Inference Tool'
+description: 'Interactive Bun CLI for managing the Roboflow inference sidecar — start, stop, build, test, export, deploy'
+---
+
+## What It Is
+
+A Bun + TypeScript interactive CLI at `bin/api-v2/docker/tool/` that wraps every Docker, ECR, and SAM operation into a menu-driven interface. Instead of remembering `docker compose -f docker/inference/compose.cpu.yml up -d` or `docker export | docker import` incantations, you run one command and pick from the menu.
+
+## Quick Start
+
+```bash
+cd bin/api-v2
+./docker/tool/run
+```
+
+First run auto-installs dependencies (~5 seconds). Every subsequent run is instant.
+
+```
+🎱 ChalkySticks Inference Tool
+
+? What would you like to do?
+> ▸ Status
+  Start (CPU)
+  Start (GPU)
+  Stop everything
+  Restart inference
+  Build standalone image
+  Export cache
+  Import cache
+  Test inference (smoke)
+  Test inference (real image)
+  Tail logs
+  Build Lambda image
+  Push to ECR
+  Deploy to AWS Lambda
+  Cleanup
+  Exit
+```
+
+## Command Reference
+
+### Status
+
+Shows container states, cache volume size, per-model presence, and standalone-image size. Read-only — never mutates anything.
+
+```
+▸ Containers:
+  chalkysticks-inference         running (healthy)
+  chalkysticks-inference-warmup  exited (0)
+
+▸ Cache volume: 219 MB
+▸ Cached models:
+  OK  my-first-project-2-qvkxb/8
+  OK  ball-detection-feb-2026/11
+
+▸ Standalone image: chalkysticks/inference:latest (9.9 GB)
+```
+
+### Start (CPU) / Start (GPU)
+
+Runs `docker compose up -d` with the CPU or GPU compose file, then tails the warmup container's logs so you see models downloading in real time.
+
+### Stop Everything
+
+`docker compose down` on both CPU and GPU compose files. Idempotent.
+
+### Restart Inference
+
+`docker compose up -d --force-recreate inference` — restarts the inference container without touching the cache volume. Use when you've changed environment variables or compose settings.
+
+### Build Standalone Image
+
+Tars the live model cache volume and bakes it into `chalkysticks/inference:latest`. The result is a fully air-gapped image you can ship to any Docker host. Flow:
+
+1. Verifies both models are present in the cache
+2. Asks for confirmation (shows cache size)
+3. Tars the `chalkysticks-model-cache` volume via an ephemeral `alpine tar` container
+4. Runs `docker build` with the tarball as context
+5. Cleans up the tarball
+6. Reports final image size and shows run/save/load commands
+
+### Build Lambda Image
+
+Builds `chalkysticks/inference:lambda` from the standalone image. This involves:
+
+1. **Stripping unused dependencies** — spawns a temp container, `docker exec rm -rf` on `triton`, `jaxlib`, `debugpy` (~958 MB saved)
+2. **Flattening** — `docker export | docker import` to produce a single-layer image (necessary because `rm -rf` in a Dockerfile creates tombstone layers but doesn't actually shrink the image)
+3. **Compiling the cpuinfo shim** — a small C library that intercepts `open()` calls for `/sys/devices/system/cpu/*` which Lambda's sandbox doesn't expose
+4. **Layering the AWS Lambda Web Adapter** — the binary that bridges Lambda's event model to our FastAPI server
+
+### Export / Import Cache
+
+**Export** dumps the model cache volume to a `.tar.gz` file for backup or transfer. **Import** restores it. Import confirms before overwriting.
+
+### Test Inference (Smoke)
+
+POSTs a 1x1 transparent PNG to each known model URL and reports HTTP status + duration. Confirms the sidecar is alive without needing a real image. Reads `ROBOFLOW_API_KEY` from `bin/api-v2/.env`.
+
+```
+Smoke test: my-first-project-2-qvkxb/8
+    HTTP 200  in 0.342s
+Smoke test: ball-detection-feb-2026/11
+    HTTP 200  in 0.289s
+```
+
+### Test Inference (Real Image)
+
+Asks for an image path, lets you pick a model (or both), POSTs the real image, and prints the first 4KB of the prediction JSON.
+
+### Push to ECR
+
+Tags the Lambda image with the configured ECR repository URI and pushes it. Reads `CHALKYSTICKS_ECR_REPO` from `.env` or prompts if not set.
+
+### Deploy to AWS Lambda
+
+Runs `sam build && sam deploy` with explicit parameters. Resolves the current `:latest` digest from ECR so CloudFormation always sees a real diff. No interactive prompts (we bypassed `--guided` because Bun's stdio handling fights with SAM's readline).
+
+### Tail Logs
+
+Pick `inference` or `warmup`, then follows the last 100 lines of that container's logs.
+
+### Cleanup
+
+Stops everything, deletes the cache volume, and optionally removes the standalone image. Confirms before every destructive step.
+
+## Configuration
+
+All constants live in `docker/tool/src/config.ts`:
+
+| Constant | Value | What it controls |
+|---|---|---|
+| `KNOWN_MODELS` | `['my-first-project-2-qvkxb/8', 'ball-detection-feb-2026/11']` | Models the tool verifies in the cache and warms on startup |
+| `STANDALONE_IMAGE` | `chalkysticks/inference:latest` | Docker tag for the standalone image |
+| `LAMBDA_IMAGE` | `chalkysticks/inference:lambda` | Docker tag for the Lambda image |
+| `INFERENCE_URL` | `http://127.0.0.1:9001` | Where smoke/real tests POST to |
+| `ECR_REPO_ENV_VAR` | `CHALKYSTICKS_ECR_REPO` | Env var name for the ECR repo URI |
+| `LAMBDA_FUNCTION_NAME` | `chalkysticks-inference` | CloudFormation stack + Lambda function name |
+
+To add a new model, push a new entry to `KNOWN_MODELS` and update `WARMUP_MODELS` in both compose files.
+
+## File Layout
+
+```
+docker/tool/
+├── package.json         # Bun project (depends on @clack/prompts)
+├── tsconfig.json        # strict TS, ESNext, bundler resolution
+├── run                  # shell launcher (chmod +x, auto-installs deps)
+├── README.md
+└── src/
+    ├── index.ts         # main menu loop
+    ├── commands.ts      # every command implementation
+    ├── docker.ts        # docker / docker compose / shell helpers
+    └── config.ts        # paths, container names, image names, defaults
+```
+
+## Adding a New Command
+
+1. Implement the function in `commands.ts` and `export` it
+2. Add an entry to `MENU_OPTIONS` in `index.ts` — the `value` must exactly match the exported function name
+3. Run `bun run typecheck` from `docker/tool/` to verify
+
+The dispatcher in `index.ts` calls `commands[choice]()` by name, so wiring is automatic.

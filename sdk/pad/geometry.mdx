@@ -3,15 +3,17 @@ title: 'Geometry'
 description: 'Mathematical utilities for coordinates, distances, intersections, and Bezier curves'
 ---
 
-The Geometry module provides utility functions for coordinate calculations.
+The Geometry module provides utility functions for coordinate calculations. All functions are exported **flat** on the `Geometry` namespace — there are no `Geometry.Bezier.*` / `Geometry.Distance.*` sub-namespaces.
 
 ```typescript
 import { Geometry } from '@chalkysticks/sdk-pad';
+
+Geometry.lineDistance(0, 0, 3, 4);   // 5
 ```
 
 ---
 
-## Bezier
+## Bezier Functions
 
 Quadratic Bezier curve utilities for curved paths (massé shots).
 
@@ -20,7 +22,7 @@ Quadratic Bezier curve utilities for curved paths (massé shots).
 Calculate a point on a quadratic Bezier curve at parameter t.
 
 ```typescript
-const point = Geometry.Bezier.quadraticBezierPoint(
+const point = Geometry.quadraticBezierPoint(
     x1, y1,  // Start point
     cx, cy,  // Control point
     x2, y2,  // End point
@@ -31,10 +33,10 @@ const point = Geometry.Bezier.quadraticBezierPoint(
 
 ### quadraticBezierLength
 
-Calculate the approximate length of a quadratic Bezier curve.
+Approximate curve length via numerical integration.
 
 ```typescript
-const length = Geometry.Bezier.quadraticBezierLength(
+const length = Geometry.quadraticBezierLength(
     x1, y1,      // Start point
     cx, cy,      // Control point
     x2, y2,      // End point
@@ -48,54 +50,48 @@ Generate an SVG path string for a line, with optional Bezier curve.
 
 ```typescript
 // Straight line
-const straightPath = Geometry.Bezier.generateSvgPath(x1, y1, x2, y2);
+const straightPath = Geometry.generateSvgPath(x1, y1, x2, y2);
 // "M 100,200 L 400,200"
 
 // Curved line with control point
-const curvedPath = Geometry.Bezier.generateSvgPath(x1, y1, x2, y2, cx, cy);
+const curvedPath = Geometry.generateSvgPath(x1, y1, x2, y2, cx, cy);
 // "M 100,200 Q 250,100 400,200"
 ```
 
 ### quadraticBezierTangentAngle
 
-Calculate the tangent angle at a point on the curve.
+Tangent angle at a point on the curve.
 
 ```typescript
-const angle = Geometry.Bezier.quadraticBezierTangentAngle(
+const angle = Geometry.quadraticBezierTangentAngle(
     x1, y1,      // Start point
     cx, cy,      // Control point
     x2, y2,      // End point
     t,           // Parameter (0 to 1)
     degrees      // Optional: return degrees (default true)
 );
-// Returns compass-style angle: up=0°, right=90°, down=180°, left=270°
+// Compass-style angle: up=0°, right=90°, down=180°, left=270°
 ```
 
 ### quadraticBezierMidpoint
 
-Calculate the midpoint of a quadratic Bezier curve.
+Midpoint of the curve (`t = 0.5`).
 
 ```typescript
-const midpoint = Geometry.Bezier.quadraticBezierMidpoint(
-    x1, y1,  // Start point
-    cx, cy,  // Control point
-    x2, y2   // End point
-);
+const midpoint = Geometry.quadraticBezierMidpoint(x1, y1, cx, cy, x2, y2);
 // { x: number, y: number }
 ```
 
 ---
 
-## Distance
-
-Distance calculation utilities.
+## Distance Functions
 
 ### distanceFromPointToLine
 
-Calculate perpendicular distance from a point to a line segment.
+Perpendicular distance from a point to a line.
 
 ```typescript
-const distance = Geometry.Distance.distanceFromPointToLine(
+const distance = Geometry.distanceFromPointToLine(
     x1, y1,  // Line start
     x2, y2,  // Line end
     pX, pY   // Point
@@ -107,38 +103,34 @@ const distance = Geometry.Distance.distanceFromPointToLine(
 Euclidean distance between two points.
 
 ```typescript
-const distance = Geometry.Distance.lineDistance(x1, y1, x2, y2);
+const distance = Geometry.lineDistance(x1, y1, x2, y2);
 ```
 
 ### magnitude
 
-Vector magnitude calculation.
+Vector magnitude.
 
 ```typescript
-const mag = Geometry.Distance.magnitude({ x: 3, y: 4 }); // 5
+const mag = Geometry.magnitude({ x: 3, y: 4 }); // 5
 ```
 
 ---
 
-## Intersection
-
-Line intersection and midpoint calculations.
+## Intersection Functions
 
 ### lineMidpoint
 
-Calculate the midpoint of a line segment.
-
 ```typescript
-const midpoint = Geometry.Intersection.lineMidpoint(x1, y1, x2, y2);
+const midpoint = Geometry.lineMidpoint(x1, y1, x2, y2);
 // { x: number, y: number }
 ```
 
 ### lineIntersectionPoint
 
-Find the perpendicular intersection point from a point to a line.
+Perpendicular projection of a point onto a line.
 
 ```typescript
-const intersection = Geometry.Intersection.lineIntersectionPoint(
+const intersection = Geometry.lineIntersectionPoint(
     x1, y1,  // Line start
     x2, y2,  // Line end
     pX, pY   // Point
@@ -148,51 +140,62 @@ const intersection = Geometry.Intersection.lineIntersectionPoint(
 
 ### lineAngle
 
-Calculate line angle in degrees.
+Line angle in degrees (standard `atan2`, not compass-style).
 
 ```typescript
-const angle = Geometry.Intersection.lineAngle(x1, y1, x2, y2);
-// Returns angle in degrees
+const angle = Geometry.lineAngle(x1, y1, x2, y2);
 ```
 
 ---
 
-## Normalize
+## Normalization Functions
 
-Coordinate normalization for converting between pixel and relative coordinates.
+Convert between absolute pixel coordinates and normalized 0-1 coordinates.
 
 ### normalizeCoordinates
 
-Convert absolute pixel coordinates to normalized 0-1 range.
-
 ```typescript
-const normalized = Geometry.Normalize.normalizeCoordinates(
+const normalized = Geometry.normalizeCoordinates(
     x, y,           // Pixel coordinates
     bounds,         // { x, y, width, height }
-    ballDiameter    // Ball size in pixels
+    ballDiameter    // Optional: ball size for edge compensation (default 0)
 );
-// { x: 0-1, y: 0-1 }
+// { x: 0-1, y: 0-1 } — clamped
 ```
 
 ### denormalizeCoordinates
 
-Convert normalized 0-1 coordinates to absolute pixels.
-
 ```typescript
-const pixels = Geometry.Normalize.denormalizeCoordinates(
-    x, y,    // Normalized coordinates (0-1)
-    bounds   // { x, y, width, height }
+const pixels = Geometry.denormalizeCoordinates(
+    x, y,           // Normalized coordinates (0-1)
+    bounds,         // { x, y, width, height }
+    ballDiameter    // Optional: ball size for edge compensation (default 0)
 );
 // { x: pixels, y: pixels }
 ```
 
-### rotateVectorCCW
-
-90-degree counter-clockwise rotation (picture-to-table conversion).
+### clampNormalizedCoordinate
 
 ```typescript
-const rotated = Geometry.Normalize.rotateVectorCCW(x, y);
-// { x: -y, y: x }
+Geometry.clampNormalizedCoordinate(1.2);   // 1
+Geometry.clampNormalizedCoordinate(-0.1);  // 0
+```
+
+### isNormalizedCoordinatePair
+
+```typescript
+Geometry.isNormalizedCoordinatePair(0.5, 0.5);   // true
+Geometry.isNormalizedCoordinatePair(400, 200);   // false
+Geometry.isNormalizedCoordinatePair(undefined, 0.5); // false
+```
+
+### rotateVectorCCW
+
+90-degree counter-clockwise rotation in **normalized** space (picture-to-table conversion).
+
+```typescript
+const rotated = Geometry.rotateVectorCCW(x, y);
+// { x: y, y: 1 - x }
 ```
 
 ### compareObjects
@@ -200,7 +203,7 @@ const rotated = Geometry.Normalize.rotateVectorCCW(x, y);
 Deep object comparison using JSON serialization.
 
 ```typescript
-const areEqual = Geometry.Normalize.compareObjects(obj1, obj2);
+const areEqual = Geometry.compareObjects(obj1, obj2);
 // boolean
 ```
 
@@ -208,7 +211,7 @@ const areEqual = Geometry.Normalize.compareObjects(obj1, obj2);
 
 ## Examples
 
-### Finding Closest Point on Line
+### Finding Distance to Aim Line
 
 ```typescript
 import { Geometry } from '@chalkysticks/sdk-pad';
@@ -221,7 +224,7 @@ const targetX = 400, targetY = 200;
 const ghostX = 300, ghostY = 180;
 
 // Distance from ghost to aim line
-const distance = Geometry.Distance.distanceFromPointToLine(
+const distance = Geometry.distanceFromPointToLine(
     cueX, cueY,
     targetX, targetY,
     ghostX, ghostY
@@ -238,35 +241,16 @@ import { Geometry } from '@chalkysticks/sdk-pad';
 const bounds = { x: 0, y: 0, width: 800, height: 400 };
 const ballSize = 20;
 
-// Normalize pixel coords to 0-1
-const normalized = Geometry.Normalize.normalizeCoordinates(
-    400, 200,  // Center of table in pixels
-    bounds,
-    ballSize
-);
+// Normalize pixel coords to 0-1 (ball-size aware)
+const normalized = Geometry.normalizeCoordinates(390, 190, bounds, ballSize);
 // { x: 0.5, y: 0.5 }
 
 // Denormalize back to pixels
-const pixels = Geometry.Normalize.denormalizeCoordinates(
-    0.5, 0.5,
-    bounds
-);
+const pixels = Geometry.denormalizeCoordinates(0.5, 0.5, bounds, ballSize);
 // { x: 400, y: 200 }
 ```
 
-### Calculating Line Midpoint
+## Recent Changes
 
-```typescript
-import { Geometry } from '@chalkysticks/sdk-pad';
-
-// Line between two balls
-const ball1 = { x: 100, y: 200 };
-const ball2 = { x: 300, y: 200 };
-
-// Get midpoint for placing intersection ball
-const midpoint = Geometry.Intersection.lineMidpoint(
-    ball1.x, ball1.y,
-    ball2.x, ball2.y
-);
-// { x: 200, y: 200 }
-```
+- **2.0.0** — No geometry changes; exports remain flat on the `Geometry` namespace (older docs showed `Geometry.Bezier.*` sub-namespaces, which never matched the export shape)
+- **1.5.x** — `clampNormalizedCoordinate` and `isNormalizedCoordinatePair` added; `normalizeCoordinates` / `denormalizeCoordinates` clamp and take an optional `ballDiameter`

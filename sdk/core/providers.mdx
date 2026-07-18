@@ -1,0 +1,225 @@
+---
+title: 'Service Providers'
+description: 'Register bindings and bootstrap services with the provider lifecycle'
+---
+
+Service Providers are the central place to configure the IoC container. They follow a two-phase lifecycle — **register** then **boot** — so that all bindings are available before any provider tries to resolve dependencies.
+
+## Lifecycle
+
+1. **`register()`** — Called immediately when the provider is added. Use this to call `bind()`, `singleton()`, `instance()`, and `registerFactory()` on the container. Do **not** resolve dependencies here because other providers may not have registered yet.
+
+2. **`boot()`** — Called after **all** providers have completed their `register()` phase. Safe to resolve dependencies and perform initialization that depends on other bindings. The base implementation is a no-op, so overriding it is optional.
+
+```
+registerProvider(A)  →  A.register()
+registerProvider(B)  →  B.register()
+ChalkySticks.boot()  →  A.boot()  →  B.boot()
+```
+
+## ServiceProvider Base Class
+
+All providers extend the abstract `Provider.ServiceProvider` class:
+
+```typescript
+import { Provider } from '@chalkysticks/sdk-core';
+
+export class MyProvider extends Provider.ServiceProvider {
+    /**
+     * Register bindings into the container. Called before boot().
+     *
+     * @return void
+     */
+    public register(): void {
+        this.container.singleton('my-service', (c) => {
+            return new MyService();
+        });
+    }
+
+    /**
+     * Boot-time initialization. All providers have registered by now.
+     *
+     * @return void
+     */
+    public boot(): void {
+        const service = this.container.make<MyService>('my-service');
+        service.initialize();
+    }
+}
+```
+
+The `container` property is injected automatically via the constructor.
+
+## CoreServiceProvider
+
+The SDK ships with `Provider.CoreServiceProvider`, which is registered automatically when you call `ChalkySticks.configure()`. It registers Identity Map factories for the core Model and Collection classes below, injecting `Constants.API_URL_V3` as the `baseUrl` for **all** of them (since `1.59.0`; previously some used V1).
+
+This means any call to `ChalkySticks.resolve(Model.Venue, { id: 1 })` will automatically get the right API base URL without you having to pass it.
+
+### What CoreServiceProvider Registers
+
+| Category | Classes |
+|----------|---------|
+| **Collections** | Advertisement, Comment, Content, ContentTag, Feed, Media, MediaShare, MediaTag, Message, Meta, Product, Reaction, User, UserMedia, UserWallet, Venue, VenueCheckin, VenueDetail, VenueHour, VenueMedia, VenueRevision |
+| **Models** | Advertisement, Comment, Content, ContentTag, Feed, Geocode, Media, MediaShare, MediaTag, Message, Meta, Product, Reaction, User, UserMedia, UserWallet, Venue, VenueCheckin, VenueDetail, VenueHour, VenueMedia, VenueRevision |
+
+Newer model/collection types (`Accomplishment`, `UserAccomplishment`, `UserStat`, `EmbeddingSearch`, `VenueSearch`, `AppConfig`, `LibraryMedia`) are exported but **not** auto-registered — create them via `Factory.*`, direct construction, or `registerFactory()` from your own provider. Note that `AppConfig` and `LibraryMedia` have no `Factory.*` module — for those two, only direct construction or `registerFactory()` apply.
+
+## Registering Providers
+
+### Via configure()
+
+The most common approach. `CoreServiceProvider` is registered automatically, and you can pass additional providers:
+
+```typescript
+import { ChalkySticks } from '@chalkysticks/sdk-core';
+import { MyProvider } from './Provider/MyProvider';
+import { AnalyticsProvider } from './Provider/AnalyticsProvider';
+
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com/v3',
+    providers: [MyProvider, AnalyticsProvider],
+});
+```
+
+### Disabling CoreServiceProvider
+
+If you need full control over registrations, pass `providers: false` to skip the default provider, then register your own:
+
+```typescript
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com/v3',
+    providers: false,
+});
+
+// Manually register only what you need
+ChalkySticks.registerProvider(MyCustomCoreProvider);
+ChalkySticks.boot();
+```
+
+### Deferring Boot
+
+If you need to register providers across multiple modules before booting, set `boot: false` and call `boot()` manually:
+
+```typescript
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com/v3',
+    boot: false,
+});
+
+// Later, in another module
+ChalkySticks.registerProvider(LateProvider);
+
+// When ready
+ChalkySticks.boot();
+```
+
+### Late Registration
+
+Providers registered **after** boot has already been called will have `register()` and `boot()` called immediately:
+
+```typescript
+ChalkySticks.configure({ apiUrl: '...' }); // boots automatically
+
+// This provider's register() AND boot() are called right away
+ChalkySticks.registerProvider(LateProvider);
+```
+
+## Writing a Custom Provider
+
+Here is a complete example that registers a custom analytics service and overrides how `Model.Venue` is constructed:
+
+```typescript
+import { Model, Provider } from '@chalkysticks/sdk-core';
+
+export class AppServiceProvider extends Provider.ServiceProvider {
+    /**
+     * Register bindings and factory overrides.
+     *
+     * @return void
+     */
+    public register(): void {
+        // Named singleton service
+        this.container.singleton('analytics', () => {
+            return new AnalyticsService({ apiKey: 'abc123' });
+        });
+
+        // Override how Venue models are constructed
+        this.container.registerFactory(Model.Venue, (attributes, options) => {
+            const venue = new Model.Venue(attributes, options);
+
+            // Add default query params to every venue instance
+            venue.setQueryParam('include', 'hours,media');
+
+            return venue;
+        });
+    }
+
+    /**
+     * Boot-time initialization.
+     *
+     * @return void
+     */
+    public boot(): void {
+        const analytics = this.container.make<AnalyticsService>('analytics');
+        analytics.trackEvent('sdk:initialized');
+    }
+}
+```
+
+## Other Providers
+
+Beyond the IoC container, the `Provider` namespace ships two standalone bridge singletons:
+
+### Provider.Store
+
+Bridges a host framework store (e.g. Vuex) into the SDK so models can read auth tokens via `ensureToken()` / `auth()`. The singleton is keyed on `globalThis` via `Symbol.for(...)`, so duplicate SDK module copies (nested `node_modules`) still share one store.
+
+```typescript
+import { Provider } from '@chalkysticks/sdk-core';
+
+Provider.Store.register(vuexStore); // once at app boot
+const store = Provider.Store.get(); // falls back to a no-op store if unregistered
+```
+
+### Provider.Subscription
+
+Injection point for a subscription strategy (`Strategy.Subscription.RevenueCat` implements it):
+
+```typescript
+Provider.Subscription.register(strategy);
+Provider.Subscription.hasStrategy(); // boolean
+Provider.Subscription.get();         // ISubscriptionStrategy | null
+```
+
+## Resetting for Tests
+
+Use `ChalkySticks.reset()` to flush the container and clear all providers. This gives you a clean slate between test cases:
+
+```typescript
+afterEach(() => {
+    ChalkySticks.reset();
+});
+```
+
+## ChalkySticks Static Methods
+
+These convenience methods on the `ChalkySticks` class delegate to the container singleton:
+
+| Method | Description |
+|--------|-------------|
+| `ChalkySticks.configure(options)` | Set URLs/constants, register providers, boot the SDK |
+| `ChalkySticks.boot()` | Boot all registered providers (idempotent) |
+| `ChalkySticks.registerProvider(Class)` | Register a single provider |
+| `ChalkySticks.make(key)` | Resolve a string-key binding |
+| `ChalkySticks.resolve(ClassRef, ...args)` | Resolve via Identity Map |
+| `ChalkySticks.getContainer()` | Get the container singleton |
+| `ChalkySticks.getApiUrl()` / `setApiUrl(url)` | Read / set the base API URL |
+| `ChalkySticks.setLocalUrl(url)` | Set the development URL override |
+| `ChalkySticks.reset()` | Flush container and providers |
+
+## Recent Changes
+
+- `~1.63.0` — `CoreServiceProvider` now also registers `Model.Product` / `Collection.Product`.
+- `~1.61.5` — `Provider.Store` singleton moved to a `globalThis` symbol key so duplicate SDK copies share one store.
+- `1.59.0` — All CoreServiceProvider factories inject `Constants.API_URL_V3` (User/UserWallet/Geocode previously targeted V1; UserMedia was already V3).

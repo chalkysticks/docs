@@ -1,0 +1,214 @@
+---
+title: 'Rules Engine'
+description: 'Custom drill rules: shorthand DSL compiler, guided builder parser, and human-readable summaries'
+---
+
+## Overview
+
+The `Rules` namespace (added 1.6.0, substantially rewritten in 2.0.0) authors, compiles, and humanizes custom drill rules. The pad **authors** rules; **evaluation** happens in the consuming trainer app, which shares these types and the compiled `ICustomRulesConfig`.
+
+```typescript
+import { Rules } from '@chalkysticks/sdk-pad';
+```
+
+| Export | Purpose |
+|--------|---------|
+| `CustomRulesShorthandCompiler` | Compiles the shorthand DSL into a full `ICustomRulesConfig` |
+| `DrillRuleParser` / `createDefaultDrillConfig` | Converts the guided builder's structured state to/from shorthand |
+| `ShorthandSummaryFormatter` | Humanizes a shorthand string into English sentences |
+| `RulesSummaryFormatter` | Humanizes a compiled `ICustomRulesConfig` |
+| `GroupResolver` | Resolves named ball groups (`solids`, `reds`, ...) to ball-number sets |
+| `ADJACENT_RAILS` / `railsAdjacentToPocket` / `isRailAdjacentToPocket` | Pocket-to-rail adjacency lookups |
+| `FlowPhraseBuilder`, `OutcomePhraseBuilder`, `ResolvedFlowDescriber`, `ShorthandTokenParser`, `TokenRunCollapser` | Lower-level summary pipeline pieces |
+
+---
+
+## Shorthand DSL
+
+A drill rule is a compact string with up to five clauses: `flow`, `win`, `lose`, `with`, `balls`.
+
+```
+flow=lowest&win=9&lose=scratch,wrongball&with=clean&balls=1,2,3,4,5,6,7,8,9
+```
+
+### Flow tokens
+
+| Syntax | Meaning |
+|--------|---------|
+| `lowest` / `highest` / `any` | Selector — which ball must be pocketed next |
+| `solids` / `stripes` / named group | Pocket from a group (`groups` map or built-ins) |
+| `3`, `8` | A specific ball |
+| `1..5` | Range expansion |
+| `a,b` | Cycle — alternate members, repeating until exhausted |
+| `a;b` | Phase boundary — finish phase `a`, then start `b` |
+| `token.modifier` | Scope a modifier to one token (`8.pocket:ht`) |
+| `8(initial)` / `8(0.5,0.5)` | Respot target for a recurring closer ball |
+| `free` / `freeplay` / `none` / `open` | No required order — compiles to a single global rule |
+
+### Modifiers (per-token via `.`, or global via `with=`)
+
+| Modifier | Meaning |
+|----------|---------|
+| `clean` / `noballs` | Cue may not touch other balls first |
+| `norails` / `norailsperfect` | No rail contact allowed |
+| `rails:N` / `rails-after:N` / `rails-before:N` | Required rail counts |
+| `rails-allow:ht\|h` | Allowed rail set (short ids or full `RailLocation` values) |
+| `pocket:ht` | Called pocket (`fb`, `ft`, `hb`, `ht`, `mb`, `mt`, `corner`, `side`, `any`) |
+| `bank` / `combo` / `jump` / `kick` | Required shot type |
+| `nobank` / `nocarom` / `nocombo` / `nojump` / `nokick` | Forbidden shot type |
+
+Scope qualifiers (`above`, `below`, `except`, `through`, `to`, `upto`, ...) narrow which balls a modifier applies to. `between` is not a scope qualifier — it changes the recurring closer cadence, potting the closer between selected balls instead of after each one.
+
+---
+
+## CustomRulesShorthandCompiler
+
+All methods are static. `compile()` accepts a query/CSV string, an `ICustomRulesShorthand` object, or an already-complete config (returned untouched). Because the rack is known at compile time, selectors are pre-resolved into concrete balls and closer respots are derived automatically.
+
+```typescript
+import { Rules } from '@chalkysticks/sdk-pad';
+
+// From a query string
+const config = Rules.CustomRulesShorthandCompiler.compile('flow=lowest&lose=scratch', [1, 2, 3, 4, 5, 8]);
+
+// From a bare flow string (activeBalls passed separately)
+const rotation = Rules.CustomRulesShorthandCompiler.compile('lowest,8', [1, 2, 3, 8]);
+
+// From a structured shorthand object
+const custom = Rules.CustomRulesShorthandCompiler.compile({
+    activeBalls: [1, 2, 3, 9],
+    flow: 'solids;9.pocket:ht',
+    lose: ['scratch'],
+    with: ['clean'],
+});
+
+// Parsing helpers
+const shorthand = Rules.CustomRulesShorthandCompiler.parseStringInput('flow=lowest,8&lose=scratch');
+const fromQuery = Rules.CustomRulesShorthandCompiler.parseQueryString('flow=free&with=norails');
+```
+
+The emitted config is schema-v2 with a flat `flow.type: 'steps'` list (no runtime phase machine needed). Free-order flows compile to `mode: 'global'` instead.
+
+### ICustomRulesConfig (key fields)
+
+```typescript
+interface ICustomRulesConfig {
+    activeBalls?: number[];
+    description?: string;
+    events?: IRuleEvent[];                          // schema v2 declarative events
+    flow?: IFlowDefinition;                         // schema v2 generated flow
+    globalRules?: IShotRequirement;
+    groups?: { [name: string]: number[] };
+    loseConditions?: ILoseCondition[];
+    mode: 'sequential' | 'global' | 'flow';
+    name?: string;
+    options?: ICustomRulesOptions;
+    requirements?: { everyShot?: IShotRequirement };
+    schemaVersion?: 1 | 2;
+    sequence?: IShotRequirement[];
+    winConditions?: IWinCondition[];
+}
+```
+
+---
+
+## DrillRuleParser
+
+Bidirectional converter between the guided drill builder's structured state (`IDrillRuleConfig`) and the shorthand string. `toShorthand()` is the authoritative compile; `fromShorthand()` is a best-effort inverse scoped to the builder's vocabulary (advanced hand-authored tokens are ignored).
+
+```typescript
+import { Rules } from '@chalkysticks/sdk-pad';
+
+const config = Rules.createDefaultDrillConfig();
+// { constraints: [], direction: 'lowest', group: 'solids', lose: ['scratch'],
+//   pattern: 'rotation', railsAfter: 0, respotCloser: false, win: 'clear' }
+
+const shorthand = Rules.DrillRuleParser.toShorthand(config);
+const restored = Rules.DrillRuleParser.fromShorthand(shorthand);
+```
+
+```typescript
+type TDrillPattern = 'rotation' | 'alternate-groups' | 'freeplay' | 'custom';
+type TDrillConstraint = 'clean' | 'norails' | 'nocarom' | 'nojump' | 'nobank' | 'nokick';
+type TDrillLoseCondition = 'scratch' | 'wrongball';
+
+interface IDrillRuleConfig {
+    constraints: TDrillConstraint[];
+    customFlow?: string;              // verbatim shorthand when pattern is 'custom'
+    direction: 'lowest' | 'highest';
+    group: 'solids' | 'stripes';
+    lose: TDrillLoseCondition[];
+    pattern: TDrillPattern;
+    railsAfter: number;
+    respotCloser: boolean;
+    win: string;
+}
+```
+
+---
+
+## Summaries
+
+Two formatters turn rules into English. Both are static classes with an overridable phrase dictionary.
+
+```typescript
+import { Rules } from '@chalkysticks/sdk-pad';
+
+// From a shorthand string
+const sentences = Rules.ShorthandSummaryFormatter.humanize('flow=lowest&lose=scratch', [1, 2, 3, 8]);
+// e.g. ['Pocket the lowest-numbered ball first...', 'Scratching loses the drill.']
+
+const oneLiner = Rules.ShorthandSummaryFormatter.summarize('flow=lowest,8', [1, 2, 3, 8]);
+
+// From a compiled config (2.0.0)
+const lines = Rules.RulesSummaryFormatter.humanize(config);
+const summary = Rules.RulesSummaryFormatter.summarize(config);
+```
+
+### Localizing / overriding phrases
+
+Every human-facing string lives in `Constant.DEFAULT_RULES_PHRASES` (`IRulesPhrases`). Value-interpolating fragments are functions so locales can reorder words.
+
+```typescript
+// Override one phrase or install a full locale
+Rules.ShorthandSummaryFormatter.setPhrases({ baseLowest: 'sink lowest' });
+Rules.ShorthandSummaryFormatter.resetPhrases();
+```
+
+---
+
+## GroupResolver
+
+Resolves group names against a config's `groups` map plus built-ins.
+
+```typescript
+import { Rules } from '@chalkysticks/sdk-pad';
+
+const groupMap = Rules.GroupResolver.buildGroupMap(config);   // { [name]: number[] }
+const reds = Rules.GroupResolver.resolve('reds', config);      // number[]
+```
+
+---
+
+## Rail Adjacency
+
+Maps pockets to their bordering rails — used by `norails`-style constraints that must exempt the rails beside the called pocket.
+
+```typescript
+import { Enum, Rules } from '@chalkysticks/sdk-pad';
+
+Rules.ADJACENT_RAILS[Enum.PocketLocation.HeadTop];          // RailLocation[]
+Rules.railsAdjacentToPocket('head-top');                     // RailLocation[]
+Rules.isRailAdjacentToPocket(Enum.RailLocation.Head, 'head-top'); // boolean
+```
+
+See [Enums & Constants](/sdk/pad/enums) for `PocketLocation` and `RailLocation`.
+
+## Recent Changes
+
+- 2.0.0 — Major rewrite of the summary pipeline: `RulesSummaryFormatter` (config-level humanizer), `FlowPhraseBuilder`, `OutcomePhraseBuilder`, `ResolvedFlowDescriber`, `TokenRunCollapser` added; more natural rules language
+- 1.7.x — `DrillRuleParser` + `createDefaultDrillConfig()` added; remote rules persistence support
+- 1.6.6 — `rails-allow` modifier added
+- 1.6.4 — Rail adjacency helpers and `RailLocation` enum added
+- 1.6.x — Shot-type modifiers (`bank`/`nobank`, `jump`/`nojump`, ...) and foul/lose joiners added
+- 1.6.0 — `CustomRulesShorthandCompiler`, `ShorthandSummaryFormatter`, `GroupResolver`, `PocketLocation`, and `DEFAULT_RULES_PHRASES` introduced

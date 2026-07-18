@@ -1,9 +1,11 @@
 ---
 title: 'Game Package'
-description: 'SDK for pool game physics and trainer functionality'
+description: 'Models, collections, services, and utilities for the gameplay domain'
 ---
 
-The `sdk-game` package provides physics simulation and game logic for the trainer.
+`@chalkysticks/sdk-game` covers the gameplay data layer: matches, games, shots, innings, challenges, leaderboards, and matchmaking. Physics simulation lives in [`@chalkysticks/sdk-physics`](/sdk/physics).
+
+Current version: `0.6.1`.
 
 ## Installation
 
@@ -11,38 +13,102 @@ The `sdk-game` package provides physics simulation and game logic for the traine
 npm install @chalkysticks/sdk-game
 ```
 
-## Quick Start
+## Three-Axis Type System
 
-```typescript
-import * as Game from '@chalkysticks/sdk-game';
+Game variants are described along three orthogonal axes (introduced in `0.4.0`):
 
-// Game configuration
-const config = {
-    gameType: '8ball',
-    tableDimensions: { width: 2540, height: 1270 }
-};
-```
+| Axis | Type | Scope |
+|------|------|-------|
+| **Match shape** | `Enum.MatchFormat` | Match-level structure. 19 values mirroring `GameType` (`EightBall`, `Killers`, `Snooker`, ...). Combo and league values (`CombinationEightNineTen`, `APA_EightBall`, ...) are reserved for this enum but **not yet defined** |
+| **Game variant** | `Enum.GameType` (re-export from sdk-core) | Per-game: `EightBall`, `NineBall`, `TenBall`, `Killers`, `PuzzleRack`, `TrickShots`, etc. |
+| **Physical layout** | `Enum.RackStrategy` | Ball layout at break: `EightBall`, `NineBall`, `TenBall`, `Rotation`, `StraightPool`, `RandomSpread`, `DrillLine`, `Clear`, `Custom`, `OneBall`, `ThreeBall` |
+
+A `Game` additionally carries a free-form `ruleset` string (`"standard"`, `"killers-two-shots-each"`, ...). The axes are independent: you can play Killers on an 8-ball rack under a Killers ruleset, or run a `DrillLine` with no game at all.
 
 ## Exports
 
 ```typescript
-import { Collection, Model, Factory, Utility } from '@chalkysticks/sdk-game';
+import {
+    Collection,   // ChallengeLeaderboard, Game, GameChallenge, GameInning, GameMatch, GameShot, Leaderboard, MatchmakingQueue
+    Core,         // re-exported from sdk-core
+    Enum,         // GameType, HandicapType, MatchFormat, MatchMode, MatchStatus, MatchType, MatchVisibility, RackStrategy, ShotResult, ShotType
+    Factory,      // model() / collection() helpers per resource, wired to Constants.API_URL_V3
+    Model,
+    Service,      // Challenge (streaks, history, per-challenge leaderboards)
+    Utility,      // GameRules, HandicapCalculator, ShotStateParser
+} from '@chalkysticks/sdk-game';
 ```
 
-## Game Types
+## Collections & Models
 
-| Type | Description |
-|------|-------------|
-| `8ball` | Standard 8-ball rules |
-| `9ball` | 9-ball rotation |
-| `10ball` | 10-ball (called pocket) |
-| `3ball` | 3-ball speed game |
-| `custom` | Custom game setup |
+| Class | Endpoint | Purpose |
+|-------|----------|---------|
+| `GameMatch` | `/matches` | Match container (race to N); heartbeat for online lobbies |
+| `Game` | `/games` | Single game / rack |
+| `GameShot` | `/shots` | Individual shot |
+| `GameInning` | `/innings` | Turn / inning record |
+| `GameChallenge` | `/game-challenges` | Scheduled or evergreen challenge (daily racks, time trials) |
+| `ChallengeLeaderboard` | `/game-challenges/{id}/leaderboard` | Ranked board for one challenge |
+| `Leaderboard` | `/leaderboards/{metricKey}` | Metric-keyed ranked board |
+| `MatchmakingQueue` | `/matchmaking/queue` | Matchmaking queue |
 
-## Key Concepts
+`Model.GameMatch` exposes `format: MatchFormat`. `Model.Game` exposes `game_type`, `rack_strategy`, and `ruleset`.
 
-- **Physics Engine** handles ball dynamics, collisions, friction
-- **Ball Manager** tracks ball states and positions
-- **Shot Executor** handles power, english, elevation
-- **Racking** provides standard and custom rack patterns
-- **Foul Detector** enforces game rules
+## Services
+
+| Service | Purpose |
+|---------|---------|
+| `Service.Challenge` | Static, composed queries over challenge matches: `getDailyClearStreak()`, `getDailyChallengeHistory()`, `getChallengeLeaderboard()` — see [Challenges & Leaderboards](/sdk/game/challenges) |
+
+## Utilities
+
+| Utility | Purpose |
+|---------|---------|
+| `GameRules` | Conservative game-state helpers: `isGameComplete()`, `determineWinner()`, `isLegalShot()`, `inferResult()` |
+| `HandicapCalculator` | APA / BCA / Elo handicap math: `calculateAPA(skill1, skill2)`, `calculateBCA()`, `calculateElo()` → `IHandicapRecommendation` |
+| `ShotStateParser` | Decode and diff shot-state payloads: `parseState()`, `determinePocketedBalls()`, `calculateShotResult()` |
+
+## Example: Start A Match
+
+```typescript
+import { ChalkySticks, Enum as CoreEnum } from '@chalkysticks/sdk-core';
+import { Enum, Model } from '@chalkysticks/sdk-game';
+
+ChalkySticks.configure({ apiUrl: 'https://api.chalkysticks.com' });
+
+const match = ChalkySticks.resolve(Model.GameMatch, {
+    format:   Enum.MatchFormat.EightBall,
+    race_to:  5,
+    user1_id: 1,
+    user2_id: 2,
+});
+
+await match.save();
+
+const game = ChalkySticks.resolve(Model.Game, {
+    game_type:     CoreEnum.GameType.EightBall,
+    match_id:      match.id,
+    rack_strategy: Enum.RackStrategy.EightBall,
+    ruleset:       'standard',
+});
+
+await game.save();
+```
+
+## Lobby Heartbeat
+
+Online lobby rows are kept fresh with `PUT /matches/{id}/heartbeat` (new in `0.6.1`). Participants call it on an interval while their room is open; the call runs against a disposable clone internally so it never races a concurrent `save()` on the same instance.
+
+```typescript
+await match.auth().heartbeat();
+
+match.getHeartbeatAt(); // string | null — last liveness beat
+```
+
+## Recent Changes
+
+- `0.6.1` — `GameMatch.heartbeat()` action, `heartbeat_at` field, `getHeartbeatAt()`
+- `0.5.0` — `ChallengeLeaderboard` model/collection/factory (`fetchByChallenge()`); `Service.Challenge.getChallengeLeaderboard()` now reads the server-computed board
+- `0.4.7` / `0.4.8` — new `Service` export: `Service.Challenge` with `getDailyClearStreak()` and `getDailyChallengeHistory()`
+- `0.4.2` — `GameChallenge.regenerate(difficulty?)` action (CMS re-roll of a generated layout)
+- `0.4.0` — Introduced three-axis type system: new `MatchFormat` (19 values mirroring `GameType`; combo/league values reserved but not yet shipped), new `RackStrategy` (11 physical layouts), `Game.rack_strategy` field. `GameType` is now re-exported from `sdk-core`; local `GameFormat` and `GameType` enums removed

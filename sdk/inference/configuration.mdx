@@ -1,0 +1,174 @@
+---
+title: 'Configuration'
+description: 'Tunable parameters, enumerations, and environment detection'
+---
+
+The `Config` and `Enum` namespaces expose every tunable constant in the inference pipeline. All values have sensible defaults — override them only for unusual tables, camera setups, or model versions.
+
+## Import
+
+```typescript
+import { Cushion, Enum, Environment, Identity, Roboflow, Table } from '@chalkysticks/sdk-inference';
+```
+
+There is **no `Config` namespace export** — the config groups are re-exported individually at the package root. Source sub-namespaces under `src/Config/`: `Cushion`, `Detection`, `Environment`, `Identity`, `Roboflow`, `Table`, `Tracking`. The `Detection` and `Tracking` config groups are shadowed at the root by the `Detection` and `Tracking` module namespaces, so their constants (documented below as `Config.Detection.*` / `Config.Tracking.*`) are internal defaults and not importable from outside the package.
+
+## Enumerations
+
+### CameraType
+
+```typescript
+enum CameraType {
+    Unknown = 'unknown',
+    Overhead = 'overhead',
+    Freehand = 'freehand',
+}
+```
+
+| Value | Description |
+|-------|-------------|
+| `Unknown` | Not enough data to classify |
+| `Overhead` | Top-down view — minimal perspective distortion, 3 rows × 2 columns pocket layout |
+| `Freehand` | Angled 3/4 view (person holding phone) — perspective distortion, 2 columns × 3 rows |
+
+## Config.Detection
+
+Filtering and pocket-identification thresholds.
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `BoundsMarginImageSpace` | 0.1 | Fractional expansion of the pocket bounding box for image-space ball filtering |
+| `BoundsMarginTableSpace` | 75 | Margin (mm) outside the canonical rectangle for table-space ball filtering |
+| `MaxPockets` | 6 | Pocket detections kept per frame after filtering |
+| `MinPocketsForHomography` | 4 | Minimum pockets needed to compute a homography |
+| `PocketYToleranceCorners` | 0.2 | Y tolerance (fraction of table height) for corner pocket rows |
+| `PocketYToleranceMiddle` | 0.25 | Y tolerance for middle pockets |
+| `BottomRowNormalizedMin` | 0.66 | Normalized Y threshold for bottom-row classification |
+| `DuplicateIoUThreshold` | 0.25 | IoU above this merges two ball detections |
+| `ClusterRadius` | 100 | Pixel radius for `clusterBalls` |
+| `InferenceToleranceFactor` | 0.05 | Alignment tolerance for pocket inference validation |
+| `OutlierThreshold` | 1.5 | IQR multiplier for outlier rejection |
+
+## Config.Table
+
+Canonical **portrait** table dimensions used by the homography solver.
+
+| Constant | Value | Unit | Meaning |
+|----------|-------|------|---------|
+| `TableWidth` | 1000 | mm | Short side |
+| `TableHeight` | 2010 | mm | Long side |
+| `AspectRatioMin` | 1.5 | ratio | Valid height/width lower bound |
+| `AspectRatioMax` | 2.5 | ratio | Valid height/width upper bound |
+
+## Config.Roboflow
+
+Model identifiers and inference parameters (defaults for `ImageAnalyzer`'s config).
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `Confidence` | 0.4 | Minimum confidence threshold |
+| `ModelName` | `'my-first-project-2-qvkxb'` | Roboflow project slug |
+| `Orientation` | `'portrait'` | Expected image orientation |
+| `Overlap` | 0.3 | Max overlap for NMS |
+| `PublishableKey` | `rf_…` | Roboflow browser inference key |
+| `Version` | 7 | Model version |
+
+## Config.Tracking
+
+Kalman filter and greedy-assignment tuning for `BallTracker`.
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `AccelerationNoise` | 0.25 | Process noise — how much balls are expected to accelerate |
+| `BallDiameter` | 30 | Ball diameter (px) used in collision tests |
+| `CollisionDetection` | `true` | Enable anti-swap collision handling |
+| `CollisionThresholdMultiplier` | 1.2 | × `BallDiameter` — distance considered "in contact" |
+| `MaxDistance` | 100 | Max matching distance (px) between prediction and detection |
+| `MaxMissedFrames` | 5 | Frames before a moving unmatched track is dropped |
+| `MaxMissedFramesStationary` | 60 | Frames a stationary track survives occlusion |
+| `MeasurementNoise` | 2.0 | Kalman measurement noise |
+| `MinConfirmFrames` | 3 | Frames before a tentative track is reported |
+| `MissedFrameConfidencePenalty` | 0.1 | Confidence decay per missed frame |
+| `UseKalman` | `true` | Toggle Kalman smoothing |
+| `VelocityBonusScale` | 0.1 | Assignment bonus for velocity-consistent matches |
+
+## Config.Identity
+
+Parameters for the ledger-based `BallIdentityStabilizer` (rewritten 1.13.7+). Tune when label flicker is a problem on dense racks.
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `ScoreDecay` | 0.95 | Per-frame decay of identity evidence |
+| `FamilyDecay` | 0.975 | Softer decay within a color family (solid/stripe pair) |
+| `LockRatio` | 2.0 | Lead over the runner-up required to lock an identity |
+| `LockFrames` | 10 | Frames of dominance before locking |
+| `UnlockFrames` | 8 | Frames of contrary evidence to break a lock |
+| `MaxStaleLedgerFrames` | 10 | Frames before an inactive track's ledger is discarded |
+| `UnknownIdentity` | `'unknown'` | Sentinel identity |
+| `LegalBallTypes` | `['cue', '1' … '15']` | Unique-capable identity domain |
+| `MinDetectionConfidence` | 0.4 | Evidence below this is ignored |
+| `MotionSpeedThreshold` | 5.0 | Speed (px/frame) above which scoring pauses |
+| `SkipScoringWhileColliding` | `true` | Pause evidence accumulation during contact |
+| `UnknownAssignmentCost` | 0.85 | Assignment cost of resolving to `unknown` |
+| `NoEvidenceAssignmentCost` | 2.0 | Cost of assigning an identity with no evidence |
+| `AssignmentScoreSaturation` | 3.0 | Score cap when converting to assignment cost |
+| `PreviousIdentityBonus` | 0.25 | Bias toward last frame's identity |
+| `LockedIdentityBonus` | 0.4 | Bias toward a locked identity |
+| `MotionIdentityChangePenalty` | 0.5 | Penalty for switching identity while moving |
+| `ContactIdentityChangePenalty` | 0.75 | Penalty for switching identity during contact |
+
+## Config.Cushion
+
+Tuning for the rail-scan `CushionDetector` (~30 constants; rewritten 1.13.3). Key groups:
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `ClothSampleRadius` | 50 | Radius (px) for sampling the cloth reference color |
+| `ColorThreshold` | 120 | Color distance treated as "no longer cloth" |
+| `ScanLinesPerRail` | 20 | Rays cast per rail segment |
+| `ScanStartInset` | 0.08 | Inward anchor offset (fraction of pocket span) |
+| `ScanMaxOutwardPx` | 200 | Deprecated — legacy outside-in scan path only; unused by the active scan |
+| `ScanOutwardWalkPx` | 250 | Total outward walk (px) per scan ray — must cross the cushion and reach the outer rail from the inward anchor |
+| `InnerColorExitDelta` | 35 | Color delta marking cloth departure |
+| `InnerBrightnessDrop` | 12 | Brightness drop marking the cushion shadow |
+| `OuterMinGradient` | 12 | Minimum gradient for the outer rail edge |
+| `OuterMinSeparationPx` / `OuterMinSeparationRatio` / `OuterMaxSeparationRatio` | 12 / 0.25 / 1.6 | Valid cushion→rail separation window |
+| `ShadowBrightnessRise` / `ShadowSearchWindow` | 20 / 60 | Deprecated — used only by the removed shadow-dip detector |
+| `SmoothingWindow` | 5 | Moving-average window across scan points |
+| `MinTransitionPoints` | 5 | Minimum valid points to fit a rail line |
+| `MinRailParallelCos` | 0.94 | Required parallelism between fitted line and pocket segment |
+| `CushionInsetRatio` | 0.04 | Final inward inset of cushion corners |
+
+See the source docblocks in `src/Config/Cushion.ts` for the full annotated list with recommended ranges.
+
+## Config.Environment
+
+Runtime capability flags (booleans, evaluated at import).
+
+```typescript
+import { Environment } from '@chalkysticks/sdk-inference';
+
+if (Environment.isBrowser) {
+    // Canvas APIs, InferenceJS worker
+}
+
+if (Environment.isNode) {
+    // sdk-extras TableScan path
+}
+```
+
+| Flag | True when |
+|------|-----------|
+| `isBrowser` | `window` + `document` + `navigator` exist |
+| `isNode` | Node.js process detected |
+| `isWebWorker` | Worker global scope |
+| `isServiceWorker` | Service-worker global scope |
+| `isDeno` | Deno runtime |
+| `hasWebAssembly` | `WebAssembly` available |
+| `hasOffscreenCanvas` | `OffscreenCanvas` available |
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — `Config.Identity` expanded from 6 to 18 constants for the ledger-based identity stabilizer.
+- **1.13.3** — `Config.Cushion` expanded to ~30 rail-scan constants.
+- **1.13.0** — `Config.Identity` and `Config.Cushion` introduced; `Config.Image` removed (frame capture is internal to `ImageAnalyzer`); `Tracking` gained `MaxMissedFramesStationary`. (`BallDiameter` and `CollisionThresholdMultiplier` date back to ~1.10.x.)

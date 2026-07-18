@@ -1,0 +1,152 @@
+---
+title: 'Debugging & Known Limitations'
+description: 'Reading the multiplayer:flow log, spotting broken sync patterns, local two-browser testing, and the current verification status of each flow'
+---
+
+## The `multiplayer:flow` log namespace
+
+Every meaningful protocol decision emits one line through `ChalkySticks.Utility.Log.info('multiplayer:flow', ...)`. Participant-emitted lines are prefixed with the local seat (`[HOST]`, `[JOINER]`, or `[SPECTATOR]`); a handful of call sites outside the participant classes (the verdict gate in `RulesManager`, shot-clock expiry in `ShotClock`, rematch and forfeit handling in `Game.ts`) log without a seat prefix.
+
+The namespace is **on by default** — the SDK logger enables all namespaces at construction and the trainer calls `ChalkySticks.Utility.Log.enableAll()` during initialization. There is nothing to switch on. To watch it, open devtools and filter the console on `multiplayer:flow`. Filtering on `multiplayer` instead widens the net to the debug-level namespaces (`multiplayer:host`, `multiplayer:player`, `multiplayer:facade`, `multiplayer:realtime`, and so on), which include the fire-and-forget cue/ball streaming lines.
+
+Selective control if you want less noise:
+
+```typescript
+// Namespace state persists in localStorage under 'log_enabled'
+ChalkySticks.Utility.Log.disable('multiplayer:host');
+ChalkySticks.Utility.Log.enable('multiplayer:flow');
+```
+
+### Vocabulary
+
+Wire traffic:
+
+| Token | Meaning |
+|-------|---------|
+| `→ wire game:state reason=R rack=N shot=M checksum=C turnIndex=T` | Full-state broadcast sent. Only `broadcastGameState` emits outgoing lines — control messages (acks, `rack-ready`, `rack-ack`, snapshot/result requests) and `foul-sync` send silently on this namespace. |
+| `← wire game:state reason=R sequence=S ...` | Any `game:state` received, all reasons. |
+| `← wire game:state sequence=S — DUPLICATE, ignoring` | Sequence at or below the last seen from that sender; dropped. |
+| `← wire game:state sequence=S — GAP, requesting targeted result` | Gap detected on a result reason; a `shot-result-request` goes to the writer. |
+| `← wire game:state sequence=S — GAP, requesting full snapshot` | Gap on a non-result reason; host snapshot requested. |
+| `Local checksum=X vs sender=Y — MATCH\|MISMATCH, applying authoritative state` | Drift report only. State is always applied; the checksum never gates. |
+| `Local state=X — deferring R apply` / `Applying deferred R snapshot` | Non-forced snapshot queued behind local ball motion, then replayed. |
+
+Turn adoption:
+
+| Token | Meaning |
+|-------|---------|
+| `Turn index sender=X local=Y — AGREE, no override` | Healthy steady state; no switch performed. |
+| `AGREE, corrected stale isRemoteTurn → b` | Index was right but the remote-turn flag was stale; flag re-asserted. |
+| `DIVERGED, adopting (switch → X)` | Turn handoff adopted. Expected exactly once per handoff. |
+| `Reconciled turn — isRemoteTurn=b` | Switch completed. |
+| `Became active — re-aiming at next ball so the ghost/trajectory lines render` | Remote-to-local transition; aim guides refreshed. |
+| `Ball-in-hand granted from authoritative broadcast — entering placement` | Beneficiary received a foul-sync grant. |
+
+Delivery and acceptance:
+
+| Token | Meaning |
+|-------|---------|
+| `Resolution R:S:reason ACKed — delivery confirmed` | Writer's resend timer stopped. |
+| `Ignoring ACK from seat X; waiting for seat Y` | ACK from a non-opposing seat; spectator ACKs never count. |
+| `Re-sending unacked resolution K (attempt N)` | At-least-once delivery in progress: 700 ms cadence, 8 attempts. |
+| `Resolution K still unacked after N re-sends — giving up (snapshot recovery remains)` | Resend tier exhausted; snapshot recovery is the fallback. |
+| `Replaying journaled result K for sequence-gap` / `No journaled result found for rack=N shot=M` | Targeted recovery from the writer's 12-entry result journal. |
+| `Resolution rack=N shot=M (reason) already applied / stale — re-acked, skipping` | Monotonic `(rackId, shotId)` guard correctly dropping a duplicate. |
+| `Rejecting R — invalid ...` | Payload failed validation (rack/shot ids, seats, scores, ball snapshot). |
+| `Shot resolved by remote seat — applying authoritative broadcast, skipping local verdict` | The single-writer verdict gate fired on the watcher. No seat prefix. |
+| `Skipping cosmetic replay — rack mismatch` / `— not in Aiming` | Harmless; the authoritative result will snap the table regardless. |
+
+Fouls, clock, win, rack, rematch:
+
+| Token | Meaning |
+|-------|---------|
+| `Shot-clock EXPIRED — fouling (my turn)` | Verdict owner authors the shot-clock foul. |
+| `Shot-clock EXPIRED — not my verdict, waiting for shooter foul-sync` | Watcher stands down; foul arrives on the wire. |
+| `Game won by seat X — marking authoritative game-end for next broadcast` | Writer captured the win; it rides the next `post-shot-sync`. |
+| `Authoritative game-end — winner seat X, surfacing outcome` | Applier surfaced the win locally. |
+| `Re-sending rack-ready (attempt N)` / `Re-sending rack-start rack=N (attempt M)` | Rack handshake resends (700 ms, 8 attempts each). |
+| `Duplicate rack-start rack=N — re-acking without re-rack` | Idempotent duplicate handling; the table is not re-racked. |
+| `→ match-restart (rematch)` / `← match-restart — re-dispatching local rematch` | Host-authored auto-rematch and its receipt. |
+| `Opponent forfeited — awarding win` | Forfeit received; instant win. |
+| `Connected and listening` | Participant attached its listeners. |
+
+## What healthy looks like
+
+A clean miss with the turn passing from host to joiner:
+
+```text
+[HOST]   → wire game:state reason=post-shot-sync rack=1 shot=14 checksum=a91f turnIndex=1
+[JOINER] ← wire game:state reason=post-shot-sync sequence=42 rack=1 shot=14 checksum=a91f turnIndex=1
+[JOINER] Turn index sender=1 local=0 — DIVERGED, adopting (switch → 1)
+[JOINER] Reconciled turn — isRemoteTurn=false
+[JOINER] Became active — re-aiming at next ball so the ghost/trajectory lines render
+[HOST]   Resolution 1:14:post-shot-sync ACKed — delivery confirmed
+```
+
+Line by line: the shooter broadcasts its authored resolution; the watcher receives it with a contiguous sequence; the turn index diverges exactly once (a handoff); the flag reconciles; the incoming player's aim guides refresh without touching the cue; and the writer's ACK lands, stopping the resend timer. When the shooter pots and stays at the table, the applier instead logs `AGREE, no override` and performs no switch. Note the joiner's outgoing ACK produces no `→ wire` line — it is only visible through the host's `ACKed` confirmation.
+
+## Red flags
+
+| Broken pattern | Likely cause | Where to look |
+|----------------|--------------|---------------|
+| Shooter never logs `→ wire ... post-shot-sync` after a shot settles | `localShotInFlight` gating class of bug — the flag was never set at `Shot.Start` or was cleared early | `Handle_OnShotStart` / `Handle_OnShotMotionStopped` in `Participant/Host.ts` and `Player.ts` |
+| `DIVERGED, adopting` oscillates back and forth on the same handoff | A stale resolution is being re-applied instead of re-acked | `acceptResolution` / `isStaleResolution` in `Participant/Base.ts`; check the `(rackId, shotId)` high-water mark |
+| Both clients believe it is their turn | Stale `isRemoteTurn` flag or missed turn adoption | Capture `Turn index sender/local` plus `isRemoteTurn` from both consoles; `applyAuthoritativeTurn` |
+| Ball-in-hand re-granted after the ball was already placed | A resend bypassed `acceptResolution`; the duplicate should log `re-acked, skipping` | `handleRemoteFoulSync` and `applyRemoteBallInHand` in `Participant/Base.ts` |
+| Endless `Re-sending unacked resolution (attempt N)` | ACK seat mismatch — the ACK is arriving from the wrong seat, or from a spectator, which never counts | `handleResultAck` / `getExpectedAckPlayerIndex`; look for `Ignoring ACK from seat ...` on the writer |
+| Incoming player has no ghost/trajectory lines | `refreshAimOnBecomingActive` did not fire on the remote-to-local transition | `applyAuthoritativeTurn` AGREE/DIVERGED branches in `Participant/Base.ts` |
+| Watcher computes its own verdict (double scores, double fouls) | Verdict gate not firing — `game/ownsShotVerdict` returned true on the wrong seat | `RulesManager.Handle_OnShotMotionStopped`; the `ownsShotVerdict` getter in the game store |
+| Checksum `MISMATCH` on every resolution | Physics divergence upstream; state still converges because the authoritative snapshot always applies, but investigate determinism | The MATCH/MISMATCH line in `applyRemoteBallState`; compare `preShotChecksum` on `shot:taken` |
+| "Waiting for opponent" hangs after a rack ends | Rack handshake stalled; the 8-second UI fallback should fire `requestFullSnapshot('rack-timeout')` | `GameOutcome.vue` fallback timer; `rack-ready`/`rack-start` resend lines |
+
+When reporting a desync, capture the last ~12 `multiplayer:flow` lines from **both** consoles around the failure, plus whether the stuck side shows a `← wire ... post-shot-sync` for the relevant rack and shot.
+
+## Local testing
+
+Two-browser setup:
+
+1. Run `yarn serve` and open the app in two separate browsers (or one normal and one private window — two tabs in the same profile share localStorage and can cross-contaminate persisted state).
+2. **Hard-refresh both windows before every run.** Hot module replacement leaves stale multiplayer listeners and singletons behind, which manifests as phantom protocol bugs that do not exist on a clean load.
+3. Host a table in one window, join by room code in the other, and keep both consoles filtered on `multiplayer:flow`.
+
+Type-check and run notes:
+
+- The real type gate is `yarn serve` — the webpack fork-ts-checker output (`No issues found.`) is authoritative. Standalone `tsc --noEmit` produces hundreds of false errors from `.vue` shims and path aliases; do not use it.
+- Known-noise build warnings: `@chalkysticks/sass` asset globs and the optional `@capacitor/haptics` dependency.
+- The `.spec.ts` files type-check but cannot execute — no Jest toolchain is installed.
+
+## Known limitations
+
+**Verified working** (mechanisms landed in code, exercised in-game): the single-writer verdict gate including offline inertness; authoritative post-shot and foul apply as forced recovery; per-sender sequence dedup with gap-to-targeted-replay and gap-to-snapshot recovery; ACK plus the monotonic `(rackId, shotId)` guard (no ball-in-hand re-grants or turn rewinds from resends); fouler-only `foul-sync` with the shot-clock `advanceResolutionId` invariant; single-writer shot-clock expiry with the watcher's clock paused during remote turns; the game-end marker riding `post-shot-sync`; the rack-ready/rack-start/rack-ack handshake with resends and duplicate re-ack; opponent forfeit producing an instant win; the presence disconnect countdown degrading to asynchronous play (60-second default, ruleset-overridable).
+
+**Verification pending / first-cut:**
+
+- **Post-win break and next-rack transition** — hardening is in place (protocol reset keeps the room alive on rematch, the host derives the breaker from its own state, resends on both sides, duplicate `rack-start` re-acked without re-racking, cross-rack `shot:taken` no longer mutates protocol ids). Live two-browser verification of host-break, joiner-break, and next-rack is still owed; historically this surface could desync turn ownership at the break.
+- **Online auto-rematch is first-cut** — a 5-second countdown after which the host authors `match-restart`; the joiner's countdown is cosmetic. Known edges: leaving during the countdown cancels locally but the opponent's presence display is unverified; the joiner may see a brief rack flicker as its locally racked table is overwritten by the host's authoritative `rack-start`; scores can lag one broadcast after reset. The fallback is always Leave, which drops to freeplay.
+- **Persistence cardinality** — listed or matchmade games share one `GameMatch` row, but game/inning/shot rows are per-seat lineages (each client persists only its own shots). Private room-code games without a listing create match rows lazily per client.
+
+**Deliberately unbuilt:**
+
+- Server-authoritative shot re-validation. The shooter's client is trusted; the checksum is diagnostic only.
+- A spectate UI. The `Spectator` participant role is fully implemented and live (read-only apply, no handshake participation), but there is no dedicated spectator interface beyond joining via a spectate-enabled listing.
+- Friends-only or private listing visibility — listings are public or unlisted (room code only).
+
+## Manual test matrix
+
+Run with two browsers, both hard-refreshed first:
+
+| Scenario | Expect |
+|----------|--------|
+| Offline vs-CPU scratch | Respot and turn passes to the CPU; the AI's verdict runs (gate is inert offline) |
+| Offline local two-player scratch | Respot, seat switch, ball-in-hand handed to the other human |
+| Online full rack of normal shots | Alternating turns; watcher logs `AGREE` or exactly one `DIVERGED` per handoff; no oscillation |
+| Online break (host, then joiner) | Breaker logs `→ wire ... post-shot-sync turnIndex=...`; the other side adopts |
+| Online scratch and shot-clock foul | Both clients end on the same turn index with ball-in-hand on the same seat |
+| Online incoming turn | Ghost and aim lines appear without nudging the cue |
+| Online full game to a win | Win surfaces on both clients; clean rack and match transitions |
+| Match over, then Leave | Disconnect plus freeplay; the cue is yours (seat 0), not the opponent's |
+| Match over, then auto-rematch | Countdown, then both clients restart 0-0 in the same room |
+| Dropped packet | ACK/resend or gap-to-targeted-replay reconverges; nothing stuck waiting |
+| Reload mid-rack | Reconnect rebuilds the table |
+
+For the surrounding protocol these tests exercise, see [Wire Protocol](/trainer/multiplayer/protocol) and [Sync Flows](/trainer/multiplayer/sync-flows).

@@ -1,0 +1,195 @@
+---
+title: 'Table Scanner Package'
+description: 'Pluggable browser-side image classifier for pool table photos'
+---
+
+`@chalkysticks/sdk-table-scanner` (v1.1.4) is a browser-side classifier that decides whether a still image contains a pool table. It uses a pluggable strategy pattern so callers can swap between ONNX Runtime Web and Google Teachable Machine (TensorFlow.js) backends without changing call sites. ML runtimes load lazily — either injected from a CDN or dynamically imported from optional peer dependencies.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-table-scanner
+
+# Only if bundling the runtime locally (loadingMethod: 'local'):
+npm install onnxruntime-web                       # ONNX backend
+npm install @teachablemachine/image @tensorflow/tfjs  # Teachable Machine backend
+```
+
+With the default `loadingMethod: 'cdn'`, no ML peer dependencies are needed — the scanner injects `<script>` tags on first load.
+
+## Quick Start
+
+```typescript
+import { TableScanner, Enum } from '@chalkysticks/sdk-table-scanner';
+
+const scanner = new TableScanner({
+    backend: Enum.ClassifierBackend.Onnx,
+});
+
+scanner.on('model:loading', () => console.log('Loading model…'));
+scanner.on('model:loaded', () => console.log('Model ready'));
+
+const result = await scanner.classify(imageElement);
+
+console.log(result.isPoolTable);  // true / false
+console.log(result.confidence);   // 0.0 – 1.0 for the pool-table class
+console.log(result.className);    // top prediction, e.g. 'pool_table'
+```
+
+The model auto-loads on the first `classify()` call; call `load()` up front to prewarm.
+
+## Top-Level Exports
+
+```typescript
+import {
+    Core,       // TableScanner
+    Config,     // Environment, Model
+    Enum,       // ClassifierBackend, ClassLabel
+    Strategy,   // Base, OnnxClassifier, TeachableMachineClassifier
+    Utility,    // Canvas, Loader, Softmax
+} from '@chalkysticks/sdk-table-scanner';
+
+// Convenience flat exports (same classes):
+import { TableScanner, Base, OnnxClassifier, TeachableMachineClassifier } from '@chalkysticks/sdk-table-scanner';
+```
+
+## Core: TableScanner
+
+`Core.TableScanner` extends `Event.Dispatcher` (sdk-core) and orchestrates the active strategy.
+
+### Constructor options (`Partial<ITableScannerConfig>`)
+
+| Option | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `backend` | `'onnx' \| 'teachable-machine'` | `'onnx'` | Which strategy to build |
+| `confidenceThreshold` | `number` | `0.66` | Threshold used when building classification results; forwarded to both the ONNX and Teachable Machine strategies |
+| `loadingMethod` | `'cdn' \| 'local'` | `'cdn'` | Inject runtime via `<script>` tag vs dynamic `import()` of peer dep |
+| `modelVersion` | `string` | `'latest'` | Version segment in the model CDN URL |
+
+### Methods
+
+| Member | Signature | Notes |
+|--------|-----------|-------|
+| `classify` | `(source: TClassifierSource) => Promise<IClassificationResult>` | Auto-loads model if needed |
+| `load` | `() => Promise<void>` | Explicitly load the model; dispatches `model:loading` / `model:loaded` |
+| `dispose` | `() => void` | Releases the strategy and its resources |
+| `setBackend` | `(backend: ClassifierBackend) => this` | Disposes current strategy, builds the new one |
+| `setConfidenceThreshold` | `(threshold: number) => this` | Updates scanner config and propagates to the active strategy immediately — takes effect on the next `classify()` without a rebuild |
+| `setModelVersion` | `(version: string) => this` | Rebuilds the strategy with new model URLs |
+| `setStrategy` | `(strategy: IClassifierStrategy) => this` | Inject a custom/test strategy instance |
+| `isReady` | `get: boolean` | `true` once the strategy's model is loaded |
+
+`TClassifierSource` is `HTMLCanvasElement | HTMLImageElement | HTMLVideoElement | ImageBitmap`.
+
+## Events
+
+Callbacks receive the sdk-core dispatcher envelope; the payload is on `e.data`.
+
+| Event | `e.data` | When |
+|-------|----------|------|
+| `model:loading` | `{ backend }` | Model loading begins |
+| `model:loaded` | `{ backend }` | Model is ready for inference |
+| `classify:start` | `{ source }` | A `classify()` call has started |
+| `classify:complete` | `IClassificationResult` | Classification finished |
+| `classify:error` | `{ error }` | Classification failed (error is rethrown) |
+
+```typescript
+scanner.on('classify:complete', (e) => {
+    console.log(e.data.className, e.data.confidence, e.data.predictions);
+});
+```
+
+## Classification Result
+
+```typescript
+interface IClassificationResult {
+    className: string;              // top prediction label
+    confidence: number;             // probability of the pool-table class
+    isPoolTable: boolean;           // confidence >= the strategy's threshold (ONNX: always 0.66)
+    predictions: IClassPrediction[]; // all classes: { className, probability }
+    timestamp: number;              // Date.now() at result build
+}
+```
+
+## Strategies
+
+All strategies extend `Strategy.Base` (itself an `Event.Dispatcher`) and implement `IClassifierStrategy`:
+
+```typescript
+interface IClassifierStrategy {
+    readonly isLoaded: boolean;
+    readonly name: string;
+    classify(source: TClassifierSource): Promise<IClassificationResult>;
+    dispose(): void;
+    load(): Promise<void>;
+}
+```
+
+### OnnxClassifier
+
+Runs an ONNX model via ONNX Runtime Web. Preprocessing resizes the source to 224×224 with `createImageBitmap()` (native, fast), normalizes pixels with ImageNet mean/std into a CHW float32 tensor, and applies softmax to the output logits. Model metadata (`classes`, `image_size`, tensor names, normalization) is fetched from a JSON file beside the model and overrides the built-in defaults.
+
+```typescript
+import { OnnxClassifier } from '@chalkysticks/sdk-table-scanner';
+
+const strategy = new OnnxClassifier({
+    loadingMethod: 'local',          // dynamic import of onnxruntime-web
+    modelUrl: '/models/pool_table_classifier.onnx',
+    metadataUrl: '/models/pool_table_classifier_metadata.json',
+});
+
+scanner.setStrategy(strategy);
+```
+
+Config keys (`Partial<IOnnxClassifierConfig>`): `cdnUrl`, `imageSize`, `inputName`, `loadingMethod`, `mean`, `metadataUrl`, `modelUrl`, `outputName`, `std`.
+
+### TeachableMachineClassifier
+
+Loads a Google Teachable Machine image model via TensorFlow.js; `tmImage` handles preprocessing internally. In CDN mode, TensorFlow.js is injected before the Teachable Machine library.
+
+```typescript
+scanner.setBackend(Enum.ClassifierBackend.TeachableMachine);
+```
+
+Config keys (`Partial<ITeachableMachineClassifierConfig>`): `cdnUrl`, `confidenceThreshold`, `loadingMethod`, `metadataUrl`, `modelUrl`, `poolTableClassName`.
+
+## Configuration
+
+`Config.Model` holds CDN locations, model constants, and URL builders:
+
+| Constant | Value |
+|----------|-------|
+| `DefaultModelVersion` | `'latest'` |
+| `DefaultConfidenceThreshold` | `0.66` |
+| `OnnxModelBaseUrl` | `https://code.chalkysticks.com/model/table-detector-onnx` |
+| `TeachableMachineModelBaseUrl` | `https://code.chalkysticks.com/model/table-detector` |
+| `OnnxImageSize` | `224` |
+| `OnnxNormalizationMean` / `OnnxNormalizationStd` | ImageNet values |
+| `PoolTableClassName` | `'pool table'` |
+
+URL builders: `getOnnxModelUrl(version?)`, `getOnnxMetadataUrl(version?)`, `getTeachableMachineModelUrl(version?)`, `getTeachableMachineMetadataUrl(version?)`.
+
+`Config.Environment` exposes capability flags: `isBrowser`, `hasWebAssembly`, `hasOffscreenCanvas`.
+
+## Utilities
+
+| Utility | Functions |
+|---------|-----------|
+| `Utility.Canvas` | `drawToCanvas(context, source, width, height)` — draw any `TClassifierSource` to a 2D context |
+| `Utility.Loader` | `loadScript(url)` — inject and await a `<script>` tag (deduped); `isGlobalAvailable(globalName)` |
+| `Utility.Softmax` | `softmax(logits)` — numerically stable softmax |
+
+## Enums
+
+| Enum | Members |
+|------|---------|
+| `ClassifierBackend` | `Onnx = 'onnx'`, `TeachableMachine = 'teachable-machine'` |
+| `ClassLabel` | `PoolTable = 'pool_table'`, `NotPoolTable = 'not_pool_table'` |
+
+## Recent Changes
+
+- Unreleased — `confidenceThreshold` now applies to the ONNX backend (it previously always used `Config.Model.DefaultConfidenceThreshold`), and `setConfidenceThreshold()` propagates to the active strategy immediately instead of waiting for a rebuild
+- 1.1.2 — `@chalkysticks/sdk-core` normalized to a semver peer dependency (`^1.61.5`); ONNX and Teachable Machine runtimes remain optional peers (1.1.3 normalized the sdk-core devDependency spec; 1.1.4 shipped a rebuilt web bundle only)
+- 1.1.0 — `DefaultConfidenceThreshold` lowered from `0.9` to `0.66`; `OnnxClassifier` preprocessing rewritten around `createImageBitmap()` with a reused tensor buffer
+- 1.0.0 — initial release
+- Docs correction — backend switching is `setBackend(ClassifierBackend)` and `setStrategy()` takes a strategy *instance* (older docs showed `setStrategy(enum)`); readiness is the `isReady` getter (not `getIsReady()`); `classify:complete` emits `IClassificationResult`, not `{ label, scores }`

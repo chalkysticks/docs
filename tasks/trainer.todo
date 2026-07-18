@@ -1,0 +1,459 @@
+Inbox:
+
+	☐ Hot-streak special meter.
+		Note: Tony Hawk / NBA Jam style.
+		Note: Visual language could be a "burning net" or similar on-fire state.
+
+	☐ Safety drill mode.
+		☐ Player gets 3 chances to leave a safety.
+		☐ Opponent gets 3 chances to escape.
+
+	☐ Should the Trainer engine be white-labeled?
+
+	☐ Have API create custom images for unfurling like
+	  OMG SHOOT MY SHOT BABY
+
+	☐ Sam two finger swiped back on web-v3 during only, landed the .com
+	  it didn't "disconnect" cause we're still on the SPA and it wouldn't
+	  go forward
+
+	☐ A few times during online, Legs didn't get the "Move ball" notification
+	  but I did. Hmm..
+
+
+Now:
+
+	☐ More area on scrolling in menu like play modes
+
+		☐ Fade out top header thing like in our app
+
+	☐ Figure out why distant line trajectories repeat
+
+	☐ Update aim direction on kick shot + jump shot in tutorial
+
+	☐ Is the trainer embed coordinates correct?
+
+		☐ Why do we have this whole fucking inverted thing?
+			This was due to diagrams at some point. do we still need it?
+
+	☐ New achievement design
+
+	☐ Introduce target zones for drills,
+		☐ Containing safeties, etc
+			https://youtu.be/0_HqnTyNR0U?t=315
+
+	☐ Add ability to spin more on english
+
+	☐ Lorem ipsum in "Drills"
+
+	☐ When tabbling or navigating through side bar + tabs... perhaps we should just change
+	  the screen without having to click it? Probably makes more sense...
+
+	☐ Locked item details aren't showing up on second highlight @started(26-06-26 13:32)
+
+	☐ Add sounds for Trick Feed coming in @started(26-06-24 10:15)
+		cash register? camera?
+
+	☐ Menu crashes iOS on phone + app @started(26-06-25 13:59)
+		✔ Also maybe due to blurring? We can turn that off @done(26-06-25 13:58)
+
+	☐ For Superfine burgendy table, add a slight red ball tint
+
+	☐ Click a codex shot to bring up a Pad diagram that allows for the shot to be done
+
+	☐ turn off aim lines when opponent is shooting @started(26-06-22 16:18)
+
+
+	☐ Move the speed-run countdown out of common shot lines on mobile and desktop.
+
+	☐ Replace the temporary multiplayer camera/view fix with a real match-state view transition.
+
+	☐ Fix Straight Pool / 14.1 turn handling.
+		☐ After a successful pot, it switched to the other player.
+
+	☐ Clean up abandoned-match flow.
+		☐ If the opponent leaves and the local player exits, clear lower-third UI, shot clock, and match state.
+		☐ Return the table to Freeplay or another neutral state.
+
+	☐ Fix joining disconnected or abandoned matches.
+		☐ "Join" should attach to the existing match or reject clearly.
+		☐ It should not start a phantom match.
+		☐ It should not show "Opponent connected" without entering the match.
+
+	☐ Fix recurring keyboard shortcut leak.
+		☐ Repro note: pressing Undo caused camera shortcuts to trigger.
+
+	☐ Fix missing instructions on the diagram page.
+
+	☐ Add nominated-pocket support.
+
+
+Match Flow & Multiplayer:
+
+	☐ Ensure opponent shots do not record local stats, best tricks, achievements, or progression.
+
+	☐ Add larger current-turn indicator.
+		☐ Consider redesigned lower thirds.
+
+	☐ Redesign match setup.
+
+	☐ Redesign the game-end modal.
+		☐ Show the winner.
+		☐ Show the race.
+		☐ Add a short timer before "Continue" activates.
+
+	☐ Add WebRTC transport for multiplayer.
+
+	☐ Add spectator / coaching mode.
+		☐ Coach can stay connected while loading diagrams on the fly.
+
+	☐ Add reconnection handling.
+
+	☐ Add chat integration during matches.
+
+	☐ Add game-state validation / anti-cheat checks.
+
+
+Game Modes & Rules:
+
+	☐ Add Best Lag mode with adjustable targets.
+
+	☐ Add bocce-style mode with target zones.
+
+	☐ Add snooker ball set.
+
+	☐ Add adjustable ball sizes.
+
+	☐ Hide or simplify the ball tray in Straight Pool mode if it is not useful.
+
+	☐ Add drag-to-shoot cue control as an alternate to power mode.
+
+	☐ Add shot-level handicaps.
+		Note: Instead of "2 games on the wire", allow 2-4 retries per match, like timeouts.
+		Note: The goal is focused practice, not just a weaker player getting beaten repeatedly.
+
+	☐ Add animated table hazards.
+		☐ Trigger a hazard when a ball passes through or lands in certain zones.
+
+	☐ Add digital-only games.
+		Note: Some games do not exist in real life because balls cannot be restored exactly, retrieved from bar-table pockets, or reset quickly.
+		Note: Digital tables remove those constraints.
+
+	☐ Explore Wordle-style pool mode.
+
+	☐ Explore Trivia Crack-style asynchronous pool mode.
+		☐ Run many games at a time.
+		☐ Let players return when it is their shot.
+
+	☐ Explore Rocket League / oversized-ball modes.
+
+
+Drills, Progression & Rewards:
+
+	✔ Add Drills tab. @done(26-07-14 19:45)
+		✔ Official drills. @done(26-07-14 19:45)
+		✔ Community drills. @done(26-07-14 19:45)
+		☐ Shootable challenges that can be completed and improved over time.
+
+	☐ Add Drill Library.
+		☐ Aiming drills.
+		☐ Position-play drills.
+		☐ Break drills.
+		☐ Skill-level grouping.
+
+	☐ Add achievements, goals, collectibles, and tricks to the main menu. @started(26-06-11 20:12)
+		☐ Trick checklist: bank shot, double bank, etc. @started(26-06-11 20:12)
+		☐ Tutorial awards: use keyboard draw, shoot a draw shot, etc.
+
+	☐ Create the new achievement style.
+
+	☐ Add level progression.
+		Note: Examples: Level 1, Level 42.
+
+	✔ Add match replays / match history. @done(26-07-14 19:57)
+
+	☐ After a CPU or online match, suggest shareable replays.
+		Note: Detect cool shots and offer a "theme park photo" style replay package.
+
+
+Loadout & Customization:
+
+	☐ Build Loadout
+		☐ Cues
+		☐ Tables
+		☐ Table creator
+		☐ Earnable cloth colors
+			✔ Common, Rare, Epic, Legendary @done(26-06-11 15:25)
+			☐ Define different earning paths
+
+	☐ Add sidebar profile preview
+		☐ Avatar
+		☐ User name
+		☐ Level
+		☐ Progression
+		☐ ChalkyBucks
+
+	☐ Add Club sidebar item @started(26-06-12 00:24)
+		☐ Leagues
+		☐ Friends
+
+	✔ Add Profile sidebar item @started(26-06-12 00:24) @done(26-07-14 19:58) @lasted(4w4d19h34m52s)
+		✔ Stats @done(26-07-14 19:58)
+		✔ Progress @done(26-07-14 19:58)
+		✔ Account @done(26-07-14 19:58)
+		✔ Subscription @done(26-07-14 19:58)
+
+	☐ Add full-table graphics that can also target rails.
+		☐ Consider using the same tech for turn indicators and table-state overlays.
+
+	☐ Add real Pad diagrams
+
+	☐ Improve custom rack / ball loading from Diagram
+
+	☐ Improve cloth options
+		☐ Simonis blue
+		☐ Grey table
+
+
+UI & Navigation:
+
+	☐ Add a new shot-clock UI at the top
+
+	☐ Gate locked menu elements and game modes, such as Speed Run, with `$feature`
+
+	☐ Add hero images to subpages, similar to the app overlay style
+
+	☐ Add flythrough intro
+
+	☐ Break out reusable UI controls so each can own active state, sound effects, and input hints
+
+	☐ Add the new UI to Trainer
+
+	☐ Remove the Play tab
+
+	☐ Allow Trainer access directly through Pad only
+
+	☐ Limit Pad access where needed
+
+	☐ Match info display
+		☐ Local player / opponent / CPU names
+		☐ Current shooter
+		☐ Balls left on table
+		☐ Games won / sets won
+		☐ Total match / race
+
+	☐ Action panel
+		☐ Mute / volume
+
+	☐ Customization panel.
+		☐ Arena selection.
+		☐ Table selection.
+		☐ Cloth selection.
+		☐ Overlays / grid.
+		☐ Cue selection.
+
+
+Projection, AR & Physical Table:
+
+	☐ Automatically adjust projection mode using homography.
+		☐ Use pocket detection to determine table bounds.
+		☐ Adjust the output image from detected table geometry.
+
+	☐ Explore augmented-reality overlays.
+		☐ People keep asking for it.
+		☐ Consider Google Maps-style alternate route overlays.
+		☐ Consider cheap projector system.
+
+	☐ Add AR game viewer.
+		☐ Make the physical game more interesting.
+		☐ Add table effects, smoke trails, or ball interactions.
+
+	☐ Animate on top of a real photo of a table with balls as-is.
+
+	☐ Record video tracking information with the Chrome extension.
+		☐ Save frames every second with video timestamp.
+		☐ Run analytics later.
+		☐ Project overlays onto video.
+		☐ Improve future viewers.
+
+
+Platform, Publishing & Content:
+
+	☐ Create a desktop app.
+
+	☐ Publish the app.
+
+	☐ Write a Medium article about the work.
+
+	☐ Record product videos.
+
+	☐ Build weekly feed.
+
+	☐ Add diagrams.
+
+	☐ Add puzzles.
+
+	☐ Add stats.
+
+
+Future / Out of Scope:
+
+	☐ API matchmaking / lobby system.
+
+	☐ Player profiles / avatars in multiplayer.
+
+
+Archive: Completed:
+
+	✔ Test whether 1.5x speed feels more realistic and consider making it default. @done(25-10-26 12:33)
+	✔ Fix aim line extending through ghost ball. @done(25-08-26 10:10)
+	✔ First-person aiming motion. @done(25-08-28 08:52)
+	✔ Fix hard breaks keeping the cue on the table. @done(25-08-28 08:52)
+	✔ Relative aiming motion. @done(25-08-28 08:52)
+	✔ Add trajectory lines. @done(25-08-28 09:54)
+	✔ Turn Splat into a plugin/mixin for World. @done(25-08-28 09:54)
+	✔ Replace direct Log usage with ChalkySticks.Utility.Log. @done(25-10-15 18:44)
+	✔ Ability to toggle aim lines. @done(25-10-15 22:23)
+	✔ FPS counter with Stats.js. @done(25-10-15 22:23)
+	✔ Fix scratched balls not returning. @done(25-10-17 23:17)
+	✔ Fix cue ball not returning. @done(25-10-17 23:32)
+	✔ Fix `.warn` method. @done(25-10-17 23:34)
+	✔ Add cue strike animation. @done(25-10-24 16:28)
+	✔ Lower table to ground level out of bounds so balls fall off. @done(25-10-24 18:14)
+	✔ Prevent cue clipping near rails or balls. @done(25-10-24 18:14)
+	✔ Reset english and power directly after strike. @done(25-10-24 19:02)
+	✔ Fix masse direction using shot direction. @done(25-10-24 19:08)
+	✔ Reracking always resets cue ball, cue, and state. @done(25-10-24 19:09)
+	✔ Adjust cue distance on new shot. @done(25-10-29 17:26)
+	✔ Hide cue when moving balls. @done(25-10-29 17:26)
+	✔ Fix finger roll when pulling off the drag. @done(25-10-29 18:18)
+	✔ Use ultra-slow trim motion. @done(25-10-29 20:41)
+	✔ Fix paste handling. @done(25-11-01 17:45)
+	✔ Fix quick taps to shoot with movement detection. @done(25-11-01 17:45)
+	✔ Allow full diagram URLs. @done(25-11-01 18:16)
+	✔ Put game online. @done(25-11-01 18:16)
+	✔ Add route for automatic loading. @done(25-11-01 19:05)
+	✔ Let people shoot while balls are still spinning. @done(25-11-01 20:06)
+	✔ Fix ghost ball appearing before other table state. @done(25-11-01 20:09)
+	✔ Add custom rail / ball category hit handling. @done(25-11-09 10:43)
+	✔ Treat balls jumping out of bounds as fouls and reset. @done(25-11-09 10:43)
+	✔ Cap framerate at 60fps to test performance and jitter. @done(25-11-09 12:30)
+	✔ Allow float shot-power values from 0.0 to 1.0. @done(25-11-11 09:46)
+	✔ Disable background music by default. @done(25-11-12 23:18)
+	✔ Improve loading smoothness. @done(25-11-12 23:18)
+	✔ Add mobile menu. @done(25-11-12 23:19)
+	✔ Portrait mode for Trainer. @done(25-11-29 11:07)
+	✔ Fix angled shots with no top applying too much follow. @done(25-12-20 11:23)
+	✔ Fix ghost ball and aiming disappearing after unloading and reloading Trainer. @done(25-12-20 11:23)
+	@lasted(24s) ✔ Improve performance on Sam's iPhone. @started(25-12-26 20:18) @done(25-12-26 20:18)
+	✔ Fix duplicate audio downloads. @done(25-12-26 20:18)
+	✔ Fix top spin still creating masse behavior. @done(25-12-26 20:18)
+	✔ Fix Diagrammer requiring ball movement before working in game. @done(25-12-26 20:19)
+	✔ Shot clock. @done(26-02-05 08:21)
+	✔ Allow CueA and CueB. @done(26-02-06 16:31)
+	✔ Allow CPU opponent to use a different cue. @done(26-02-06 16:43)
+	✔ Cue selection. @done(26-02-06 16:43)
+	✔ Fix jump shots landing on another ball after ball-detection changes. @done(26-02-06 16:43)
+	✔ Restart if balls are potted and never return. @done(26-02-06 16:57)
+	✔ Adjust roll / spin after new ball-contact behavior created too much follow. @done(26-02-06 16:58)
+	✔ Fix lighting regression. @done(26-02-06 16:58)
+	✔ Fix state where player could move cue but could not shoot. @done(26-02-06 16:58)
+	✔ Fix Pad-to-Trainer flow where second shot did not bring cue back. @done(26-02-08 16:51)
+	✔ Fix keymaps attaching multiple times when revisiting Trainer. @done(26-02-08 16:51)
+	✔ Fix picked-up balls jumping too high. @done(26-02-08 16:51)
+	✔ Export current table to Pad layout. @done(26-02-08 16:52)
+	✔ Ball position sync / correction mechanism. @done(26-02-19 15:42)
+	✔ Add `@/Asset/image/graphic/background/find-your-felt.avif`. @done(26-02-20 17:59)
+	✔ Faster / smaller automatic boundaries from SVG. @done(26-02-20 17:59)
+	@lasted(12s) ✔ Reduce object allocation in Dispatcher and Collisions for Safari. @started(26-02-20 18:00) @done(26-02-20 18:00)
+	✔ Add environment maps to balls and table. @done(26-02-20 18:01)
+	✔ Increase maximum break speed. @done(26-02-20 18:01)
+	✔ Update max spin for draw, follow, and side spin. @done(26-02-20 18:01)
+	✔ Add haptics. @done(26-02-20 18:19)
+	✔ Fix English bar intermittently not being clickable. @done(26-04-05 11:41)
+	✔ Fix hard shots sending balls through pockets and off table. @done(26-04-05 11:41)
+	✔ Fix off-table balls not resetting. @done(26-04-05 11:41)
+	✔ Add app secrets like Konami code. @done(26-04-16 13:02)
+	✔ Fix balls getting slightly inside rails on Pad and Trainer. @done(26-04-28 18:08)
+	@lasted(21s) ✔ Fix practice freeplay nine-ball refresh limit. @started(26-04-29 08:36) @done(26-04-29 08:36)
+	✔ Login modal to choose non-freeplay game mode. @done(26-04-29 08:36)
+	✔ Allow table / environment through query string. @done(26-04-29 08:37)
+	✔ Full-table overlays. @done(26-04-29 08:37)
+	✔ Disable WebAR and WebVR modes because WebXR hurts performance. @done(26-04-29 08:39)
+	✔ Fix move-ball behavior breaking multiplayer. @done(26-05-10 16:47)
+	✔ Fix diagrams not loading in the app. @done(26-05-10 22:11)
+	✔ Fix replay not performing jump shots. @done(26-05-10 22:11)
+	✔ Spectator mode. @done(26-05-10 22:11)
+	✔ Half-ball visibility / minimap. @done(26-06-02 19:25)
+	✔ Create custom respot rules. @done(26-06-06 15:09)
+	✔ Improve aim up/down control. @done(26-06-06 15:14)
+	✔ Pull camera out after shot so player can see table action. @done(26-06-06 15:26)
+	✔ Move balls on mobile. @done(26-06-06 15:27)
+	✔ Test smaller pockets on model. @done(26-06-06 15:27)
+	✔ Add custom rules. @done(26-06-06 15:28)
+	✔ Hide trajectories when shooting. @done(26-06-06 15:28)
+	✔ Add host avatar to server browser rows. @done(26-06-07 09:08)
+	✔ Turn server browser into a real table with headers. @done(26-06-07 09:08)
+	✔ Fix opponent cue color. @done(26-06-08 17:00)
+	✔ Add start button to open menu. @done(26-06-09 21:21)
+	✔ Fix EightBall camera director and cue aiming target mismatch. @done(26-06-09 22:33)
+	✔ Fix next-shot camera following previous player's ball. @done(26-06-09 22:33)
+	✔ Keep EightBall open after break. @done(26-06-09 23:09)
+	✔ Add DualShock controls. @done(26-06-10 11:31)
+	✔ After match intro, move automatically to first person. @done(26-06-10 16:30)
+	✔ Hide power bar while opponent is shooting. @done(26-06-10 16:30)
+	✔ Add a way to leave the current game. @done(26-06-10 16:34)
+	✔ Create input helper that switches between gamepad, keyboard, and XR controls. @done(26-06-10 16:34)
+	✔ Contextual button hints. @done(26-06-10 16:35)
+	✔ Desktop idle landing screen with "Press anywhere to continue." @done(26-06-10 16:35)
+	✔ Add ambient crowd chatter and room sound effects. @done(26-06-11 12:04)
+	✔ Use Veo to create ambient loops for PlayMode graphics. @done(26-06-11 13:12)
+	✔ Game shot list / trick list. @done(26-06-12 00:24)
+	✔ Chalk dust puff using particles on break. @done(26-06-13 19:19)
+	✔ Multiplayer shot clock. @done(26-06-13 19:19)
+	✔ Speed-run game-mode rules with shot clock. @done(26-06-13 19:19)
+	✔ Add visible active state for regular buttons. @done(26-06-14 13:16)
+	✔ Fix 9-ball not returning after last-ball foul. @done(26-06-15 08:25)
+	✔ Fix multiplayer shot-clock foul desync. @done(26-06-15 08:25)
+	✔ Make Start Match button larger and more decorative. @done(26-06-15 08:25)
+	✔ Add introduction to custom drill URLs with instructions @done(26-06-30 19:23)
+	  what's allowed, what isn't, etc on the trainer
+	✔ While changing english on gamepad, show the english overlay briefly @done(26-07-11 15:39)
+	✔ Dynamic chalkysticks.com/play/eight, play/nine, play/ten @done(26-07-11 15:39)
+	✔ "T" opens chat on Trainer @done(26-07-07 12:32)
+	✔ Library page on Pad @done(26-07-07 12:31)
+	✔ Fixed finger lift jank on mobile @done(26-07-06 16:02)
+	✔ Chat on web-v3 trainer @done(26-07-06 16:02)
+	✔ Fix the 409 innings and shit in API @done(26-07-06 16:02)
+	✔ maybe a rerack button at the end of a loaded diagram? @done(26-07-06 09:55)
+	✔ Prevent moving ball @done(26-07-06 09:55)
+	✔ JS perf test library @done(26-07-05 07:30)
+	✔ Create embeddable diagram that anyone can iframe 🤩 @done(26-07-05 07:30)
+	✔ Add 'Hide Power Bar' to Display settings @done(26-07-01 14:49)
+	✔ Dynamic pocketTightness + ability to set inches like 4.25 @done(26-07-01 14:48)
+	✔ Fix the ChalkBurst @done(26-07-01 14:48)
+	✔ Add sponsorImage prop to images @done(26-07-01 14:48)
+	✔ Properly load pad-v3 into trainer-v3 @done(26-07-06 09:56)
+	✔ Codex highlighted gutter item needs to scroll @done(26-06-26 13:32)
+	✔ Hide cursor when gamepad is connected @done(26-06-25 13:14)
+	✔ Update gamepad default sensitivities @done(26-06-25 13:19)
+	✔ remove CPU trajectories @done(26-06-25 18:18)
+	✔ Brightness for focused items in nav @done(26-06-25 18:18)
+	✔ Allow holding down to scroll menu items faster @done(26-06-25 18:18)
+	✔ Game / model plays well on ios @done(26-06-25 09:58)
+	✔ Add setting to disable attract loop + idle out @done(26-06-24 10:15)
+	✔ Lets release single player mode + freeplay @done(26-06-22 16:18)
+	✔ Re-aim automatically when turn control returns to the local player. @done(26-06-22 16:18)
+
+
+Archive: Cancelled / Won't Do:
+
+	✘ Try disabling shadow maps. @cancelled(25-11-09 12:30)
+	✘ Adjust anti-aliasing. @cancelled(25-11-09 12:30)
+	✘ Reduce texture size on mobile. @cancelled(25-11-09 10:43)
+	✘ Reduce model complexity on mobile. @cancelled(25-11-09 10:43)
+	✘ Tracking lines are not going all the way. @cancelled(25-11-09 10:40)
+	✘ Allow video overlays. @cancelled(26-04-29 08:37)
+	✘ Advanced aim lines for object balls. @cancelled(25-11-09 10:36)
+	✘ Atmospheric fog and ambient light leaks. @cancelled(26-06-11 13:05)
+	✘ Chalk dust turned into a ball in Arc browser and stayed there. @cancelled(26-06-17 20:19)

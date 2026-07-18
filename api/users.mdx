@@ -1,6 +1,6 @@
 ---
 title: 'Users'
-description: 'User profiles and media'
+description: 'User profiles, media, notifications, wallet, and roles'
 ---
 
 ## List Users
@@ -14,7 +14,7 @@ GET /v3/users?limit=25
 ## Get User
 
 ```bash
-GET /v3/users/{id}
+GET /v3/users/{user}
 ```
 
 **Response:**
@@ -29,14 +29,75 @@ GET /v3/users/{id}
 }
 ```
 
+## Get Current User
+
+```bash
+GET /v3/users/me
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Get Current User Permissions
+
+```bash
+GET /v3/users/me/permissions
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Privacy Boundary
+
+Public profiles use `/v3/users/{user}`. Private account state is exposed through authenticated `/v3/users/{user}/...` resources and is limited to the owner or an administrator. Putting another user's id in the URL does not grant access.
+
+Private successful responses, authorization failures, and writes never enter shared cache.
+
 ## Update Current User
 
 ```bash
 PUT /v3/users/me
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "name": "New Name",
   "bio": "Updated bio"
+}
+```
+
+## Update User
+
+```bash
+PUT /v3/users/{user}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Delete User
+
+```bash
+DELETE /v3/users/{user}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Roles
+
+### Get User Roles
+
+```bash
+GET /v3/users/{user}/roles
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Update User Roles
+
+```bash
+PUT /v3/users/{user}/roles
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "roles": ["admin", "moderator"]
 }
 ```
 
@@ -45,37 +106,107 @@ Authorization: Bearer YOUR_TOKEN
 ### List Media
 
 ```bash
-GET /v3/users/{id}/media
+GET /v3/users/{user}/media
+```
+
+### Get Media
+
+```bash
+GET /v3/users/{user}/media/{media}
 ```
 
 ### Upload Media
 
 ```bash
-POST /v3/users/{id}/media
+POST /v3/users/{user}/media
 Authorization: Bearer YOUR_TOKEN
 Content-Type: multipart/form-data
 
 file: [binary]
 ```
 
-### Confirm Upload (Presigned)
+### Update Media
 
 ```bash
-POST /v3/users/{id}/media/confirm-upload
+PUT /v3/users/{user}/media/{media}
 Authorization: Bearer YOUR_TOKEN
-{
-  "key": "uploads/abc123.jpg"
-}
+```
+
+### Delete Media
+
+```bash
+DELETE /v3/users/{user}/media/{media}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Confirm Image Upload (Presigned)
+
+```bash
+POST /v3/users/{user}/media/confirm-image
+Authorization: Bearer YOUR_TOKEN
+```
+
+`/confirm-upload` is an alias for `/confirm-image`.
+
+### Confirm Video Upload
+
+```bash
+POST /v3/users/{user}/media/confirm-video
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ### Update Media Order
 
 ```bash
-PATCH /v3/users/{id}/media/{media_id}/order
+PATCH /v3/users/{user}/media/{media}/order
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "order": 2
 }
+```
+
+### Batch Update Media Order
+
+```bash
+PATCH /v3/users/{user}/media/order
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Notifications
+
+In-app notifications for the user.
+
+### List Notifications
+
+```bash
+GET /v3/users/{user}/notifications
+GET /v3/users/{user}/notifications?unread=1
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Unread Count
+
+```bash
+GET /v3/users/{user}/notifications/unread-count
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Mark All As Read
+
+```bash
+PUT /v3/users/{user}/notifications/read-all
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Update Notification
+
+```bash
+PUT /v3/users/{user}/notifications/{notification}
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ## Wallet
@@ -83,7 +214,8 @@ Authorization: Bearer YOUR_TOKEN
 ### Get Wallet
 
 ```bash
-GET /v3/users/{id}/wallet
+GET /v3/users/{user}/wallet
+GET /v3/users/{user}/wallet?limit=20&include=challenger
 Authorization: Bearer YOUR_TOKEN
 ```
 
@@ -100,21 +232,80 @@ Authorization: Bearer YOUR_TOKEN
 ### Collect Points
 
 ```bash
-POST /v3/users/{id}/wallet/collect
+POST /v3/users/{user}/wallet/collect
 Authorization: Bearer YOUR_TOKEN
-{
-  "amount": 10,
-  "source": "daily_login"
-}
 ```
 
 ### Spend Points
 
+Provide either `product_id` or `sku`.
+
 ```bash
-POST /v3/users/{id}/wallet/spend
+POST /v3/users/{user}/wallet/spend
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
-  "amount": 50,
   "product_id": 1
 }
+```
+
+## Owned Products
+
+The global `/v3/products` collection is the public product catalog. Products owned by a specific account are separate private resources:
+
+```bash
+GET /v3/users/{user}/products
+Authorization: Bearer YOUR_TOKEN
+```
+
+Optional filter: `type=digital` or `type=physical`.
+
+## Entitlements
+
+Durable cosmetic inventory is private to the owner or an administrator:
+
+```bash
+GET /v3/users/{user}/entitlements
+GET /v3/users/{user}/entitlements?active=1&category=cue
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Loadouts
+
+Equipped cosmetics are public profile presentation data:
+
+```bash
+GET /v3/users/{user}/loadouts
+GET /v3/users/{user}/loadouts/{category}
+```
+
+Writes are owner-or-administrator only:
+
+```bash
+POST /v3/users/{user}/loadouts
+PUT /v3/users/{user}/loadouts/{category}
+DELETE /v3/users/{user}/loadouts/{category}
+Authorization: Bearer YOUR_TOKEN
+```
+
+Collection-level upsert accepts `category` and `item_key`. Category-level update accepts `item_key`.
+
+## Private Match History
+
+```bash
+GET /v3/users/{user}/matches
+Authorization: Bearer YOUR_TOKEN
+```
+
+Use this endpoint for a match inbox or complete history. `/v3/matches?user_id={user}` is the public, identity-independent match listing.
+
+## Comments
+
+### List Comments For User
+
+```bash
+GET /v3/users/{user}/comments
 ```

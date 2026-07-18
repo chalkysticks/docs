@@ -3,121 +3,215 @@ title: 'Ball Operations'
 description: 'Adding, removing, and positioning balls on the pad'
 ---
 
+## Overview
+
+`Manager.Ball` is a pure logic class (no UI dependencies) that manages the ball collection. Access it through the table manager.
+
+```typescript
+const ballManager = table.ballManager;
+```
+
 ## Ball Types
+
+Ball types are plain strings, not an enum.
 
 | Type | Description |
 |------|-------------|
-| `cue` | White cue ball |
-| `solid` | Solid colored balls (1-7) |
-| `striped` | Striped balls (9-15) |
-| `8ball` | The 8 ball |
-| `ghost` | Ghost ball for aiming |
+| `'1'`–`'15'` | Numbered balls (solids 1–7, stripes 9–15) |
+| `'8'` | The 8 ball |
+| `'cue'` | White cue ball |
+| `'ghost'` | Ghost ball for aiming (default type when none given) |
+| `'arrow'` | Directional arrow marker |
+
+Type strings are normalized by `parseBallType()`: path prefixes and `ball-` prefixes are stripped (`'chalkysticks/ball-white'` → `'white'`), and any cue ball alias collapses to `'cue'`. The alias set is `Ball.CUE_BALL_ALIASES`: `'0'`, `'cue'`, `'cueball'`, `'w'`, `'white'`, `'whiteball'`.
 
 ## Adding Balls
 
+All add methods take a single options object (`IDiagramBallOptions`) — not positional type/position arguments.
+
 ```typescript
-const ballManager = tableManager.ballManager;
+// Add at absolute coordinates
+const ball = ballManager.addBall({ type: 'cue', x: 400, y: 200 });
 
-// Add cue ball at center
-ballManager.addBall('cue', { x: 0.5, y: 0.5 });
+// Add from normalized 0-1 coordinates (converted using playableBounds)
+const nine = ballManager.addBallNormalized({ type: '9', x: 0.75, y: 0.5 });
 
-// Add solid ball
-ballManager.addBall('solid', { x: 0.25, y: 0.25 }, { number: 1 });
+// Add with boundary clamping; accepts normalized OR absolute coordinates
+const one = ballManager.addBallWithinBounds({ type: '1', x: 0.25, y: 0.25 }, bounds);
 
-// Add striped ball
-ballManager.addBall('striped', { x: 0.75, y: 0.75 }, { number: 9 });
-
-// Add 8-ball
-ballManager.addBall('8ball', { x: 0.5, y: 0.25 });
-
-// Add ghost ball for aiming
-ballManager.addBall('ghost', { x: 0.3, y: 0.3 });
+// Add a ghost ball at the midpoint of a line
+const ghost = ballManager.addBallAtIntersection({ type: 'ghost' }, line);
 ```
+
+`IDiagramBallOptions` fields: `active?`, `id?`, `type?`, `x?`, `y?`. When `id` is omitted a temporary `tmp-xxxx` ID is generated. New balls are collision-resolved (pushed apart from overlapping balls; ghost balls may overlap each other).
 
 ## Removing Balls
 
 ```typescript
-// Remove specific ball by reference
-ballManager.removeBall(ball);
+// Remove by ID (dispatches ball:remove)
+ballManager.removeBall(ballId);
 
-// Remove ball by ID
-ballManager.removeBallById(ballId);
+// Remove all balls (inherited from Base)
+ballManager.clear();
 
-// Remove all balls
-ballManager.clearBalls();
-
-// Remove balls of type
-ballManager.removeBallsByType('ghost');
+// Remove all active (selected) balls
+ballManager.removeActiveItems();
 ```
 
-## Positioning
+To also remove connected lines, use the table-level orchestration: `table.removeBall(ballId)` / `table.removeSelectedBalls()`.
 
-Coordinates are normalized 0-1 (top-left is 0,0).
+## Moving Balls
+
+Coordinates are absolute SVG-space values. `ox`/`oy` store the original offsets used for relative drags.
 
 ```typescript
-// Move a ball
-ballManager.moveBall(ball, { x: 0.6, y: 0.4 });
+// Move to an absolute position (collision-resolved)
+ballManager.moveBall(ballId, 420, 180);
 
-// Get ball position
-const position = ball.getPosition();
-console.log(position.x, position.y);
+// Move by a delta from the ball's ox/oy origin, clamped to bounds
+ballManager.moveBallRelative(ballId, 10, -5, bounds);
+
+// Re-baseline ox/oy after a drag completes
+ballManager.resetBallOffsets(bounds);
+
+// Snap every ball back to its ox/oy origin
+ballManager.resetBallPositions();
+
+// Randomize positions without overlaps
+ballManager.shuffle(bounds, minDistance);
 ```
 
 ## Selecting Balls
 
+Selection is the `active` flag on each ball.
+
 ```typescript
-// Select a ball
-ballManager.selectBall(ball);
+// Activate a ball (optionally deactivating all others first)
+ballManager.activateBall(ballId);
+ballManager.activateBall(ballId, true);
 
-// Get selected balls
-const selected = ballManager.getSelectedBalls();
+// Toggle a ball's active state
+ballManager.toggleBall(ballId);
 
-// Deselect all
-ballManager.deselectAll();
+// Deactivate all balls
+ballManager.deactivateBalls();
+
+// Read selection state
+const active = ballManager.getActiveBall();       // first active
+const all = ballManager.getActiveBalls();         // all active
+const inactive = ballManager.getInactiveBalls();
+const anyActive = ballManager.isAnyBallActive();
+const oneActive = ballManager.isOneBallActive();
+
+// Tap-to-cycle through balls near a coordinate
+ballManager.cycleGroup(x, y);
 ```
 
 ## Specialized Ball Getters
 
 ```typescript
-// Get specific ball types
-const cueBall = ballManager.getCueBall();
-const eightBall = ballManager.getEightBall();
+// Get specific balls
+const cueBall = ballManager.getCueBall();        // matches 'cue' plus any alias
+const eightBall = ballManager.getEightBall();    // type '8'
 
 // Get ball groups
-const objectBalls = ballManager.getObjectBalls();  // All non-cue balls
-const solids = ballManager.getSolidBalls();        // Balls 1-7
-const stripes = ballManager.getStripedBalls();     // Balls 9-15
+const objectBalls = ballManager.getObjectBalls(); // all numeric types
+const numbered = ballManager.getNumericBalls();   // same filter: /^\d+$/
+const solids = ballManager.getSolidBalls();       // 1-7
+const stripes = ballManager.getStripedBalls();    // 9-15
 
-// Get special marker balls
-const arrows = ballManager.getArrowBalls();        // Arrow indicators
-const ghosts = ballManager.getGhostBalls();        // Ghost balls for aiming
+// Get marker balls
+const arrows = ballManager.getArrowBalls();
+const ghosts = ballManager.getGhostBalls();
 
-// Get numbered balls only (excludes cue, ghost, arrow)
-const numbered = ballManager.getNumericBalls();
-
-// Get balls by specific type
+// Get balls by any type string
 const customBalls = ballManager.getBallsByType('ghost');
+
+// Lookup by ID
+const ball = ballManager.byId(ballId);
+
+// Raw collection
+const balls = ballManager.balls;
 ```
 
-## Distance Calculations
+## Proximity & Contact
+
+Proximity uses `Ball.NEAREST_BALL_THRESHOLD` (default `90`).
 
 ```typescript
-// Calculate distance between two balls
+// Balls near a coordinate, sorted nearest-first
+const nearby = ballManager.getClosestBalls(x, y);
+const nearest = ballManager.getClosestBall(x, y);
+
+// Balls near another ball (excluding itself)
+const neighbors = ballManager.getClosestBallsTo(ballId);
+const neighbor = ballManager.getClosestBallTo(ballId);
+
+// Quick checks
+const hasNearby = ballManager.hasBallsNearby(x, y);
+const touching = ballManager.areBallsTouching(ballA, ballB);
+const isTouching = ballManager.isTouchingAnotherBall(ballId);
+
+// All touching pairs
+const pairs = ballManager.getTouchingBalls(radius);
+
+// Distance between two balls by ID
 const distance = ballManager.getDistanceBetweenBalls(ballIdA, ballIdB);
+```
+
+## Connection Graph Traversal
+
+The ball manager can walk line connections without owning the line collection. The table manager wires this up automatically via `setLineResolver()`.
+
+```typescript
+// Provide the line lookup (done for you inside Manager.Table)
+ballManager.setLineResolver((ballId) => lineManager.getLinesByBallId(ballId));
+
+// All balls reachable through lines + physical contact
+const connected = ballManager.getConnectedBalls(ballId);
+
+// Directional traversal along line chains
+const upstream = ballManager.getBallsBefore(ballId);
+const downstream = ballManager.getBallsAfter(ballId);
+```
+
+## Ball Interface
+
+```typescript
+interface IDiagramBall {
+    active: boolean;
+    id: string;
+    ox: number;    // origin x for relative drags
+    oy: number;    // origin y for relative drags
+    type: string;
+    x: number;
+    y: number;
+}
 ```
 
 ## Ball Events
 
+Event names use singular verbs (`ball:add`, not `ball:added`).
+
 ```typescript
-ballManager.on('ball:added', (ball) => {
-    console.log('Ball added:', ball);
+ballManager.on('ball:add', (e) => {
+    console.log('Ball added:', e.data);
 });
 
-ballManager.on('ball:removed', (ball) => {
-    console.log('Ball removed:', ball);
+ballManager.on('ball:remove', (e) => {
+    console.log('Ball removed:', e.data.id);
 });
 
-ballManager.on('ball:moved', (ball, position) => {
-    console.log('Ball moved to:', position);
+ballManager.on('ball:move', (e) => {
+    console.log('Ball moved:', e.data.x, e.data.y);
 });
 ```
+
+See [Events Reference](/sdk/pad/events) for the complete event catalog.
+
+## Recent Changes
+
+- 2.0.0 — Ball types feed the custom-rules engine (`Rules.CustomRulesShorthandCompiler` resolves numeric ball tokens against the racked set); no API changes to the manager itself
+- 1.5.13 — `Ball.CUE_BALL_ALIASES` added; `parseBallType()` and `getCueBall()` normalize `white`, `cueball`, `w`, `0`, etc. to `'cue'`
+- 1.5.x — `addBallWithinBounds()` accepts normalized or absolute coordinates and clamps to bounds
+- Docs correction vs. 1.5.x pages: `addBall()` takes an options object (there is no `addBall(type, position)` signature), removal is `removeBall(id)` / `clear()`, selection is `activateBall()` / `deactivateBalls()` (there is no `selectBall`/`deselectAll` on the ball manager — those live on `Manager.Table`), and the 8 ball type is `'8'`, not `'8ball'`

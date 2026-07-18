@@ -1,0 +1,134 @@
+Now:
+
+	☐ Define the quest / reward framework.
+		☐ Daily actions.
+		☐ Optional actions.
+		☐ Mandatory migration-style actions.
+		☐ Store version, date, and completion state.
+		☐ Decide which actions can trigger push notifications.
+
+	☐ Design reward ledger.
+		☐ ChalkyBucks.
+		☐ Collectibles.
+		☐ Cards.
+		☐ Unlockables.
+		☐ Venue-specific rewards.
+		☐ Anti-abuse rules.
+
+
+Check-In Progression:
+
+	☐ Gamify checking in.
+		☐ Require physical proximity where needed.
+		☐ Add daily / weekly streaks.
+		☐ Add local leaderboards.
+		☐ Add streak leaders.
+		☐ Make checked-in state more prominent.
+
+	☐ Add venue achievements.
+		☐ Scan the table 5, 10, and 20 times.
+		☐ Check in more than once a week.
+		☐ Check in multiple weeks in a row.
+		☐ Add regulars by week, month, year, and all time.
+
+	☐ Add neighborhood / sector achievements.
+		☐ Example: visit every location in a neighborhood.
+		☐ Reveal progress like clearing sectors in a game.
+
+	☐ Add toast notifications when people check in nearby.
+		☐ Example: "Cagney just checked in at Tap a Keg."
+
+
+Collectibles:
+
+	☐ Add AR collectibles at pool locations.
+		☐ Reveal collectibles after check-in.
+		☐ Add tiers: common, uncommon, rare, epic, legendary.
+		☐ Special rewards for first check-in at a place or first of the day.
+
+	☐ Feed: reveal a nearby collectible.
+
+	☐ Unlock packs of cards at venues.
+		☐ Venue cards.
+		☐ ChalkySticks cards.
+		☐ Trade with users or at venues.
+		☐ Limited editions.
+
+	☐ Player trading cards.
+		☐ AI-generated player art.
+		☐ Use on venue pages to show who is checked in.
+		☐ Consider paid card generation.
+
+	☐ Cue Cards / collectible cards.
+		☐ Venues.
+		☐ Special discoverable items.
+		☐ Holographic / rare variants.
+
+
+ChalkyBucks:
+
+	✔ Turn ChalkyBucks into a bigger concept. @done(25-09-12 17:59)
+
+	☐ Let users rent features temporarily.
+		☐ Shot clock.
+		☐ Racker.
+		☐ Rent for 1 hour, 1 day, or 1 week.
+		☐ Let rentals act as trials before purchase.
+
+
+Challenges & Social:
+
+	☐ Rack of the Day.
+
+	☐ Head-to-head shot challenges.
+		☐ Two players challenge each other to a shot.
+		☐ Players record and submit attempts.
+		☐ Community votes on the better execution.
+
+	☐ Start pool challenges like an Ice Bucket Challenge format.
+		☐ Get pros to attempt a specific shot.
+		☐ Let users submit their own versions.
+
+	☐ Submit a drill and have a pro complete it.
+		☐ Make upload flow simple enough for instructors.
+		☐ Use Pad diagrams as the prompt.
+
+	☐ Feed item for "Shoot this rack" using Trainer.
+
+
+Leagues & Teams:
+
+	☐ Team Builder.
+		☐ Find players by skill, availability, and location.
+		☐ Calculate team strength.
+		☐ Let players apply or express interest.
+
+	☐ Add self-managed league features.
+		☐ One-on-one.
+		☐ Two-on-two.
+		☐ Team matches.
+		☐ Generic league support independent of APA.
+
+	☐ Killers game tracker.
+		☐ Manage players.
+		☐ Track entry fee.
+		☐ Track game state and Xs.
+		☐ Make it followable by other users.
+		☐ Live updates like MLB GameDay.
+
+
+Seasonal & Wrapped:
+
+	☐ Add leaderboards with seasons.
+		☐ APA / BCA association.
+		☐ ChalkySticks leagues.
+		☐ Monthly seasons.
+		☐ Crossed paths.
+		☐ Missed connections.
+		☐ Distance neighbors.
+		☐ Distance traveled.
+
+	☐ Announce seasonal winners.
+		☐ Spotify Wrapped / Mario Kart style recap.
+		☐ Example: "Darel checked in at 50 venues this season and visited 10 new ones."
+		☐ Include graphics, charts, achievements, and history.

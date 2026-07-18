@@ -1,0 +1,65 @@
+---
+title: 'Reactions'
+description: 'Polymorphic reactions across entities'
+---
+
+Reactions are typed responses (like, fire, heart, etc.) attached to a polymorphic entity. Per-entity listings are exposed under their parent (e.g. `/venues/{venue}/reactions`).
+
+## List Reactions
+
+```bash
+GET /v3/reactions?entity_type=venue&entity_id=1
+GET /v3/reactions?owner_id=42
+```
+
+Filters: `entity_type`, `entity_id`, `type`, `owner_id`.
+
+### Entity-Scoped Listings
+
+```bash
+GET /v3/venues/{venue}/reactions
+GET /v3/content/{content}/reactions
+```
+
+## Create Reaction
+
+```bash
+POST /v3/reactions
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "entity_type": "venue",
+  "entity_id": 1,
+  "type": "like"
+}
+```
+
+`entity_type` is one of `venue`, `content`, `comment`, `user`. `type` must be a valid `ReactionType` enum value.
+
+## Delete Reaction
+
+```bash
+DELETE /v3/reactions/{reaction}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Delete My Reaction
+
+Convenience endpoint to remove the authenticated user's reaction on a given entity.
+
+```bash
+DELETE /v3/reactions/me
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "entity_type": "venue",
+  "entity_id": 1,
+  "type": "like"
+}
+```

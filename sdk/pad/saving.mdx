@@ -5,75 +5,189 @@ description: 'Persisting pad diagrams to the API'
 
 ## Export State
 
-Get the current table state as JSON:
+`exportTableState()` returns an `ITableState`: metadata at the root, visual elements inside `layout` (mirrors the API/database shape).
 
 ```typescript
 const state = tableManager.exportTableState();
-console.log(state);
 // {
-//   balls: [...],
-//   lines: [...],
-//   version: '1.0'
+//   ballCount: 3,
+//   ballType: 'chalkysticks',
+//   isComplete: false,
+//   tableType: 'table-horizontal-9',
+//   layout: {
+//     balls: [...],        // with normalizedX/normalizedY/simpleType
+//     cues: [],
+//     lines: [...],        // with path, stroke, strokeDashArray, control points
+//     shapes: [...],       // with normalized position + footprint
+//     stickers: [...],
+//     texts: [...],
+//     trajectories: [...],
+//   },
 // }
+```
+
+To capture the rendered SVG alongside the state:
+
+```typescript
+const { layout, markup } = tableManager.exportTableStateWithMarkup();
+```
+
+For the SVG to be available you must register a markup provider with the view layer:
+
+```typescript
+tableManager.setMarkupProvider(() => svgElement.outerHTML);
 ```
 
 ## Import State
 
-Load a previously saved state:
-
 ```typescript
-tableManager.importTableState(state);
+tableManager.importTableState(state);                 // ITableState (clears first)
+tableManager.importDiagram(layoutData);               // bare layout object (clears first)
+await tableManager.importDiagramModel(diagramModel);  // extracts diagram.getLayout()
 ```
 
 ## Save to API
 
-```typescript
-import { Model, Factory } from '@chalkysticks/sdk-pad';
-
-// Create diagram from current state
-const diagram = Factory.Diagram.create({
-    data: tableManager.exportTableState()
-});
-
-// Save to API
-await diagram.save();
-
-// Get the hash for sharing
-const hash = diagram.hash;
-console.log(`Share URL: https://pad.chalkysticks.com/${hash}`);
-```
-
-## Load from API
+Create a model from state and save it. `Model.Diagram.fromTableState()` maps state fields to API attributes (`ball_count`, `ball_type`, `is_complete`, `is_public`, `layout`, `order`, `table_type`, `title`, `description`, `group_id`); `is_public` defaults to `true` and `order` to `0`.
 
 ```typescript
 import { Model } from '@chalkysticks/sdk-pad';
 
-// Load by hash
-const diagram = new Model.Diagram({ hash: 'abc123' });
-await diagram.fetch();
+const diagram = Model.Diagram.fromTableState(tableManager.exportTableState());
 
-// Apply to table
-tableManager.importTableState(diagram.data);
+diagram.set({
+    description: 'Hit slightly below center, English right',
+    title: 'Tricky 9-ball break',
+});
+
+await diagram.save();
+
+console.log('Saved as:', diagram.getHash());
 ```
 
-## Generate Images
+Use `Factory.Diagram.model()` to get a model pre-wired to the v3 API base URL. Chain `.auth()` for authenticated requests:
 
 ```typescript
-// Generate SVG
-const svgUrl = diagram.getSvgUrl();
+import { Factory } from '@chalkysticks/sdk-pad';
 
-// Generate PNG
-const pngUrl = diagram.getPngUrl();
-
-// Request image generation
-await diagram.generateImages();
+const diagram = Factory.Diagram.model();
+diagram.set(payload);
+await diagram.auth().save();
 ```
+
+## Load From API
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-pad';
+
+const diagram = Factory.Diagram.model();
+diagram.setId(id);
+await diagram.auth().fetch();
+
+await tableManager.importDiagramModel(diagram);
+```
+
+`diagram.getLayout()` parses the stored layout JSON and back-fills normalized 0-1 fields on shapes, stickers, and texts using the table's playable bounds.
+
+## Diagram Fields
+
+The model persists these attributes (`Diagram.fields`):
+
+| Field | Getter | Notes |
+|-------|--------|-------|
+| `title` | `getTitle()` | Display title |
+| `description` | `getDescription()` | Long-form description |
+| `layout` | `getLayout()` | JSON blob of visual elements |
+| `hash` | `getHash()` | Server-minted share key |
+| `ball_count` | `getBallCount()` | |
+| `ball_type` | `getBallType()` | Ball set id |
+| `table_type` | `getTableType()` | e.g. `table-horizontal-9` |
+| `is_public` | `getIsPublic()` | Defaults to `true` from `fromTableState()` |
+| `order` | `getOrder()` | Sort order within a group, defaults to `0` |
+| `group_id` | `getGroupId()` | Optional grouping |
+| `customization` | `getCustomization()` | Visual customization (see below) |
+| `rules` | `getRules()` | Custom-rules shorthand string (see [Rules](/sdk/pad/rules)) |
+| `version` | `getVersion()` | API/render version |
+| `created_at` | `getCreatedAt()` | |
+
+Element shortcuts read straight from the layout: `diagram.balls`, `diagram.lines`, `diagram.shapes`, `diagram.stickers`, `diagram.texts`, `diagram.trajectories`.
+
+Relationships: `diagram.comments`, `diagram.owner`, `diagram.reactions`, `diagram.tags`. The package also registers `user.diagrams` on the core User model.
+
+Table-derived helpers:
+
+```typescript
+diagram.getPlayableBounds();   // bounds for the diagram's table_type
+diagram.getBallSize();         // rendered ball diameter for the table_type
+diagram.getFingerprint();      // md5 of the layout, for change detection
+```
+
+## Customization
+
+Per-diagram visual customization travels with the diagram so any renderer can honor it. `getCustomization()` always returns a fully populated `IDiagramCustomization` (stored values merged over `Constant.DIAGRAM_CUSTOMIZATION_DEFAULTS`).
+
+```typescript
+diagram.getCustomization();
+// { ballSet, colors, gridOpacity, pocketReducer, pocketStyle, showBranding,
+//   showDiamonds, showFootspot, showGrid, showHeadspot, showHeadstring,
+//   showRackOutline, snapToGrid, subgridDivisions, subgridOpacity, theme }
+
+// Per-key setters (all delegate to setCustomization and dispatch change:customization)
+diagram.setTheme('green');
+diagram.setBallSet('chalkysticks-pool');
+diagram.setColors({ ...colors });          // full record, not merged per-key
+diagram.setGridOpacity(0.5);
+diagram.setShowGrid(true);
+diagram.setSnapToGrid(true);
+diagram.setSubgridDivisions(2);
+diagram.setSubgridOpacity(0.15);
+diagram.setShowDiamonds(true);
+diagram.setShowFootspot(true);
+diagram.setShowHeadspot(true);
+diagram.setShowHeadstring(true);
+diagram.setShowRackOutline(true);
+diagram.setShowBranding(true);             // premium
+diagram.setPocketStyle('rounded');         // premium
+diagram.setPocketReducer(0.25);            // premium
+
+// Batch write
+diagram.setCustomization({ showGrid: true, theme: 'custom' });
+
+// Observe every customization edit
+diagram.on('change:customization', (e) => render(e.data.customization));
+```
+
+## Images
+
+Rendered image URLs and content come from the model:
+
+```typescript
+const svgUrl = diagram.getUrl('svg');   // https://www.chalkysticks.com/diagram/{hash}.svg (v3)
+const pngUrl = diagram.getUrl('png');
+
+const svg = await diagram.toSvg();   // URL string (v3, the default) or SVG markup (v1/v2)
+const png = await diagram.toPng();   // URL string (v3, the default) or Uint8Array (v1/v2)
+```
+
+`toPngBase64()` is v1/v2-only: it converts the `Uint8Array` from `toPng()` to a base64 data URL. Against the default v3 base URL, `toPng()` returns a URL string and `toPngBase64()` throws.
 
 ## Auto-Save
 
 ```typescript
-// Listen for changes and auto-save
-tableManager.on('change', debounce(async (state) => {
-    await diagram.set('data', state).save();
-}, 1000));
+import { Core } from '@chalkysticks/sdk-pad';
+
+const debounced = new Core.Utility.Debounce(() => {
+    diagram.set({ layout: tableManager.exportTableState().layout });
+    diagram.auth().save();
+}, 1000);
+
+tableManager.onStateChange(() => debounced.run());
 ```
+
+## Recent Changes
+
+- **1.7.0** — Rules persistence: `rules` field with `getRules()` / `setRules()` (dispatches `change:rules`)
+- **1.5.6** — Full customization getter/setter surface (`setTheme`, `setColors`, `setShow*`, `setPocket*`, ...), defaults merge in `getCustomization()`, and the `change:customization` event
+- **1.5.5** — `customization` field added to the model
+- **1.5.4** — Relationships added: `comments`, `owner`, `reactions`, `tags` (the auto-registered `user.diagrams` plugin predates this — present since 1.3.9)
+- **Docs correction** — the static constructor is `fromTableState()` (older docs/changelog said `createFromState()`, which never existed in code); image access is `getUrl(type)` / `toSvg()` / `toPng()` / `toPngBase64()` (the previously documented `getSvgUrl()` / `getPngUrl()` / `generateImages()` do not exist)

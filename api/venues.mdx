@@ -1,59 +1,43 @@
 ---
 title: 'Venues'
-description: 'Venue search, details, and management'
+description: 'Venue listings, media, check-ins, revisions, and search'
 ---
 
 ## List Venues
 
 ```bash
 GET /v3/venues
-GET /v3/venues?limit=25
-```
-
-## Search Venues
-
-### By Location
-
-```bash
 GET /v3/venues?lat=40.7128&lon=-74.0060&distance=25
-```
-
-### By City/State
-
-```bash
-GET /v3/venues?city=New%20York&state=NY
-```
-
-### By Name
-
-```bash
-GET /v3/venues?q=amsterdam%20billiards
 ```
 
 ## Get Venue
 
 ```bash
-GET /v3/venues/{id}
+GET /v3/venues/{venue}
 ```
 
-**Response:**
-```json
-{
-  "data": {
-    "id": 1,
-    "name": "Amsterdam Billiards",
-    "address": "123 Main St",
-    "city": "New York",
-    "state": "NY",
-    "zip": "10001",
-    "phone": "(555) 123-4567",
-    "website": "https://example.com",
-    "latitude": 40.7128,
-    "longitude": -74.0060,
-    "table_count": 20,
-    "rating": 4.5
-  }
-}
+## Search Venues
+
+Text-based search.
+
+```bash
+GET /v3/venues/search?q=pool+hall
+```
+
+## Fuzzy Search (Embeddings)
+
+Vector-based semantic search across venue media and metadata.
+
+```bash
+GET /v3/venues/fuzzy-search?q=outdoor%20patio%20with%20billiards
+```
+
+## Lookup Venue
+
+Lookup by external identifier (e.g., Google Place ID).
+
+```bash
+GET /v3/venues/lookup?place_id=ChIJ...
 ```
 
 ## Random Venue
@@ -62,70 +46,211 @@ GET /v3/venues/{id}
 GET /v3/venues/random
 ```
 
+## Duplicates
+
+Public list of detected duplicate venue clusters.
+
+```bash
+GET /v3/venues/duplicates
+```
+
+## Site Preview
+
+Renderable preview metadata for the venue page.
+
+```bash
+GET /v3/venues/{venue}/site-preview
+```
+
 ## Create Venue
 
 ```bash
 POST /v3/venues
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
-  "name": "New Pool Hall",
-  "address": "456 Oak Ave",
-  "city": "Brooklyn",
-  "state": "NY",
-  "zip": "11201"
+  "name": "Corner Pocket",
+  "address": "123 Main St",
+  "latitude": 40.7128,
+  "longitude": -74.0060
 }
 ```
 
 ## Update Venue
 
 ```bash
-PUT /v3/venues/{id}
+PUT /v3/venues/{venue}
 Authorization: Bearer YOUR_TOKEN
-{
-  "phone": "(555) 999-8888"
-}
 ```
 
-## Venue Media
+## Delete Venue
 
 ```bash
-GET /v3/venues/{id}/media
-POST /v3/venues/{id}/media
-POST /v3/venues/{id}/media/from-url
+DELETE /v3/venues/{venue}
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ## Check-ins
 
-### List Check-ins
+### List Check-ins (latest per user)
 
 ```bash
-GET /v3/venues/{id}/checkins
-GET /v3/venues/{id}/checkins?active=true
+GET /v3/venues/{venue}/checkins
 ```
 
 ### Create Check-in
 
+A user can only check in once per hour at a given venue.
+
 ```bash
-POST /v3/venues/{id}/checkins
+POST /v3/venues/{venue}/checkins
 Authorization: Bearer YOUR_TOKEN
 ```
 
-## Comments & Reactions
+### Delete Check-in
 
 ```bash
-GET /v3/venues/{id}/comments
-GET /v3/venues/{id}/reactions
+DELETE /v3/venues/{venue}/checkins/{checkin}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Venue Media
+
+### List Media
+
+```bash
+GET /v3/venues/{venue}/media
+```
+
+### Get Media
+
+```bash
+GET /v3/venues/{venue}/media/{media}
+```
+
+### Upload Media
+
+```bash
+POST /v3/venues/{venue}/media
+Authorization: Bearer YOUR_TOKEN
+Content-Type: multipart/form-data
+```
+
+### Store Media From URL
+
+```bash
+POST /v3/venues/{venue}/media/from-url
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "url": "https://example.com/photo.jpg"
+}
+```
+
+### Update Media
+
+```bash
+PUT /v3/venues/{venue}/media/{media}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Delete Media
+
+```bash
+DELETE /v3/venues/{venue}/media/{media}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Confirm Image Upload
+
+```bash
+POST /v3/venues/{venue}/media/confirm-image
+Authorization: Bearer YOUR_TOKEN
+```
+
+`/confirm-upload` is an alias for `/confirm-image`.
+
+### Confirm Video Upload
+
+```bash
+POST /v3/venues/{venue}/media/confirm-video
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Update Media Order
+
+```bash
+PATCH /v3/venues/{venue}/media/{media}/order
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Batch Update Media Order
+
+```bash
+PATCH /v3/venues/{venue}/media/order
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ## Revisions
 
-Track venue metadata changes:
+User-submitted edits to venue data that go through an approval flow.
+
+### List Revisions
 
 ```bash
-GET /v3/venues/{id}/revisions
-POST /v3/venues/{id}/revisions
-{
-  "field": "phone",
-  "value": "(555) 111-2222"
-}
+GET /v3/venues/{venue}/revisions
+```
+
+### Create Revision
+
+```bash
+POST /v3/venues/{venue}/revisions
+Authorization: Bearer YOUR_TOKEN
+Content-Type: multipart/form-data
+```
+
+**Fields:**
+- `data` — revision payload (object)
+- `notes` — optional notes (max 1000 chars)
+- `image` — optional single image (max 10MB)
+- `images[]` — optional array of images (max 10MB each)
+
+### Delete Revision
+
+```bash
+DELETE /v3/venues/{venue}/revisions/{revision}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Global Revisions Index
+
+```bash
+GET /v3/revisions
+POST /v3/revisions
+```
+
+## Comments
+
+### List Comments On Venue
+
+```bash
+GET /v3/venues/{venue}/comments
+```
+
+### List Comments On Venue Media
+
+```bash
+GET /v3/venues/{venue}/media/{media}/comments
+```
+
+## Reactions
+
+```bash
+GET /v3/venues/{venue}/reactions
 ```

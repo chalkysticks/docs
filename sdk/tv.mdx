@@ -1,6 +1,6 @@
 ---
 title: 'TV Package'
-description: 'TV schedules and live streams'
+description: 'Channels, schedules, and live broadcasts'
 ---
 
 ## Installation
@@ -9,78 +9,136 @@ description: 'TV schedules and live streams'
 npm install @chalkysticks/sdk-tv
 ```
 
-## TV Schedule
+Since `1.10.2`, `@chalkysticks/sdk-core` is a **peerDependency** (`^1.61.5` since `1.10.3`) — install it alongside this package. Current version: `1.10.5`.
+
+## Exports
 
 ```typescript
-import { Collection } from '@chalkysticks/sdk-tv';
-
-const schedule = new Collection.Schedule();
-
-// Get today's schedule
-await schedule.fetch();
-
-// Get schedule for specific date
-schedule.setQuery({ date: '2025-01-15' });
-await schedule.fetch();
-
-// Get live broadcasts only
-schedule.setQuery({ live: true });
-await schedule.fetch();
+import {
+    Collection,   // Channel, Live, Schedule
+    Core,         // re-export of sdk-core
+    Enum,         // ChannelTab, GameType (re-export from sdk-core)
+    Factory,      // Channel, Live, Schedule
+    Model,        // Channel, Schedule
+} from '@chalkysticks/sdk-tv';
 ```
 
-## Schedule Model
+All factories target `Core.Constants.API_URL_V3`.
 
-```typescript
-import { Model } from '@chalkysticks/sdk-tv';
+## Channels
 
-const show = new Model.Schedule({ id: 123 });
-await show.fetch();
-
-// Properties
-console.log(show.title);
-console.log(show.description);
-console.log(show.channel);
-console.log(show.startsAt);
-console.log(show.endsAt);
-console.log(show.isLive);
-console.log(show.streamUrl);
-```
-
-## Game Types
-
-| Type | Description |
-|------|-------------|
-| `8ball` | 8-ball matches |
-| `9ball` | 9-ball matches |
-| `10ball` | 10-ball matches |
-| `straight` | Straight pool |
-| `one_pocket` | One-pocket |
-| `snooker` | Snooker |
-| `carom` | Carom/3-cushion |
-
-## Live Streams
+Channel metadata for YouTube-backed broadcasters. Endpoint: `tv/channel`.
 
 ```typescript
 import { Factory } from '@chalkysticks/sdk-tv';
 
-// Get currently live streams
-const live = await Factory.Live.getCurrent();
+const channels = Factory.Channel.collection();
+await channels.fetch();
 
-live.forEach(stream => {
-    console.log(stream.title);
-    console.log(stream.streamUrl);
-    console.log(stream.viewerCount);
+channels.models.forEach((channel) => {
+    console.log(channel.getTitle(), channel.getUrl());
 });
 ```
 
-## Channels
+`Model.Channel` fields: `id`, `channel_id`, `youtube_id`, `title`, `description`, `image_url`. Attributes are read through getters / `attr()` — they are not exposed as direct properties.
+
+| Method             | Returns  | Notes                                          |
+| ------------------ | -------- | ---------------------------------------------- |
+| `getDescription()` | `string` |                                                |
+| `getThumbnail()`   | `string` | `image_url`                                    |
+| `getTitle()`       | `string` |                                                |
+| `getUrl()`         | `string` | `https://www.youtube.com/channel/{youtube_id}` |
+
+## Schedule
+
+Endpoint: `tv/schedule`. The factory defaults to `limit: 48`.
 
 ```typescript
-// Get available channels
-const channels = await Factory.Schedule.getChannels();
+import { Enum, Factory } from '@chalkysticks/sdk-tv';
 
-channels.forEach(channel => {
-    console.log(channel.name);
-    console.log(channel.logo);
-});
+// All schedule entries (GameType.Empty = no filter, the default)
+const all = Factory.Schedule.collection();
+await all.fetch();
+
+// Filter by game type
+const eightBall = Factory.Schedule.collection({}, Enum.GameType.EightBall);
+await eightBall.fetch();
 ```
+
+`Schedule.setGameType(gameType: Enum.GameType | string)` (renamed from `setChannel()` in 1.10.0) controls the filter and maps to the `?game_type=` query parameter on the API. Passing `GameType.Empty` (empty string) disables the filter.
+
+`Model.Schedule` fields: `id`, `title`, `description`, `duration`, `video_meta`, `embed_url`, `thumbnail_url`, `is_live`, `air_at`, `created_at`. Each schedule item has a `channel` relationship → `Model.Channel` (`hasOne`).
+
+### Model.Schedule methods
+
+| Method                             | Returns   | Notes                                                                                          |
+| ---------------------------------- | --------- | ---------------------------------------------------------------------------------------------- |
+| `generateVideoMarkup(startTime?)`  | `string`  | Full YouTube `<iframe>` embed markup                                                            |
+| `generateVideoUrl(startTime?)`     | `string`  | YouTube embed URL (autoplay, muted, JS API enabled); reads `window.location.origin`             |
+| `getDescription()` / `getTitle()`  | `string`  |                                                                                                 |
+| `getDuration()`                    | `number`  | Seconds                                                                                         |
+| `getEmbedUrl()`                    | `string`  | Trimmed `embed_url`                                                                             |
+| `getGameType()`                    | `string`  | `video_meta.game_type`                                                                          |
+| `getMeta()`                        | `object`  | Parsed `video_meta` (handles JSON string or object)                                             |
+| `getThumbnail(quality = 'medium')` | `string`  | YouTube thumbnail when the embed is YouTube, else `thumbnail_url`. Quality: `default`, `medium`, `high`, `standard`, `maxres` |
+| `getVideoId()`                     | `string`  | 11-char YouTube id parsed from `embed_url`; `''` when not parseable                             |
+| `getYouTubeUrl()`                  | `string`  | `https://www.youtube.com/watch?v={id}`                                                          |
+| `isLive()`                         | `boolean` | `is_live`                                                                                       |
+| `isFacebook()` / `isYouTube()`     | `boolean` | Host checks against `embed_url`                                                                 |
+
+### Collection playback helpers
+
+`Collection.Schedule` and `Collection.Live` share the same "what's playing now" helpers, driven by seconds-since-midnight against each entry's duration. Time comes from `Core.Utility.getDate()` and can be pinned via `Core.Constants.CURRENT_DATE` for debugging.
+
+| Method                                 | Returns          | Notes                                                    |
+| -------------------------------------- | ---------------- | -------------------------------------------------------- |
+| `getCurrentVideo(timeSinceMidnight?)`  | `Model.Schedule` | Entry playing at the given (or current) time              |
+| `getTimeForCurrentVideo(timeSinceMidnight?)` | `number`   | Seconds elapsed within the current entry                  |
+| `flagCurrentVideo(reason?)`            | `Model.Schedule` | Removes the current entry locally and returns the next one |
+
+```typescript
+const schedule = Factory.Schedule.collection();
+await schedule.fetch();
+
+const nowPlaying = schedule.getCurrentVideo();
+const offsetSeconds = schedule.getTimeForCurrentVideo();
+
+document.body.innerHTML = nowPlaying.generateVideoMarkup(offsetSeconds);
+```
+
+## Live
+
+Currently-live broadcasts. Endpoint: `tv/live`, served from v3 like everything else.
+
+```typescript
+const live = Factory.Live.collection();
+await live.fetch();
+```
+
+There is no `Model.Live` — `Collection.Live` and `Factory.Live.model()` both use `Model.Schedule`.
+
+`Live.setGameType(gameType: Enum.GameType | string)` filters via the `?game_type=` query parameter, matching the Schedule collection. Passing `GameType.Empty` disables the filter.
+
+> The legacy `Live.setChannel()` → `?channel=` was replaced by `setGameType()` (unreleased; after 1.10.5). No consumer projects used `setChannel()`.
+
+## Enums
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-tv';
+
+Enum.ChannelTab.Channels;     // 'channels'
+Enum.ChannelTab.Live;         // 'live'
+Enum.ChannelTab.None;         // ''
+
+Enum.GameType.EightBall;      // re-exported from sdk-core
+Enum.GameType.Empty;          // '' — "no filter" sentinel
+```
+
+`Enum.GameType` is a re-export (value and type) from `sdk-core` — there is no local duplicate. Members: `ArtisticPool`, `Balkline`, `BankPool`, `Billiards`, `Blackball`, `Carom`, `ChineseEightBall`, `Cutthroat`, `EightBall`, `Empty`, `Killers`, `NineBall`, `OnePocket`, `PuzzleRack`, `Pyramid`, `Rotation`, `Snooker`, `StraightPool`, `TenBall`, `TrickShots`. Values are wire-canonical PascalCase strings; `Empty = ''` is a client-only sentinel that disables the filter. The removed `Enum.ScheduleFilter` has been replaced by `GameType`.
+
+## Recent Changes
+
+- Unreleased — `Live.setChannel()` → `Live.setGameType()` / `?game_type=`, completing the migration Schedule made in 1.10.0.
+- `1.10.2`–`1.10.5` — `@chalkysticks/sdk-core` moved from a bundled dependency to a `peerDependency` (`^1.61.5`). No API changes.
+- `1.10.1` — Added `Collection.Channel` + `Factory.Channel.collection()`; removed `Enum.ScheduleFilter` (use `GameType.Empty`); `Factory.Schedule.collection()` default changed to `GameType.Empty`.
+- `1.10.0` — `Schedule.setChannel()` → `Schedule.setGameType()`; API query parameter changed from `?channel=` to `?game_type=`; `Enum.GameType` consolidated to a re-export from `sdk-core`.

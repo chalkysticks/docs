@@ -1,0 +1,241 @@
+---
+title: 'Text Annotations'
+description: 'Adding, editing, and positioning text elements on the pad'
+---
+
+## Overview
+
+Text elements are annotations placed on the table diagram. They support positioning, rotation, inline editing, word wrapping, and custom font styling.
+
+```typescript
+const textManager = table.textManager;
+```
+
+---
+
+## Adding Text
+
+```typescript
+// Add text with default content
+const text = textManager.addText(400, 200);
+
+// Add with custom content
+const text = textManager.addText(300, 150, 'Aim here');
+
+// Add with custom options
+const text = textManager.addText(500, 250, 'Shot note', {
+    fill: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    maxWidth: 150,
+    rotation: 15,
+});
+```
+
+## Removing Text
+
+```typescript
+// Remove by ID
+textManager.removeText(textId);
+
+// Remove all active (selected) text elements
+textManager.removeActiveTexts();
+
+// Clear all text
+textManager.clear();
+```
+
+---
+
+## Selecting Text
+
+```typescript
+// Activate (select) a text element
+textManager.activateText(textId);
+
+// Deactivate all text (also stops any active editing)
+textManager.deactivateTexts();
+
+// Get the first active text element
+const active = textManager.getActiveText();
+
+// Get all active text elements
+const activeTexts = textManager.getActiveTexts();
+
+// Check if any text is active
+const hasActive = textManager.isAnyTextActive();
+```
+
+---
+
+## Moving Text
+
+```typescript
+// Move to absolute position
+textManager.moveText(textId, 500, 300);
+
+// Move by relative offset
+textManager.moveTextRelative(textId, 10, -5);
+
+// Move all active text to position
+textManager.moveActiveTexts(400, 200);
+
+// Move all active text by offset
+textManager.moveActiveTextsRelative(10, -5);
+```
+
+---
+
+## Editing
+
+```typescript
+// Start editing mode (makes text editable, deactivates other editing sessions)
+textManager.startEditing(textId);
+
+// Stop editing a specific text element
+textManager.stopEditing(textId);
+
+// Stop all editing sessions
+textManager.stopAllEditing();
+
+// Update text content programmatically
+textManager.updateTextContent(textId, 'New content here');
+```
+
+---
+
+## Rotating
+
+```typescript
+// Rotate to angle (degrees)
+textManager.rotateText(textId, 90);
+```
+
+---
+
+## Word Wrapping
+
+Text elements support automatic word wrapping when a `maxWidth` is set.
+
+```typescript
+// Add text with max width for wrapping
+const text = textManager.addText(300, 200, 'This is a longer annotation that will wrap', {
+    maxWidth: 120,
+});
+
+// Get wrapped lines for rendering (width is approximated as fontSize * 0.6 per character)
+const lines = textManager.getWrappedLines(text);
+// ['This is a', 'longer', 'annotation', 'that will', 'wrap']
+
+// Get total height of wrapped text
+const height = textManager.getWrappedTextHeight(text);
+```
+
+Manual line breaks (`\n`) are also supported and processed before word wrapping.
+
+---
+
+## Proximity Detection
+
+```typescript
+// Get text elements near a point (within threshold)
+const nearby = textManager.getClosestTexts(x, y, 30);
+```
+
+---
+
+## Querying
+
+```typescript
+// Get text by ID
+const text = textManager.getText(textId);
+
+// Access all text elements
+const allTexts = textManager.texts;
+```
+
+---
+
+## Updating Properties
+
+```typescript
+// Update multiple properties at once
+textManager.updateText(textId, {
+    fill: '#ff0000',
+    fontSize: 24,
+    fontWeight: 'bold',
+    maxWidth: 200,
+});
+```
+
+---
+
+## Default Properties
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `defaultFill` | `#000000` | Text color |
+| `defaultFontSize` | `16` | Font size in pixels |
+| `defaultFontWeight` | `normal` | Font weight |
+| `defaultMaxWidth` | `undefined` | Max width for wrapping (no wrapping by default) |
+
+---
+
+## Text Interface
+
+```typescript
+interface IDiagramText {
+    active: boolean;
+    editing: boolean;
+    fill: string;
+    fontSize: number;
+    fontWeight: string;
+    id: string;
+    maxWidth?: number;
+    normalizedX?: number;  // populated by Table.exportTableState()
+    normalizedY?: number;
+    rotation: number;
+    text: string;
+    x: number;
+    y: number;
+}
+```
+
+The `normalizedX`/`normalizedY` 0-1 fields are only present on exported snapshots — `Table.exportTableState()` fills them so renderers can position text without knowing the pad canvas dimensions. In-editor instances do not carry them.
+
+---
+
+## Events
+
+```typescript
+textManager.on('text:add', (e) => {
+    console.log('Text added:', e.data.text);
+});
+
+textManager.on('text:move', (e) => {
+    console.log('Text moved:', e.data);
+});
+
+textManager.on('text:edit:start', (e) => {
+    console.log('Editing started:', e.data.id);
+});
+
+textManager.on('text:edit:stop', (e) => {
+    console.log('Editing stopped');
+});
+
+textManager.on('text:content', (e) => {
+    console.log('Content updated:', e.data.text);
+});
+
+textManager.on('text:rotate', (e) => {
+    console.log('Text rotated:', e.data.rotation);
+});
+```
+
+See [Events Reference](/sdk/pad/events) for the complete event catalog.
+
+## Recent Changes
+
+- 1.4.4 — Text elements gain `normalizedX`/`normalizedY` in exported layouts (`Table.exportTableState()`)
+- 1.4.3 — `Table.addText(x, y, text?)` orchestration added (activates the element and immediately enters edit mode)

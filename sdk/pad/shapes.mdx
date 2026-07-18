@@ -1,0 +1,250 @@
+---
+title: 'Shapes'
+description: 'Adding, removing, and manipulating geometric shapes on the pad'
+---
+
+## Overview
+
+Shapes are geometric elements (rectangles, circles, ellipses, arrows) placed on the table diagram. They support positioning, rotation, scaling, resizing, and custom fill/stroke styling.
+
+```typescript
+const shapeManager = table.shapeManager;
+```
+
+---
+
+## Shape Types
+
+| Type | Description |
+|------|-------------|
+| `rect` | Rectangle |
+| `circle` | Circle (uses `radius` property) |
+| `ellipse` | Ellipse (uses `width` and `height`) |
+| `arrow` | Arrow shape (polygon-based) |
+
+---
+
+## Adding Shapes
+
+```typescript
+// Add a rectangle
+const rect = shapeManager.addShape('rect', 400, 200);
+
+// Add a circle
+const circle = shapeManager.addShape('circle', 300, 150);
+
+// Add with custom options
+const shape = shapeManager.addShape('ellipse', 500, 250, {
+    fill: 'rgba(0, 100, 255, 0.3)',
+    height: 60,
+    rotation: 30,
+    stroke: '#0066ff',
+    strokeWidth: 3,
+    width: 100,
+});
+
+// Add an arrow
+const arrow = shapeManager.addShape('arrow', 400, 200, {
+    height: 30,
+    rotation: 45,
+    width: 80,
+});
+```
+
+## Removing Shapes
+
+```typescript
+// Remove by ID
+shapeManager.removeShape(shapeId);
+
+// Remove all active (selected) shapes
+shapeManager.removeActiveShapes();
+
+// Clear all shapes
+shapeManager.clear();
+```
+
+---
+
+## Selecting Shapes
+
+```typescript
+// Activate (select) a shape
+shapeManager.activateShape(shapeId);
+
+// Deactivate all shapes
+shapeManager.deactivateShapes();
+
+// Get the first active shape
+const active = shapeManager.getActiveShape();
+
+// Get all active shapes
+const activeShapes = shapeManager.getActiveShapes();
+
+// Check if any shape is active
+const hasActive = shapeManager.isAnyShapeActive();
+```
+
+---
+
+## Moving Shapes
+
+```typescript
+// Move to absolute position
+shapeManager.moveShape(shapeId, 500, 300);
+
+// Move by relative offset
+shapeManager.moveShapeRelative(shapeId, 10, -5);
+
+// Move all active shapes to position
+shapeManager.moveActiveShapes(400, 200);
+
+// Move all active shapes by offset
+shapeManager.moveActiveShapesRelative(10, -5);
+```
+
+---
+
+## Rotating, Scaling & Resizing
+
+```typescript
+// Rotate to angle (degrees)
+shapeManager.rotateShape(shapeId, 90);
+
+// Scale uniformly
+shapeManager.scaleShape(shapeId, 1.5);
+
+// Scale with different x/y factors
+shapeManager.scaleShape(shapeId, 2, 1.5);
+
+// Resize to specific dimensions
+shapeManager.resizeShape(shapeId, 100, 60);
+// For circles, this sets radius to min(width, height) / 2
+```
+
+---
+
+## Proximity Detection
+
+```typescript
+// Get shapes near a point (within threshold)
+const nearby = shapeManager.getClosestShapes(x, y, 10);
+
+// Check if a point is inside a specific shape
+const isInside = shapeManager.isPointInShape(shape, x, y, threshold);
+```
+
+Point-in-shape detection is shape-aware: circles use distance-from-center, ellipses use normalized coordinates, and rectangles/arrows use bounding box checks.
+
+---
+
+## Arrow Points
+
+For arrow shapes, generate SVG polygon points (arrow points right, centered at 0,0; combine with the shape's `rotation`):
+
+```typescript
+const points = shapeManager.getArrowPoints(arrowShape);
+// For width 60, height 30:
+// "-30,-6 12,-6 12,-15 30,0 12,15 12,6 -30,6"
+```
+
+---
+
+## Querying
+
+```typescript
+// Get shape by ID
+const shape = shapeManager.getShape(shapeId);
+
+// Access all shapes
+const allShapes = shapeManager.shapes;
+```
+
+---
+
+## Updating Properties
+
+```typescript
+// Update multiple properties at once
+shapeManager.updateShape(shapeId, {
+    fill: 'rgba(255, 0, 0, 0.5)',
+    rotation: 45,
+    stroke: '#ff0000',
+});
+```
+
+---
+
+## Default Properties
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `defaultFill` | `rgba(255, 255, 255, 0.3)` | Fill color for new shapes |
+| `defaultHeight` | `40` | Height for new rect/ellipse shapes |
+| `defaultRadius` | `25` | Radius for new circle shapes |
+| `defaultStroke` | `rgba(0, 0, 0, 0.3)` | Stroke color for new shapes |
+| `defaultStrokeWidth` | `2` | Stroke width for new shapes |
+| `defaultWidth` | `60` | Width for new rect/ellipse shapes |
+
+---
+
+## Shape Interface
+
+```typescript
+type DiagramShapeType = 'arrow' | 'circle' | 'ellipse' | 'rect';
+
+interface IDiagramShape {
+    active: boolean;
+    fill: string;
+    height: number;
+    id: string;
+    normalizedHeight?: number;  // populated by Table.exportTableState()
+    normalizedRadius?: number;
+    normalizedWidth?: number;
+    normalizedX?: number;
+    normalizedY?: number;
+    radius: number;
+    rotation: number;
+    stroke: string;
+    strokeWidth: number;
+    type: DiagramShapeType;
+    width: number;
+    x: number;
+    y: number;
+}
+```
+
+The `normalized*` 0-1 fields are only present on exported snapshots — `Table.exportTableState()` fills them so renderers can position shapes without knowing the pad canvas dimensions. In-editor instances do not carry them.
+
+---
+
+## Events
+
+```typescript
+shapeManager.on('shape:add', (e) => {
+    console.log('Shape added:', e.data);
+});
+
+shapeManager.on('shape:move', (e) => {
+    console.log('Shape moved:', e.data);
+});
+
+shapeManager.on('shape:rotate', (e) => {
+    console.log('Shape rotated:', e.data);
+});
+
+shapeManager.on('shape:resize', (e) => {
+    console.log('Shape resized:', e.data);
+});
+
+shapeManager.on('shape:scale', (e) => {
+    console.log('Shape scaled:', e.data);
+});
+```
+
+See [Events Reference](/sdk/pad/events) for the complete event catalog.
+
+## Recent Changes
+
+- 1.4.4 — Shapes gain `normalized*` fields in exported layouts (`Table.exportTableState()`); `Table.importDiagram()` restores them
+- 1.4.3 — `Table.addShape(x, y, type)` orchestration added (deselects others, activates the new shape, pushes history)

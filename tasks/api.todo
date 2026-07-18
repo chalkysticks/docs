@@ -1,0 +1,120 @@
+Now:
+
+	☐ Investigate API pagination caps.
+		☐ Find where `total_pages` or `limit` is capped at 10.
+		☐ Confirm whether the automated venue scanner upload needs 25 pages.
+		☐ Add a test or config guard so scraper protection does not break trusted imports.
+
+	☐ Verify Trick Shots TV data after migration.
+		☐ Compare migrated schedules, live feeds, and media records.
+		☐ Fix missing or malformed records before the next push.
+
+	☐ Add admin user impersonation.
+		☐ Restrict to authorized admins.
+		☐ Make impersonation auditable.
+		☐ Use it to test social, game, and venue flows without sharing credentials.
+
+
+Workers & Commands:
+
+	☐ Run and monitor the accomplishments worker.
+		☐ `php artisan queue:work --queue=accomplishments`
+
+	☐ Normalize diagram layouts.
+		☐ `php artisan diagrams:normalize-layout`
+
+	☐ Continue filtered venue imports.
+		☐ `php artisan venue:import-filtered --file=filtered-businesses.json --save-photos --limit=100 --skip=240`
+
+	☐ Upload scanned table data to the backend.
+		☐ Define payload shape for detected balls, pockets, table bounds, and confidence.
+		☐ Support user correction before final save.
+
+
+Auth, Billing & Notifications:
+
+	☐ Add RevenueCat webhook handling in `webhook/revenuecat.php`.
+		☐ Handle purchase.
+		☐ Handle cancellation.
+		☐ Handle subscription expiration.
+		☐ Handle billing issue.
+		☐ Handle subscription transfer.
+		☐ Handle one-time purchases.
+
+	☐ Add 2FA or OTP support, especially for admin accounts.
+
+	☐ Track which app versions a user has opened.
+		☐ Add helpers for checks like "opened version >= 3.4".
+		☐ Use this to decide whether onboarding or release notes should appear.
+
+	☐ Build push-notification triggers for major entity events.
+		☐ New venues near a user.
+		☐ New Trainer modes.
+		☐ New Pad diagrams.
+		☐ New TV events.
+		☐ New ChalkySticks.com features.
+
+
+Media, Reactions & Safety:
+
+	☐ Add IP-based rate limiting to image uploads.
+
+	☐ Delete offensive images that already passed moderation.
+
+	☐ Add a reaction summary / pagination contract.
+		☐ Avoid returning every reaction for venues, comments, and media.
+		☐ Ensure `venues/635` responses do not include unbounded comments or reactions.
+
+	☐ Add media metadata for tagged users and venues.
+		☐ Make reverse lookup practical for user and venue pages.
+
+
+Email:
+
+	☐ Finish shared HTML email templates.
+		☐ Welcome email: CTA to open the app or scan a table.
+		☐ Email verification: secure verification link.
+		☐ Login alert: IP, device, and location.
+		☐ Password reset: secure expiring link.
+		☐ Password changed: support link if unauthorized.
+		☐ Email changed: notify old and new addresses with rollback path.
+		☐ Account deletion: confirmation and data download option.
+
+	☐ Add lifecycle emails.
+		☐ Check-in reminder.
+		☐ Streak notification.
+		☐ New venue nearby.
+		☐ Achievement unlocked.
+		☐ Leaderboard position changed.
+		☐ Billing and subscription events.
+		☐ Loot box / reward unlock.
+		☐ Trading card drop.
+		☐ Drill challenge invitation.
+		☐ Shot featured.
+		☐ Event reminder.
+		☐ Booking confirmation.
+		☐ Venue promo.
+
+
+Infrastructure:
+
+	☐ Improve production resilience after the NGINX crash.
+		☐ Add monitoring for web/API outages.
+		☐ Add a restart or alert path for NGINX failures.
+
+	☐ Add TTL cache rules for immutable image assets such as `/img/chalkysticks-hero-*.avif`.
+
+
+Archive: Completed:
+
+	✔ Update plain text emails. @done(26-05-09 22:35)
+	✔ Server Brotli support in NGINX. @done(26-05-07 10:04)
+		`sudo apt install libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static`
+		`sudo nginx -t`
+		`sudo systemctl reload nginx`
+	✔ `php artisan migrate` @done(26-04-26 08:03)
+	✔ `php artisan db:seed --class=LeaderboardMetricsTableSeeder` @done(26-04-26 08:03)
+	✔ `php artisan challenges:generate --slug=daily-rack` @done(26-04-26 08:03)
+	✔ `php artisan stats:backfill --dry-run` @done(26-04-26 08:03)
+	✔ `php artisan stats:backfill --include-streaks` @done(26-04-26 08:03)
+	✔ `php artisan db:seed --class=PermissionTableSeeder` @done(26-05-18 22:21)

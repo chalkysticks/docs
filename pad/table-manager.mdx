@@ -59,19 +59,53 @@ const trajectoryManager = tableManager.trajectoryManager;
 
 ## Events
 
+The pad uses a dual-channel event system. Every event emitted via `emitPad()` fires both a local Vue component event and a global Event Bus event prefixed with `pad.`.
+
+### Listening via Component Events
+
 ```typescript
-// Listen for any change
-tableManager.on('change', (state) => {
-    console.log('Table changed');
-    autoSave(state);
+// Listen on the component ref
+this.$refs.pad.$on('change', (payload) => {
+    console.log('Table changed:', payload.tableState);
+});
+```
+
+### Listening via Event Bus
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk';
+
+// Listen globally with the pad. prefix
+ChalkySticks.Core.Event.Bus.on('pad.change', (event) => {
+    console.log('Table changed:', event.data.tableState);
 });
 
-// Specific events
-tableManager.on('ball:added', (ball) => { ... });
-tableManager.on('ball:removed', (ball) => { ... });
-tableManager.on('line:added', (line) => { ... });
-tableManager.on('line:removed', (line) => { ... });
+ChalkySticks.Core.Event.Bus.on('pad.ball:add', (event) => {
+    console.log('Ball added:', event.data);
+});
+
+ChalkySticks.Core.Event.Bus.on('pad.table:loaded', (event) => {
+    console.log('Diagram loaded');
+});
 ```
+
+### Triggering Events Programmatically
+
+```typescript
+// Trigger events on the component ref
+this.$refs.pad.$emit('ball:add', { x: 0.5, y: 0.5, type: 'cue' });
+this.$refs.pad.$emit('table:clear');
+this.$refs.pad.$emit('history:undo');
+
+// Or dispatch via Event Bus
+ChalkySticks.Core.Event.Bus.dispatch('pad.shape:add', {
+    x: 0.5,
+    y: 0.5,
+    type: 'rect',
+});
+```
+
+See [Events Reference](/pad/events) for the full catalog of available events.
 
 ## Table Dimensions
 

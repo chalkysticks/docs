@@ -1,0 +1,22 @@
+Now:
+
+	☐ Define the MCP backlog.
+		☐ Decide which repeated local workflows should become MCP tools.
+		☐ Prioritize tooling that helps documentation, package publishing, and cross-project impact checks.
+
+
+Candidate Tools:
+
+	☐ Task-list helper.
+		☐ Detect project-specific items in `general.todo`.
+		☐ Suggest moves into app, api, trainer, pad, cms, or web lists.
+		☐ Keep completed archive sections compact.
+
+	☐ Documentation helper.
+		☐ Detect docs that are stale relative to source changes.
+		☐ Suggest missing API / SDK / Vue docs pages.
+
+	☐ Release helper.
+		☐ Preview publish chains.
+		☐ Detect dirty dependents.
+		☐ Verify version consistency.

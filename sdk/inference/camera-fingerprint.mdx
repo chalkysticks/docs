@@ -1,0 +1,146 @@
+---
+title: 'Camera Fingerprint'
+description: 'Perceptual camera identification, cut detection, and per-camera state memory'
+---
+
+Broadcast pool footage cuts between cameras constantly — table cam, player cam, crowd cutaways. Without camera awareness, a cut poisons every stabilizer with geometry from the wrong scene. The camera identity stack solves this: fingerprint each frame, group frames into numbered cameras, reset state on cuts, and restore memorized state when returning to a known camera.
+
+Added after 1.13.7 (unreleased at that version). Enabled by default in `ImageAnalyzer`; disable with `stabilization: { cameraFingerprint: false }`.
+
+## Import
+
+```typescript
+import { Detection, Core } from '@chalkysticks/sdk-inference';
+
+const index = new Detection.CameraIndex();
+const memory = new Core.CameraStateMemory();
+```
+
+## CameraFingerprint
+
+Static class computing an ultra-fast perceptual difference-hash (dHash) over a 16×16 grayscale downsample — ~256 pixel reads per frame, cheap enough for 60fps. Naturally robust to global lighting shifts.
+
+```typescript
+const hash = Detection.CameraFingerprint.compute(videoElement);
+// Uint8Array, CameraFingerprint.HASH_BYTES (30) long
+
+Detection.CameraFingerprint.distance(hashA, hashB);   // Hamming distance in bits
+Detection.CameraFingerprint.similarity(hashA, hashB); // 0-1 (1 = identical)
+Detection.CameraFingerprint.toHex(hash);              // hex string for logging
+```
+
+| Constant | Value |
+|----------|-------|
+| `GRID_WIDTH` / `GRID_HEIGHT` | 16 / 16 |
+| `HASH_BITS` | 240 — one bit per horizontal neighbor pair per row |
+| `HASH_BYTES` | 30 |
+
+Sources: `HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | OffscreenCanvas | ImageBitmap`.
+
+## CameraIndex
+
+Stateful registry that groups frames into numbered cameras by perceptual similarity. Transient scenes (a few-frame cutaway) are debounced — a candidate must persist `debounceFrames` consecutive frames before being promoted to a real camera. Promoted cameras are sticky and re-match on future visits.
+
+```typescript
+const index = new Detection.CameraIndex({
+    debounceFrames: 6,
+    matchThreshold: 0.7,
+});
+
+// Each frame
+const result = index.process(videoElement);
+// or, if you already computed the hash:
+const result = index.processHash(hash);
+```
+
+### ICameraIndexResult
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `cameraId` | `number \| null` | Sticky id of the current camera |
+| `camera` | `IKnownCamera \| null` | Roster entry (`hash`, `frameCount`, `firstSeenAt`, `lastSeenAt`) |
+| `isNew` | `boolean` | Camera was promoted this frame |
+| `isStable` | `boolean` | Not mid-debounce |
+| `isTrusted` | `boolean` | Scene is established enough to run table state |
+| `similarity` | `number` | Match similarity to the resolved camera |
+| `candidateFrames` | `number` | Debounce progress for an unrecognized scene |
+| `merged` / `pruned` | arrays | Housekeeping performed this frame |
+
+### Configuration
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `matchThreshold` | 0.7 | Similarity to re-match a known camera |
+| `establishedMatchThreshold` | 0.62 | Looser threshold for long-lived cameras |
+| `candidateThreshold` | 0.6 | Similarity to keep buffering the same candidate |
+| `debounceFrames` | 6 | Consecutive frames before promoting a candidate |
+| `autoMerge` | `true` | Periodically merge near-duplicate cameras |
+| `mergeThreshold` / `mergeCheckInterval` | 0.72 / 120 | Merge similarity and frame interval |
+| `autoPrune` | `true` | Periodically drop transient cameras |
+| `pruneInactiveAfterMs` / `pruneMinFrames` / `pruneCheckInterval` | 4000 / 60 / 60 | Prune rules |
+
+Pass overrides through `ImageAnalyzer` via `config.cameraIndex`.
+
+### Methods
+
+```typescript
+index.getCameras();            // IKnownCamera[] roster
+index.getCurrentCameraId();    // number | null
+index.getCandidateFrames();    // debounce progress
+index.isEstablishedCameraId(3);// long-lived camera?
+index.consolidate();           // force a merge pass
+index.pruneInactive();         // force a prune pass
+index.removeCamera(3);
+index.getConfig();
+index.reset();
+```
+
+## CameraStateMemory
+
+Per-camera cache of the last confidently-derived geometry, keyed by `CameraIndex` id. On return to a known camera, `ImageAnalyzer` replays the entry into the stabilizers so frame 1 already has correct geometry instead of waiting 7–50 frames for re-lock.
+
+```typescript
+const memory = new Core.CameraStateMemory();
+
+memory.save(cameraId, {
+    cameraType: CameraType.Overhead,
+    cameraTypeConfidence: 0.9,
+    homography: matrix,
+    isLandscape: true,
+    pocketLayout: completePockets,
+}); // partial updates merge; lastUpdatedAt set automatically
+
+memory.get(cameraId);      // deep copy of Inference.ICameraState | null
+memory.has(cameraId);
+memory.clear(cameraId);    // remove one entry
+memory.reset();            // remove all
+memory.getKnownIds();      // number[]
+memory.size();
+```
+
+## How ImageAnalyzer Uses The Stack
+
+Per frame, **before** inference:
+
+1. `CameraIndex.process(element)` resolves the camera id and trust.
+2. **No change** — pipeline proceeds, state keeps accumulating.
+3. **Untrusted scene** (mid-debounce cutaway) — an empty frame is dispatched and inference is skipped entirely; table state cannot be mutated.
+4. **Cut detected** — tracker, identity stabilizer, camera-type stabilizer, and transformation pipeline are all reset. If the new camera has a memory entry, it is replayed via `CameraTypeStabilizer.seedLock()`, `TransformationPipeline.seedTrustedLayout()`, and `seedHomography()`. A `cameraChanged` event fires.
+
+After the pipeline resolves geometry on a trusted camera, state is persisted back into `CameraStateMemory` (throttled to every 30 frames).
+
+```typescript
+analyzer.on('cameraChanged', (e) => {
+    // e.data: { currentId, previousId, isKnown, isTrusted, restoredFromMemory }
+    if (e.data.restoredFromMemory) {
+        console.log(`Back on camera ${e.data.currentId} — geometry restored instantly`);
+    }
+});
+
+analyzer.getCameraIndex();        // tune / inspect the roster
+analyzer.getCameraStateMemory();  // inspect or clear entries
+```
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — Entire stack introduced: `CameraFingerprint` dHash, `CameraIndex` with debounce/merge/prune, `CameraStateMemory`, cut-aware stabilizer resets and seeding in `ImageAnalyzer`, `cameraChanged` event.

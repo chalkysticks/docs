@@ -1,0 +1,88 @@
+Now:
+
+	☐ Confirm signup works end to end on web.
+
+	☐ Notify the user when `TableScan.ts` errors.
+
+	☐ Fix first click on expanded map opening a place unintentionally.
+
+	☐ Ensure TV Live loads fresh each time on web.
+
+	☐ Fix `ChalkyTvNowPlaying` abstraction.
+		☐ It currently uses Schedule directly.
+		☐ Support Live and merged schedule/live data.
+
+	☐ Check keybindings on `/watch`.
+		☐ They may double up after navigating away and back.
+
+
+Venue Pages:
+
+	☐ Add sponsored results for selected cities.
+		☐ Start with NY and LA.
+		☐ Keep organic results clear.
+
+	☐ Add FAQ support for venue pages.
+
+	☐ Mark favorite venues on the map with red markers.
+
+	☐ Let users set location to another area and browse from there.
+		☐ Do not require actual GPS location for discovery.
+
+	☐ Identify pool hall versus bar.
+
+	☐ Add venue ownership / claim entry points.
+
+
+Homepage & Content:
+
+	☐ Improve homepage update modules.
+		☐ Live Now.
+		☐ New Features.
+		☐ New Venues Added.
+		☐ User revision callouts.
+
+	☐ Remove ChalkyFeed from homepage if TV no longer uses it.
+
+	☐ Audit Google sitemap issues.
+		☐ Ahrefs is repeatedly complaining.
+
+	☐ Finish the designed version of "What's Your Out".
+
+	☐ Add basic rules search cost controls.
+		☐ Advanced search is useful but expensive.
+
+
+Game & Extras:
+
+	☐ Let a game challenge launch fullscreen from a modal.
+
+	☐ Explore Extras.
+		☐ Handicap calculations.
+		☐ Pattern racking.
+		☐ Shot clock.
+		☐ Other utility tools.
+
+	☐ Add module for Critical Shots of Pool.
+
+
+Docs & Deployment Notes:
+
+	☐ Write notes about `web-laravel` and symbolic links to the live directory.
+		☐ The newer `/assets/` directory made deployment confusing.
+
+
+Archive: Completed:
+
+	✔ Setup Google structured data / JSON-LD. @done(25-09-10 20:20)
+	✔ Add search bar to venue page. @done(25-09-10 20:20)
+	✔ Create footer for all pages. @done(25-09-10 20:20)
+	✔ Design venue layout for desktop. @done(25-09-10 20:20)
+	✔ Build new venue layout. @done(25-09-10 20:20)
+	✔ Fix primary header click-through. @done(25-09-10 20:20)
+	✔ Make sure logout works. @done(25-12-16 10:24)
+	✔ Re-enable header login. @done(26-02-20 22:43)
+	✔ Fix mobile view. @done(25-12-16 10:45)
+	✔ Fix mobile schedule header stroke overlap. @done(25-12-16 10:46)
+	✔ Re-enable chat. @done(26-04-29 08:41)
+	✔ Fix returning to Trainer more than once. @done(26-04-29 08:41)

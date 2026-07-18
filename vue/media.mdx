@@ -1,102 +1,212 @@
 ---
-title: 'Media Components'
-description: 'Feed, uploaders, and media display'
+title: 'Media, Content, Feed & Fact'
+description: 'Media feeds, uploaders, content cards, activity feed, and fact banners'
 ---
 
-## Feed
+This page covers the `Media`, `Content`, `Feed`, and `Fact` namespaces — everything that surfaces media or feed-like content. Chat / Comment / Reaction live on the [Social](/vue/social) page.
 
-Display a scrollable media feed.
+## Media
+
+### MediaFeed
+
+Core media feed displaying an image / video collection. Supports slideshow mode, tap-to-pause, and aspect-ratio control.
 
 ```html
 <ChalkyMediaFeed
-    v-bind:collection="mediaCollection"
-    v-on:item-click="handleItemClick"
+    :media-collection="mediaCollection"
+    animation-style="crossfade"
+    :animation-duration-ms="1000"
+    aspect-ratio="portrait"
+    filter-type="images"
+    :tap-to-pause="true"
+    @select="onSelect"
 />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `mediaCollection` | `Collection.Media` | **required** |
+| `animationStyle` | `MediaFeedAnimationStyle` | `'none'` |
+| `animationDurationMs` | number | `1000` |
+| `animationHoldMs` | number | `4000` |
+| `aspectRatio` | string | `'portrait'` |
+| `filterType` | string | `'images'` |
+| `interactive` | boolean | `true` |
+| `tapToPause` | boolean | `false` |
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `collection` | Collection.Media | Media collection |
-| `columns` | number | Grid columns (default: 3) |
-| `infinite` | boolean | Enable infinite scroll |
+Emits: `select`. Slots: `before`, `after`, `loading`, `empty`, default (figcaption), `paused-container`.
 
-## CardSwipe
+### MediaUser
 
-Tinder-style swipeable cards.
+User-scoped wrapper around `MediaFeed`. Passes `$attrs` / `$listeners` through.
 
 ```html
-<ChalkyCardSwipe
-    v-bind:items="mediaItems"
-    v-on:swipe-left="handleReject"
-    v-on:swipe-right="handleApprove"
-/>
+<ChalkyMediaUser :user-media-collection="userMediaCollection" :limit="1" />
 ```
 
-## ImageUploader
+| Prop | Type | Default |
+|------|------|---------|
+| `userMediaCollection` | `Collection.UserMedia` | — |
+| `limit` | number | `1` |
+| `seed` | number | current hour ts |
 
-Upload images with preview.
+### MediaVenue
+
+Venue-scoped media wrapper. Supports filtering by `subgroup` (e.g. `Table`, `Storefront`) and an optional `tagged` flag for tagged-only media.
 
 ```html
-<ChalkyImageUploader
-    v-on:upload="handleUpload"
-    v-on:error="handleError"
+<ChalkyMediaVenue
+    :venue-model="venue"
+    :tagged="false"
+    :subgroup="ChalkySticks.Enum.MediaSubgroup.Table"
 />
 ```
 
-### Props
+Emits: `click:menu` (mediaModel), `click:user` (userModel).
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `multiple` | boolean | false | Allow multiple uploads |
-| `maxSize` | number | 10 | Max file size in MB |
-| `accept` | string | 'image/*' | Accepted file types |
-| `showPreview` | boolean | true | Show preview after select |
+### MediaCardSwipe
 
-### Events
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `upload` | UserMedia | Upload completed |
-| `progress` | number | Upload progress (0-100) |
-| `error` | Error | Upload error |
-
-## VideoUploader
-
-Upload videos with thumbnail generation.
+Swipeable card stack (Tinder-style) for media review. Uses GSAP and the `v-pointer` directive.
 
 ```html
-<ChalkyVideoUploader
-    v-on:upload="handleVideoUpload"
-    v-bind:maxDuration="120"
-/>
+<ChalkyMediaCardSwipe @select="onSwipe" />
 ```
 
-### Props
+CSS variables: `--dx`, `--dy`, `--ratio`, `--ratioNormal`; state classes: `active`, `previous`, `next`.
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `maxSize` | number | 100 | Max file size in MB |
-| `maxDuration` | number | 300 | Max duration in seconds |
-| `generateThumbnail` | boolean | true | Auto-generate thumbnail |
+### MediaImageUploader
 
-## VideoPlayer
-
-Video.js based player.
+Modal-style image uploader with optional venue / user tagging selection.
 
 ```html
-<ChalkyVideoPlayer
-    v-bind:src="videoUrl"
-    v-bind:poster="thumbnailUrl"
+<ChalkyMediaImageUploader
+    :model="user"
+    :allow-multiple="true"
+    :show-venue-selection="true"
+    @complete="onUploaded"
+    @upload-error="onError"
 />
 ```
 
-### Props
+| Prop | Type |
+|------|------|
+| `model` | `Model.User` |
+| `allowMultiple` | boolean |
+| `showActions` | boolean |
+| `showVenueSelection` / `showUserSelection` | boolean |
+| `canChangeVenue` / `canChangeUser` | boolean |
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `src` | string | Video source URL |
-| `poster` | string | Poster image URL |
-| `autoplay` | boolean | Auto-play video |
-| `controls` | boolean | Show player controls |
+Emits: `complete`, `files`, `upload-error`, `upload-start`.
+
+### MediaValidator
+
+In-browser ML pool table validator. Runs detection on an image or video and emits progress / pass-fail results.
+
+```html
+<ChalkyMediaValidator
+    :media="file"
+    model-url="/model/"
+    :frame-count="10"
+    :pass-rate-threshold="50"
+    :threshold="0.7"
+    @validation:complete="onResult"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `media` | string \| File | — |
+| `modelUrl` | string | `'/model/'` |
+| `frameCount` | number | `10` |
+| `passRateThreshold` | number | `50` |
+| `threshold` | number | `0.7` |
+| `autoValidate` | boolean | `false` |
+
+Emits: `model:loaded`, `model:error`, `validation:started`, `validation:progress`, `validation:frame`, `validation:complete`, `validation:error`.
+
+Slots: `idle`, `processing`, `result`, `error`.
+
+## Content
+
+### ContentItem
+
+Single content card (article / video) with thumbnail, title, tags, body HTML, optional embed.
+
+```html
+<ChalkyContentItem :content-model="content" :allow-video="true" />
+```
+
+### ContentList
+
+Paginated content collection.
+
+```html
+<ChalkyContentList
+    :content-collection="contentCollection"
+    :include-actions="true"
+    @click="openContent"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `contentCollection` | `Collection.Content` | **required** |
+| `includeActions` | boolean | `false` |
+| `selectedContentId` | number | `null` |
+
+### ContentVideoPlayer
+
+YouTube player with custom thumbnail and play-overlay. Picks `UtilityVideoYouTubeiOS` automatically on Capacitor iOS.
+
+```html
+<ChalkyContentVideoPlayer
+    :content-model="content"
+    aspect-ratio="16/9"
+    :autoplay="true"
+    @player:ready="onReady"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `contentModel` | `Model.Content` | **required** |
+| `aspectRatio` | string | — |
+| `autoplay` | boolean | `true` |
+| `shouldPlay` | boolean | `false` |
+
+Emits: `error`, `player:error`, `player:ready`, `video:starting`.
+
+## Feed
+
+### FeedList
+
+Renders the activity feed (`Collection.Feed`). Each row is rendered via `v-html`.
+
+```html
+<ChalkyFeedList
+    :feed-collection="feedCollection"
+    :use-location="true"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `feedCollection` | `Collection.Feed` | factory |
+| `useLocation` | boolean | `true` |
+
+### FeedCard
+
+Stub — placeholder for the upcoming card-style feed presentation.
+
+## Fact
+
+### FactBanner / FactCard
+
+Both fetch from a `Collection.Fact` and surface a random fact. Banner is wide; Card is square.
+
+```html
+<ChalkyFactBanner :fact-collection="factCollection" />
+<ChalkyFactCard :fact-collection="factCollection" />
+```
+
+Both auto-fetch on mount if the collection hasn't been requested yet.

@@ -1,0 +1,35 @@
+---
+title: 'Push Notifications'
+description: 'Device registration for push notifications'
+---
+
+Device-level push notification registration. For in-app notifications (inbox, unread counts) see [Users → Notifications](/api/users#notifications).
+
+## Register Device
+
+```bash
+POST /v3/push-notification
+```
+
+**Request:**
+```json
+{
+  "device_id": "unique-device-uuid",
+  "token": "fcm-or-apn-token",
+  "platform": "ios",
+  "app_version": "1.4.2"
+}
+```
+
+- `device_id` (required, max 255)
+- `token` (required, max 255)
+- `platform` (optional, `ios` or `android`)
+- `app_version` (optional, max 50)
+
+Anonymous devices may register; authenticating later will associate the device with the user.
+
+## Unregister Device
+
+```bash
+DELETE /v3/push-notification/{device_id}
+```

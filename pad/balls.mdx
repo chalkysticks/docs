@@ -123,20 +123,41 @@ const distance = ballManager.getDistanceBetweenBalls(ballIdA, ballIdB);
 
 ## Events
 
+Ball events are emitted both locally and on the Event Bus (prefixed with `pad.`).
+
 ```typescript
-ballManager.on('ball:added', (ball) => {
-    console.log('Added:', ball.type);
+// Via component ref
+this.$refs.pad.$on('ball:add', (payload) => {
+    console.log('Added ball:', payload);
 });
 
-ballManager.on('ball:removed', (ball) => {
-    console.log('Removed:', ball.type);
+// Via Event Bus
+ChalkySticks.Core.Event.Bus.on('pad.ball:add', (event) => {
+    console.log('Added ball:', event.data);
 });
+```
 
-ballManager.on('ball:moved', (ball, position) => {
-    console.log('Moved to:', position);
-});
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `ball:add` | `{ x, y, type? }` | Ball added to table |
+| `ball:select` | `{ x, y }` | Ball selected at position |
+| `ball:selectNearby` | `{ x, y }` | Multiple balls selected near position |
+| `ball:deselect` | `{ x, y }?` | All balls deselected |
+| `ball:move` | `{ x, y }` | Active balls moved (SVG deltas) |
+| `ball:cycle` | `{ x, y }` | Cycled through overlapping balls |
+| `ball:toggle` | `string` | Toggled ball selection by ID |
+| `ball:remove` | — | Active balls removed |
+| `ball:update` | — | Ball offsets reset for drag |
+| `ball:connect` | `{ x, y }` | Two selected balls connected with a line |
 
-ballManager.on('ball:selected', (ball) => {
-    console.log('Selected:', ball);
-});
+### API-Only Events
+
+These events are not emitted internally but can be triggered programmatically:
+
+```typescript
+// Load a full rack
+this.$refs.pad.$emit('ball:rack', ballOptionsArray);
+
+// Shuffle ball positions
+this.$refs.pad.$emit('ball:shuffle');
 ```

@@ -1,0 +1,354 @@
+---
+title: 'Recipes & Examples'
+description: 'A cookbook of custom-rules recipes, from one-word rotation drills to full schema-v2 event configs'
+---
+
+## Overview
+
+Sixteen ready-to-use rulesets, ordered simple to advanced. The first twelve ride the `rulesShorthand` slot — eleven strings plus one object shorthand for custom groups; the last four live in the Full Configs tier — three hand-written `ICustomRulesConfig` objects and one worked shorthand-to-config pair. Every recipe compiles and runs against the current engine.
+
+## Running a Recipe
+
+Shorthand rides the `rulesShorthand` parameter; full configs ride `customRules`. When both are present, `customRules` wins. See [Entry Points & Integration](/trainer/custom-rules/integration) for the complete map.
+
+```typescript
+// Standard rack + shorthand (third argument)
+GameService.rackBalls(Enum.RackStrategy.NineBall, null, 'lowest,8');
+
+// Pad diagram + shorthand (fourth argument)
+GameService.rackPad('p6OvASA', null, false, 'flow=lowest,8&lose=scratch');
+
+// Full config (second argument; beats shorthand when both are set)
+GameService.rackBalls(Enum.RackStrategy.EightBall, customRules);
+```
+
+Scene props work the same way — SceneFreeplay routes its prop through the match config, so no diagram is required:
+
+```html
+<SceneFreeplay
+    v-bind:gameType="'NineBall'"
+    v-bind:rulesShorthand="'8..1;9'"
+/>
+```
+
+The compiler resolves the active-ball set from the rack automatically on every trainer path, so most recipes below omit `balls=`.
+
+## Ordered Runs
+
+### Rotation: clear the table lowest-first
+
+Force rotation order on any rack with a single word.
+
+```text
+lowest
+```
+
+**What happens:** The compiler pre-expands the rack into an ordered step list — with balls 1–9 racked you must contact and pocket the 1, then the 2, and so on. Defaults apply: win by clearing the table, lose on any scratch. Add `lose=scratch,wrongball` to also fail on a wrong first contact.
+
+The same drill exists as a hand-written `mode: 'global'` config (from `current-lowest-first.jsonc`):
+
+```jsonc
+{
+    "activeBalls": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "description": "Must contact the lowest-numbered active ball first.",
+    "globalRules": {
+        "ballContact": { "firstBall": "lowest" },
+        "rails": { "afterContact": { "required": true } }
+    },
+    "loseConditions": [{ "description": "Wrong first contact ends the attempt.", "type": "wrongBall" }],
+    "mode": "global",
+    "winConditions": [{ "type": "allBallsPocketed" }]
+}
+```
+
+The two enforce the same lowest-first ordering but differ beyond that: the config also demands a post-contact rail and ends the attempt on wrong contact (not scratch), while the shorthand has no rail rule and ends on scratch. The closest shorthand match is `flow=lowest&with=rails-after&lose=wrongball`. They differ structurally too: the shorthand compiles to an ordered `mode: 'flow'` steps list, while the config declares one rule for every shot.
+
+### Reverse rotation: highest-first
+
+Run the table backwards.
+
+```text
+highest
+```
+
+**What happens:** Identical mechanics, descending order — a nine-ball rack resolves to 9, 8, 7, … 1. Note that `any` is **not** a free-order keyword: a steps list is inherently sequenced, so `flow=any` picks the lowest ball deterministically and behaves exactly like `lowest`. For genuine any-order play use `free` (next section).
+
+### Descending range, then the money ball
+
+A 9-ball reverse-run drill: clear 8 down to 1, then finish on the 9.
+
+```text
+8..1;9
+```
+
+**What happens:** The bare range `8..1` expands at parse time into concrete ball tokens in written direction (8, 7, 6, 5, 4, 3, 2, 1); the semicolon starts a second phase containing just the 9. Every ball appears exactly once, so nothing respots.
+
+## Free Order
+
+### Clear-all, any order (and variants)
+
+Pocket everything in any order, optionally with a global constraint or an early win.
+
+| Shorthand | Compiles to | Behavior |
+|---|---|---|
+| `free` | `mode: 'global'`, empty `globalRules` | Pocket the active balls in any order; win when all are cleared. |
+| `free.norails` | `rails: { railMode: 'local', total: { max: 0 } }` | No cushion contact allowed; rails bordering the pocket a ball drops into are forgiven. |
+| `free&with=clean` | `ballContact: { maxCaroms: 0, maxContacts: 1 }` | Every shot must contact exactly one object ball, no caroms or combos. |
+| `free&win=8` | `winConditions: [{ ball: 8, onLegalShot: true, type: 'ballPocketed' }]` | Any order, any ball — the game ends the moment the 8 drops on a legal shot. |
+
+**What happens:** Free-order keywords (`free`, `freeplay`, `none`, `open`) skip step expansion entirely and compile to a declarative `mode: 'global'` config. Dotted modifiers on the `free` token and `with=` constraints both fold into `globalRules`. If you mix `free` with other flow tokens, the compiler warns and the free token owns the whole ruleset.
+
+## Cycles & Closers
+
+### The respotting closer: comma versus semicolon
+
+Pocket the 8 between every rotation ball — the classic respot drill, and the single most important delimiter distinction in the DSL.
+
+| Shorthand | Resolved order (balls 1–4 and 8) | 8-ball behavior |
+|---|---|---|
+| `lowest,8` | 1, 8, 2, 8, 3, 8, 4, 8 | Respots to its pre-shot position after every pot except the last. |
+| `lowest;8` | 1, 2, 3, 4, 8 | Sits in its own phase; pocketed once at the end, never respots. |
+
+**What happens:** In `lowest,8` the comma makes the 8 a *closer* inside the cycle: the 8 is named explicitly, so the `lowest` pool automatically excludes it, and the phase repeats — lowest remaining ball, then the 8 — until the pool drains. Respotting is derived, never authored: every occurrence of a ball before its final one gets a `restoreBall` action; the final occurrence stays down. Swap the comma for a semicolon and the 8 becomes a one-shot second phase. Add a placement suffix to control where it returns: `lowest,8(initial)` respots to the rack position, `lowest,8(0.5,0.5)` to table center.
+
+### Alternate groups around the 8
+
+Alternate a solid, the 8, a stripe, the 8 — on a full fifteen-ball rack.
+
+```text
+solids,8,stripes,8
+```
+
+**What happens:** Each pass through the cycle emits the lowest remaining solid, the 8, the lowest remaining stripe, the 8 — resolving to 1, 8, 9, 8, 2, 8, 10, 8, … 7, 8, 15, 8. The 8 respots after every pot and stays down only on the very last step. Prefer all solids first? `solids,8;stripes,8` runs the same closer through two phases back to back — and because respot derivation looks at the whole flattened list, the 8 keeps respotting across the phase boundary too.
+
+### Snooker-ish custom groups
+
+Define your own ball groups and alternate them, snooker style.
+
+```typescript
+const rulesShorthand: ICustomRulesShorthand = {
+    activeBalls: [1, 2, 3, 4, 5, 6, 7, 8],
+    flow: [['red', 'black'], ['colors']],
+    groups: {
+        black: [8],
+        colors: [4, 5, 6, 7],
+        red: [1, 2, 3],
+    },
+};
+
+// Rack a diagram containing balls 1-8, then:
+GameService.rackPad(diagramModel, null, false, rulesShorthand);
+```
+
+**What happens:** Author-defined `groups` override the built-ins (`solids`, `stripes`, `highs`, `lows`, `objectBalls`) and are matched case-sensitively. Phase one alternates the `red` and `black` pools each pass; since `black` has one member it drains on the first pass, resolving to 1, 8, 2, 3. Phase two clears the colors ascending: 4, 5, 6, 7. Group tokens *drain* — they never respot. Only a recurring concrete ball (like the `8` closer above) respots; for a true snooker respot-while-reds-remain rule, see the capstone at the bottom of this page.
+
+## Constraints
+
+### Call-pocket: corners only
+
+Rotation where every ball must drop in a corner pocket.
+
+```text
+lowest.pocket:corner
+```
+
+**What happens:** Every generated step gets `pocket: 'corner'` on its target ball — a ball falling in a side pocket fails the step. The official drill catalog uses this family (`1.pocket:corner`, `lowest.pocket:corner.nocarom`). Specific pockets work too: `hb`/`ht` (head corners), `fb`/`ft` (foot corners), `mb`/`mt` (side pockets), plus the aggregates `corner`, `side`, and `any` — so `lowest.pocket:ht` calls the head-top pocket for every ball.
+
+### Three-rail position drill
+
+One ball, three cushions: the classic multi-rail position pattern.
+
+```text
+8.rails-after:3
+```
+
+**What happens:** The single step requires pocketing the 8 with at least three rail contacts occurring after first ball contact (`rails.afterContact: { min: 3, required: true }`). Rack a diagram containing just the 8 for a one-shot drill. Bare `rails-after` (no value) defaults to a minimum of one.
+
+### Specific rails only
+
+Restrict *which* cushions count — or which are permitted at all.
+
+| Shorthand | Emits | Behavior |
+|---|---|---|
+| `lowest.rails-after:ht\|h` | `afterContact: { allowed: [...], min: 1, required: true }` | Every pot needs at least one post-contact rail, and it must be the head-top or head cushion. |
+| `lowest.rails-allow:ht\|h` | `afterContact: { allowed: [...] }` | No minimum — but any post-contact cushion touched must come from the set. |
+| `free.rails-allow:cue:ht\|h` | `afterContact: { allowed: [...], ballScope: [0] }` | Free-order clear where only the cue ball's post-contact rails are restricted. |
+
+**What happens:** Rail sets are pipe-separated tokens from the rail map — `h`/`head`, `hb`, `ht`, `f`/`foot`, `fb`, `ft` — and a leading `cue` (or a ball number) scopes the rule to that one ball. `rails-after` demands rails; `rails-allow` merely fences them in, and it deliberately coexists with a `norails` cap rather than clearing it.
+
+### The purist drill: no banks, no kicks, no jumps
+
+Straight pool shooting only — every trick route is forbidden.
+
+```text
+free.nobank.nokick.nojump
+```
+
+**What happens:** Compiles to a global config with `shotType` entries marking bank, kick, and jump as `forbidden`; the trainer's trajectory classifier judges each shot. The built-in humanizer reads this back as: "Clear the table in any order. Every shot: no bank shots, no kick shots, and no jump shots."
+
+### Banks required
+
+The inverse drill: every pot must be a bank.
+
+```text
+lowest.bank
+```
+
+**What happens:** Rotation order with `shotType: { bank: 'required' }` on every step — a clean straight-in pot fails the requirement. `jump` and `kick` accept the same required/forbidden treatment (`nojump`, `nokick`); `combo` can be required, but forbidding combos goes through `nocombo`, which compiles to `ballContact: { maxCaroms: 0 }` rather than a `shotType` entry.
+
+## Full Configs
+
+The remaining recipes live at the `ICustomRulesConfig` tier — three hand-written configs plus one worked pair showing the config the compiler produces from a shorthand string. In challenge/API storage the configs arrive wrapped as `{ "name": "Custom", "rules": { ... } }` — pass only the nested `rules` object into `rackCustom`/`rackPad`. See the [Config Schema](/trainer/custom-rules/schema) for every field.
+
+### Finite sequence (v1 sequential)
+
+A fixed three-step script: pocket the 1, then the 2, then the 3 — each an explicit `IShotRequirement`.
+
+```jsonc
+{
+    "activeBalls": [1, 2, 3],
+    "description": "Pocket the 1, then the 2, then the 3.",
+    "loseConditions": [
+        { "description": "Scratch ends the attempt.", "type": "scratch" },
+        { "description": "Wrong first contact ends the attempt.", "type": "wrongBall" }
+    ],
+    "mode": "sequential",
+    "sequence": [
+        { "ballContact": { "firstBall": 1 }, "id": "pocket-1", "pockets": { "targetBalls": [{ "ball": 1, "required": true }] } },
+        { "ballContact": { "firstBall": 2 }, "id": "pocket-2", "pockets": { "targetBalls": [{ "ball": 2, "required": true }] } },
+        { "ballContact": { "firstBall": 3 }, "id": "pocket-3", "pockets": { "targetBalls": [{ "ball": 3, "required": true }] } }
+    ]
+}
+```
+
+**What happens:** The sequence advances only when the current step succeeds on a legal shot; steps whose target ball is already off the table are skipped. This is the hand-written ancestor of what the shorthand generates — `flow=1,2,3&lose=scratch,wrongball` produces the equivalent drill in one line. Bare `1,2,3` (or racking balls 1–3 with `lowest`) is close but not identical: the default loss is scratch only, so a wrong first contact fouls without ending the attempt.
+
+### Three-foul limit
+
+A lowest-first drill that ends after three consecutive fouls instead of a single mistake.
+
+```jsonc
+{
+    "activeBalls": [1, 2, 3, 4, 5],
+    "description": "Lowest-first drill with a three-foul limit.",
+    "globalRules": {
+        "ballContact": { "firstBall": "lowest" },
+        "rails": { "afterContact": { "required": true } }
+    },
+    "loseConditions": [
+        { "description": "Three fouls in a row ends the attempt.", "foulsInRow": 3, "type": "foulsInRow" }
+    ],
+    "mode": "global",
+    "winConditions": [{ "type": "allBallsPocketed" }]
+}
+```
+
+**What happens:** The strategy tracks consecutive fouls; a legal shot resets the streak. The shorthand sugar is `flow=lowest&with=rails-after&lose=3fouls` — any lose token of the form `3fouls` / `1foul` becomes a `foulsInRow` condition, and `with=rails-after` reproduces the config's post-contact rail requirement (bare `lowest` compiles no rail rule). Beware that supplying `lose=` at all replaces the default scratch loss; use `lose=scratch,3fouls` to keep both.
+
+### Worked pair: shorthand in, config out
+
+See exactly what the compiler produces — pot the 8, then the 1, then the 8 again, with the first 8 respotting to its rack position.
+
+```text
+flow=8(initial),1,8&lose=
+```
+
+Compiled with active balls 1 and 8 (this exact case is pinned by the sdk-pad test suite):
+
+```jsonc
+{
+    "activeBalls": [1, 8],
+    "events": [
+        {
+            "actions": [{ "reason": "Cleared the table.", "type": "win" }],
+            "on": "shotResolved",
+            "when": { "all": [{ "balls": [1, 8], "table": "allCleared" }, { "shot": "legal" }] }
+        }
+    ],
+    "flow": {
+        "steps": [
+            {
+                "actions": [{ "ball": 8, "removePocketCredit": true, "to": "rackPosition", "type": "restoreBall" }],
+                "id": "8:0",
+                "requirements": { "ballContact": { "firstBall": 8 }, "pockets": { "targetBalls": [{ "ball": 8, "required": true }] } }
+            },
+            {
+                "actions": [],
+                "id": "1:1",
+                "requirements": { "ballContact": { "firstBall": 1 }, "pockets": { "targetBalls": [{ "ball": 1, "required": true }] } }
+            },
+            {
+                "actions": [],
+                "id": "8:2",
+                "requirements": { "ballContact": { "firstBall": 8 }, "pockets": { "targetBalls": [{ "ball": 8, "required": true }] } }
+            }
+        ],
+        "type": "steps"
+    },
+    "loseConditions": [],
+    "mode": "flow",
+    "schemaVersion": 2
+}
+```
+
+**What happens:** An all-concrete phase plays once per written token, so three tokens become three steps. The 8 recurs, so its first occurrence gains a derived `restoreBall` action — the `(initial)` suffix redirects it to `rackPosition` instead of the default pre-shot position — while its final occurrence stays down. The empty `lose=` opts out of the default scratch loss, and the win event (clear the table on a legal shot) is added automatically.
+
+### Capstone: respot the 8 until the 6 is cleared
+
+When shorthand is not enough. Shorthand pre-expands the rack into a fixed, positional step list — but "the 8 respots *while the 6 is still up*" is a state-dependent rule, so it needs raw schema-v2 events (from `proposed-respot-eight-until-six-cleared.jsonc`):
+
+```jsonc
+{
+    "activeBalls": [6, 8],
+    "description": "The 8-ball respots until the 6-ball is cleared.",
+    "events": [
+        {
+            "actions": [
+                { "ball": 8, "removePocketCredit": true, "to": "preShotPosition", "type": "restoreBall" },
+                { "type": "continueGame" }
+            ],
+            "id": "restore-eight-while-six-remains",
+            "on": "shotResolved",
+            "when": {
+                "all": [{ "ball": 8, "shot": "ballPocketed" }, { "ball": 6, "table": "ballActive" }, { "shot": "legal" }]
+            }
+        },
+        {
+            "actions": [{ "reason": "8-ball pocketed after the 6-ball was cleared.", "type": "win" }],
+            "id": "eight-stays-down-after-six-cleared",
+            "on": "shotResolved",
+            "when": {
+                "all": [{ "ball": 8, "shot": "ballPocketed" }, { "ball": 6, "table": "ballInactive" }, { "shot": "legal" }]
+            }
+        }
+    ],
+    "loseConditions": [{ "description": "Scratch ends the attempt.", "type": "scratch" }],
+    "mode": "flow",
+    "requirements": {
+        "everyShot": {
+            "ballContact": { "firstBall": "any" },
+            "rails": { "afterContact": { "required": true } }
+        }
+    },
+    "schemaVersion": 2
+}
+```
+
+Walkthrough:
+
+1. There is no `flow` block — pot order is free. Baseline legality comes from `requirements.everyShot`: any first contact is fine, but a rail must follow contact unless a ball drops.
+2. After every resolved shot, the engine evaluates the events in order. If the 8 was pocketed legally *and* the 6 is still active, the first event fires: the 8 is restored to its pre-shot position, its pocket credit is removed, and `continueGame` keeps the attempt alive.
+3. Once the 6 is gone, the same 8-ball pot matches the second event instead (`ballInactive`), and the `win` action ends the game.
+4. A scratch at any point loses via the standard `loseConditions`.
+
+Both table atoms (`ballActive`/`ballInactive`) and all three actions (`restoreBall`, `continueGame`, `win`) are handled by the engine's `ConditionEvaluator` and `RuleActionResolver`, gated behind `schemaVersion: 2`. See [Engine Internals](/trainer/custom-rules/engine) for the evaluation pipeline.
+
+## Choosing Your Tier
+
+| You want | Reach for | Reference |
+|---|---|---|
+| An ordered pot drill, a respotting closer, per-shot constraints | A shorthand string | [Shorthand DSL](/trainer/custom-rules/shorthand) |
+| Custom groups, multi-phase flows, query-string options | Object shorthand (`ICustomRulesShorthand`) | [Shorthand DSL](/trainer/custom-rules/shorthand) |
+| Conditional respots, state-driven wins, custom events | A full schema-v2 config | [Config Schema](/trainer/custom-rules/schema) |
+
+Start with shorthand — everything it produces is a schema-v2 config anyway, so you can always compile a string, inspect the output (as in the worked pair above), and graduate to hand-editing the config when a rule outgrows the grammar.

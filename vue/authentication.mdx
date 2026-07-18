@@ -1,75 +1,145 @@
 ---
-title: 'Authentication Components'
-description: 'Login, signup, and auth panel components'
+title: 'Authentication'
+description: 'Login, signup, password reset, and OAuth components'
 ---
 
-## AuthPanel
+All components consume a shared `ChalkySticks.Model.Authentication` instance. They emit standardized `success` / `error` events and dispatch global bus events (`login:request`, `user.menu:open`) so the parent app can react.
 
-Full authentication panel with login/signup tabs.
+## AuthenticationAuthPanel
+
+Composite panel containing login, signup, social login, and forgot-password flows in one component. The default entry point for most apps.
 
 ```html
-<ChalkyAuthPanel
-    v-on:login="handleLogin"
-    v-on:register="handleRegister"
+<ChalkyAuthenticationAuthPanel
+    :allow-forgot-password="true"
+    :allow-signup="true"
+    :include-social="true"
+    @success="onLoginSuccess"
+    @error="onLoginError"
 />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `allowForgotPassword` | boolean | `true` |
+| `allowSignup` | boolean | `true` |
+| `authModel` | `Model.Authentication` | factory-created |
+| `contextualSignup` | boolean | `true` |
+| `includeBasic` | boolean | `true` |
+| `includeSocial` | boolean | `false` |
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `showGoogle` | boolean | true | Show Google OAuth button |
-| `showApple` | boolean | false | Show Apple OAuth button |
-| `defaultTab` | string | 'login' | Initial tab ('login' or 'register') |
+Emits: `login`, `signup`, `success`, `error`.
 
-### Events
+## AuthenticationBasicLogin
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `login` | User | User logged in successfully |
-| `register` | User | User registered successfully |
-| `error` | Error | Authentication error |
-
-## BasicLogin
-
-Standalone login form.
+Email + password form. Use this directly when you don't need the panel chrome.
 
 ```html
-<ChalkyBasicLogin
-    v-on:submit="handleLogin"
-    v-on:forgot-password="showForgotPassword"
+<ChalkyAuthenticationBasicLogin
+    :auth-model="authModel"
+    @success="onSuccess"
+    @forgot-password="showForgotPassword"
 />
 ```
 
-## BasicSignup
+| Prop | Type | Default |
+|------|------|---------|
+| `allowForgotPassword` | boolean | `true` |
+| `authModel` | `Model.Authentication` | — |
 
-Standalone registration form.
+Emits: `forgot-password`, `login`, `success`, `error`.
+
+## AuthenticationForgotPassword
+
+Sends the password-reset email and shows a confirmation state.
 
 ```html
-<ChalkyBasicSignup
-    v-on:submit="handleRegister"
+<ChalkyAuthenticationForgotPassword
+    :auth-model="authModel"
+    @success="onEmailSent"
+    @cancel="closeForm"
 />
 ```
 
-## AuthNavigation
+| Prop | Type | Default |
+|------|------|---------|
+| `authModel` | `Model.Authentication` | factory-created |
 
-User dropdown menu for authenticated state.
+Emits: `success`, `error`, `cancel`.
+
+## AuthenticationResetPassword
+
+Accepts a password reset token (from the email link) and a new password. Validates locally before submitting.
 
 ```html
-<ChalkyAuthNavigation
-    v-bind:user="currentUser"
-    v-on:logout="handleLogout"
+<ChalkyAuthenticationResetPassword
+    :token="$route.query.token"
+    @success="redirectToLogin"
+    @cancel="goHome"
 />
 ```
 
-## AuthModal
+| Prop | Type | Required |
+|------|------|----------|
+| `authModel` | `Model.Authentication` | no |
+| `token` | string | **yes** |
 
-Modal wrapper for auth panel.
+Emits: `success`, `error`, `cancel`.
+
+## AuthenticationSocialLogin
+
+OAuth (Google) button(s). Uses `authModel.loginWithGoogle()` under the hood.
 
 ```html
-<ChalkyAuthModal
-    v-bind:visible="showAuthModal"
-    v-on:close="showAuthModal = false"
-    v-on:login="handleLogin"
+<ChalkyAuthenticationSocialLogin
+    :auth-model="authModel"
+    redirect-to="/dashboard"
 />
 ```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `authModel` | `Model.Authentication` | factory-created |
+| `redirectTo` | string | current page URL |
+
+## AuthenticationModal
+
+Controller component that displays both the login panel and the user-settings panel as modals. Listens for global `login:request` and `user.menu:open` events, so anywhere in the app you can just dispatch one of those:
+
+```typescript
+ChalkySticks.Event.Bus.dispatch('login:request');
+```
+
+```html
+<ChalkyAuthenticationModal
+    :auth-model="authModel"
+    :include-social="true"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `authModel` | `Model.Authentication` | factory-created |
+| `contextualSignup` | boolean | `true` |
+| `includeBasic` | boolean | `true` |
+| `includeSocial` | boolean | `false` |
+
+Methods: `showLogin()`, `hideLogin()`, `showSettings()`, `hideSettings()`.
+
+## AuthenticationNavigation
+
+Navigation chip that shows either a "Sign in" button or an avatar depending on auth state. Tapping it dispatches `login:request` or `user.menu:open` on the global bus.
+
+```html
+<ChalkyAuthenticationNavigation
+    :auth-model="authModel"
+    size="xs"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `authModel` | `Model.Authentication` | factory-created |
+| `size` | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'xs'` |
+| `showArrow` | boolean | `false` |
+| `useButton` | boolean | `false` |

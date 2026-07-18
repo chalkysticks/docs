@@ -1,0 +1,472 @@
+---
+title: 'Embedding'
+description: 'Drop the ChalkySticks trainer onto any site with a single <iframe> — layout, rules, camera, and the full equipment loadout are driven entirely by the URL'
+---
+
+## Overview
+
+The trainer ships a chrome-free, iframe-embeddable build at:
+
+```
+https://www.chalkysticks.com/trainer/embed
+```
+
+Everything the embedded table shows — the ball layout, the potting rules, the
+camera, the room, and every piece of equipment on the table — is driven by the
+query string. There is nothing to install and no JavaScript to load: partner
+sites paste one `<iframe>`.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=1:0.5,0.5;2:0.25,0.5&flow=free"
+	width="700"
+	height="350"
+	style="border: 0; border-radius: 10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+The embed strips every menu, HUD, toast, and overlay — only the table and the
+power / english meter (pinned full-height to the right edge) are shown.
+
+For two-way control from the host page — buttons that change the cloth, trigger
+a shot, or listen for pocketed balls — see the [Embed postMessage
+API](/trainer/embed-api).
+
+<Note>
+	The route is served with `frame-ancestors *`, so it may be embedded from any
+	origin. All other ChalkySticks pages remain `SAMEORIGIN`.
+</Note>
+
+## Query parameters
+
+### Layout & rules
+
+| Param | Description |
+|-------|-------------|
+| `diagram` | Saved Pad diagram id — an id/hash (e.g. `EKQ6ubq`) or a `pad.chalkysticks.com/<id>` URL. When present it is the rack source and takes precedence over `balls=` / `game=`. |
+| `inverse` | Optional `0` / `false` to disable the diagram's coordinate inversion (on by default). Only relevant with `diagram=`. |
+| `balls` | Semicolon-separated `ball:x,y` placements. `x` / `y` are normalized `0..1` (`x` = left→right along the long axis, `y` = top→bottom). Ball `0` or `cue` is the cue ball. Omit for a standard rack. |
+| `flow` | Custom-rules shorthand describing pot order and constraints. See the [Shorthand DSL](/trainer/custom-rules/shorthand) for the full grammar. |
+| `with` | Global rule modifiers applied to every shot (alternative to chaining onto `flow`). e.g. `with=clean,norails`. |
+| `win` | Win condition sugar: `clear` (default), `1left`, or a ball number. |
+| `lose` | Lose condition sugar: `scratch` (default), `wrongball`, `Nfouls`. |
+| `game` | Standard rack when no `balls=` / `diagram=` is given: `NineBall`, `EightBall`, `TenBall`, `Rotation`, `StraightPool`, `ThreeBall`. |
+
+### Equipment & presentation
+
+| Param | Description |
+|-------|-------------|
+| `table` | Whole-table appearance preset: `Chalky` (default), `Traditional`, `Classic`, `Grey`, `Charcoal`, `Purple`, `Yellow`, `Matchroom`, `Superfine`. |
+| `cloth` | Loadout cloth id (not a color) — see [equipment ids](#equipment-ids). e.g. `cloth=tournament-blue`. |
+| `rail` | Loadout rail id. e.g. `rail=walnut`. |
+| `diamond` | Loadout rail-diamond (sight) id. e.g. `diamond=brass`. |
+| `cue` | Loadout cue id. e.g. `cue=halloran-m1`. |
+| `ballset` | Ball-set **skin** id. e.g. `ballset=speedrun-purple`. Unrelated to `balls=`, which places balls. |
+| `env` | Room / environment preset: `Chalky` (default), `OldPoolHall`, `ModernBar`, `MosconiCup`, `AmsterdamBilliards`, `Generic`, `Projection`, `Default`. |
+| `camera` | Opening camera view — see [camera presets](#camera-presets). e.g. `camera=first-person`. |
+| `power` | Power meter style: `cue` (default) or `traditional`. |
+
+### Aim aids
+
+| Param | Description |
+|-------|-------------|
+| `ghost` | Optional `0` / `false` to hide the ghost-ball aim aid. On by default in embeds, regardless of the viewer's saved trainer setting. |
+| `trajectories` | Optional `0` / `false` to hide trajectory prediction lines. On by default in embeds (the full trainer defaults them off until enabled by the player). |
+
+### Loading & host integration
+
+| Param | Description |
+|-------|-------------|
+| `start` | `auto` (default) mounts the table immediately. `click` shows a poster with a play button and loads nothing until the viewer taps it. |
+| `poster` | Poster image for `start=click`: an absolute `http(s)` URL, a root-relative path, or `auto` to use the `diagram=`'s own rendered artwork. Other schemes are rejected. Falls back to a branded felt panel. |
+| `origin` | Locks the [postMessage bridge](/trainer/embed-api) to one exact origin, e.g. `origin=https://partner.example.com`. Omit to accept any origin. |
+
+<Note>
+	Unknown values never break an embed. Every parameter validates against the
+	real catalog or enum and falls back to its default with a console warning, so
+	a typo costs you one setting rather than the whole table.
+</Note>
+
+## What you can and cannot configure
+
+A quick map of the surface, so you know where the edges are.
+
+| Surface | Query param | Notes |
+|---------|-------------|-------|
+| Ball layout | `balls`, `diagram` | Full control, normalized coordinates |
+| Rules | `flow`, `with`, `win`, `lose` | Full shorthand DSL |
+| Game type | `game` | Standard racks |
+| Cloth | `cloth` | 16 ids |
+| Rails | `rail` | 6 ids |
+| Diamonds | `diamond` | 3 ids |
+| Cues | `cue` | 4 ids (cosmetic — every cue plays identically) |
+| Ball skins | `ballset` | 12 ids across 2 families |
+| Table preset | `table` | 9 coordinated looks |
+| Environment | `env` | 8 rooms |
+| Camera | `camera` | 17 presets |
+| Power meter | `power` | 2 styles |
+| Aim aids | `ghost`, `trajectories` | |
+| Deferred load | `start`, `poster` | |
+| **Chalk** | — | In the catalog, but **no scene wiring**. Cannot be shown on the table. |
+| **Cue tips** | — | In the catalog, but **no scene wiring**. Cannot be shown on the table. |
+| **Pocket tightness** | — | Engine supports it; not yet exposed as a param. |
+| **Rail scale** | — | Engine supports it; not yet exposed as a param. |
+| **Sponsor cloth overlay** | — | Component prop only; not yet exposed as a param. |
+| **AI opponent** | — | Embeds are solo-only. Use the full trainer for CPU or online play. |
+
+Chalk and cue tips are equippable in the full trainer's Loadout, but they only
+persist a preference — nothing in the 3D scene consumes them. Exposing them as
+embed parameters would be a silent no-op, so they are deliberately absent.
+
+### Locked equipment
+
+The embed applies every equipment id as a **transient override**. That means a
+locked catalog item — a cloth or cue the viewer has not unlocked — still renders
+in your embed, and doing so neither grants it to them nor disturbs the loadout
+they have saved in the full trainer. Every id in the tables below works, locked
+or not.
+
+## The `balls` DSL
+
+Each placement is `ball:x,y`, joined with `;`. Coordinates are the same
+normalized `0..1` space the diagrams API and official drills use:
+
+- `x` runs along the **long** axis of the table (`0` = left short rail, `1` = right short rail)
+- `y` runs along the **short** axis (`0` = top long rail, `1` = bottom long rail)
+- ball `0`, `cue`, or `cueball` is the cue ball; `1`–`15` are the object balls
+
+```
+balls=1:0.5,0.5;2:0.25,0.5;cue:0.75,0.4
+      │ └ x,y    │           └ cue ball
+      └ 1 ball   └ 2 ball
+```
+
+## The `flow` DSL (quick reference)
+
+`flow` is the custom-rules shorthand. The most common forms for an embed:
+
+| `flow` | Drill |
+|--------|-------|
+| `lowest` | Pot the lowest-numbered ball first, in order. |
+| `free` | Pot anything, in any order. |
+| `1` | Pot ball 1. |
+| `1..5` | Pot 1, then 2, … through 5. |
+| `lowest.clean` | Lowest-first, every shot a clean single-ball hit. |
+| `free.norails` | Any order, no cushions allowed. |
+| `1.pocket:corner` | Pot ball 1 into a corner pocket. |
+| `lowest.pocket:corner.nocarom` | Lowest-first into corners, no caroms. |
+
+Chain modifiers onto any token with `.` (e.g. `lowest.clean.pocket:corner`),
+or apply them globally with `with=` (e.g. `flow=lowest&with=clean`). The full
+grammar — cycles, phases, ranges, rail sets, respots, win/lose sugar — is on the
+[Shorthand DSL](/trainer/custom-rules/shorthand) page.
+
+## Equipment ids
+
+`cloth`, `rail`, `diamond`, `cue`, and `ballset` each take a **loadout catalog
+id** — the same identifiers the in-game Loadout uses — not a raw color.
+
+### Cloth & rails
+
+| `cloth` id | | `rail` id |
+|------------|---|-----------|
+| `traditional-green` | | `walnut` |
+| `tournament-blue` | | `ebony` |
+| `superfine-red` | | `espresso` |
+| `black` | | `natural-oak` |
+| `electric-blue` | | `gunmetal` |
+| `championship-slate` | | `mahogany` |
+| `coffee` | | |
+| `yellow-metal` | | |
+| `finch` | | |
+| `slate` | | |
+| `cadet` | | |
+| `twilight` | | |
+| `dark-mauve` | | |
+| `oyster` | | |
+| `warm-green` | | |
+| `gunsmoke` | | |
+
+### Diamonds, cues & ball sets
+
+| `diamond` id | | `cue` id | | `ballset` id |
+|--------------|---|----------|---|--------------|
+| `pearl` | | `chalkysticks-house` | | `chalky-standard` |
+| `brushed-steel` | | `halloran-m1` | | `chalkysticks-dark-slim` |
+| `brass` | | `maguire-regent` | | `chalkysticks-english` |
+| | | `vosshale-monarch` | | `speedrun-purple` |
+| | | | | `speedrun-orange` |
+| | | | | `speedrun-red` |
+| | | | | `speedrun-blue` |
+| | | | | `speedrun-green` |
+| | | | | `speedrun-brown` |
+| | | | | `speedrun-yellow` |
+| | | | | `speedrun-black` |
+
+The `chalky-*` ball sets belong to the American family; the `speedrun-*` sets to
+the Speed Run family. Forcing a `speedrun-*` skin onto a non-Speed-Run rack works
+— the atlas is applied verbatim — but the ball numbering will not read the way a
+9-ball player expects. Pair Speed Run skins with `game=speedrun`.
+
+For a whole coordinated look instead of picking each piece individually, use a
+`table=` appearance preset.
+
+## Camera presets
+
+`camera=` sets the opening view. It is applied without animation, so the embed
+opens already framed.
+
+| `camera` | View |
+|----------|------|
+| `overview` | Top-down, viewport-adaptive. **Default.** |
+| `first-person` | Behind the cue ball, sighting down the cue. |
+| `break` | Behind the head string, break position. |
+| `break-reverse` | The break from the opposite end. |
+| `left-half` | Zoomed on the left half of the table. |
+| `right-half` | Zoomed on the right half. |
+| `side` | Side-on, along the long rail. |
+| `three-quarter` | Raked three-quarter view. |
+| `end-table` | Down the length of the table. |
+| `close-up` | Tight on the cue ball. |
+| `pocket-foot-top` | Pocket cam, foot-end top corner. |
+| `pocket-foot-bottom` | Pocket cam, foot-end bottom corner. |
+| `pocket-head-top` | Pocket cam, head-end top corner. |
+| `pocket-head-bottom` | Pocket cam, head-end bottom corner. |
+| `pocket-middle-top` | Pocket cam, top side pocket. |
+| `pocket-middle-bottom` | Pocket cam, bottom side pocket. |
+
+<Tip>
+	`camera=first-person` puts the viewer down on the shot immediately, which reads
+	far better in a small frame than the top-down default. It also enables freelook
+	(Shift + drag).
+</Tip>
+
+## Deferred loading
+
+A trainer embed builds a WebGL context, registers A-Frame, and scans its asset
+manifest the moment it mounts. On a content page carrying several embeds — or on
+a phone — that is a lot to spend before the reader has shown any interest.
+
+`start=click` defers all of it. Until the viewer taps the poster, the 3D scene is
+not mounted at all: no WebGL context, no A-Frame, no asset scan.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?game=NineBall&start=click"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+Pair it with `poster=` to control what the reader sees first. With a `diagram=`,
+`poster=auto` renders the diagram's own artwork — so the reader sees the exact
+layout they are about to play.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?diagram=EKQ6ubq&start=click&poster=auto"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+A host page can also start the table remotely with the `game.start` command —
+see the [postMessage API](/trainer/embed-api).
+
+## Loading a saved diagram
+
+A `diagram=` id loads a saved Pad diagram — its ball layout and its own rules —
+and takes precedence over `balls=` / `game=`. Pass a bare id/hash or a full
+`pad.chalkysticks.com` URL. Layer a `flow=` on top to override the diagram's
+rules, or `cloth=` / `rail=` to restyle it.
+
+```
+?diagram=EKQ6ubq
+?diagram=EKQ6ubq&flow=lowest&cloth=tournament-blue
+```
+
+## Copy-paste examples
+
+Each block is a complete, ready-to-embed `<iframe>`. The layouts mirror the
+official drills in the trainer's `Config/Drills.ts`.
+
+### Standard racks
+
+No `balls=` — the engine racks the real pattern for the game type.
+
+<CodeGroup>
+
+```html 9-Ball
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?game=NineBall"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+```html 8-Ball, traditional cloth
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?game=EightBall&table=Traditional"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+</CodeGroup>
+
+### Spot Shot
+
+One ball on the spot, cue in the kitchen — call the corner. The single most
+common shot in pool.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=1:0.75,0.5;cue:0.22,0.7&flow=1.pocket:corner"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Line-Up Drill
+
+Five balls down the center line — pot the lowest first. The classic warm-up.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=1:0.5,0.1;2:0.5,0.3;3:0.5,0.5;4:0.5,0.7;5:0.5,0.9;cue:0.75,0.4&flow=lowest"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### The L Drill
+
+An L of balls around the corner — clean contact on every shot.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=1:0.2,0.78;2:0.32,0.78;3:0.44,0.78;4:0.2,0.55;5:0.2,0.32;cue:0.6,0.4&flow=lowest.clean"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Circle Drill
+
+Six balls ringed around the cue ball — keep the cue in the center.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=1:0.5,0.14;2:0.59,0.32;3:0.59,0.68;4:0.5,0.86;5:0.41,0.68;6:0.41,0.32;cue:0.5,0.5&flow=lowest"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Center Table
+
+A full spread — pot anything into a corner with clean contact, returning to the
+middle.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=6:0.88,0.24;1:0.88,0.5;9:0.88,0.76;13:0.75,0.76;15:0.75,0.5;5:0.75,0.24;14:0.63,0.76;4:0.63,0.5;8:0.63,0.24;cue:0.5,0.5;7:0.24,0.76;12:0.24,0.5;11:0.24,0.24;10:0.12,0.24;3:0.12,0.5;2:0.12,0.76&flow=free.clean.pocket:corner"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Brainwash
+
+A crowded spread with no rails allowed — pure cue-ball discipline.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?balls=8:0.5,0.5;9:0.37,0.5;10:0.24,0.5;15:0.24,0.24;5:0.24,0.76;4:0.37,0.76;14:0.37,0.24;13:0.5,0.24;3:0.5,0.76;2:0.63,0.76;1:0.75,0.76;7:0.63,0.5;6:0.75,0.5;12:0.63,0.24;11:0.75,0.24;cue:0.75,0.37&flow=free.norails.clean"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Fully dressed table
+
+Every equipment slot set at once, opening in first person, in an old pool hall.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?game=NineBall&cloth=tournament-blue&rail=walnut&diamond=brass&cue=halloran-m1&ballset=chalky-standard&env=OldPoolHall&camera=first-person"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Deferred load with a diagram poster
+
+Nothing loads until the reader taps the diagram artwork.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?diagram=EKQ6ubq&start=click&poster=auto"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+### Saved diagram
+
+Load a saved Pad diagram by id — its own layout and rules.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?diagram=EKQ6ubq"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+## Sizing & responsiveness
+
+The embed fills its frame and adapts to any aspect ratio. For a responsive width
+that keeps a fixed aspect ratio, wrap it:
+
+```html
+<div style="position:relative;width:100%;max-width:700px;aspect-ratio:2/1;">
+	<iframe
+		src="https://www.chalkysticks.com/trainer/embed?game=NineBall"
+		style="position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px;"
+		title="ChalkySticks Trainer"
+	></iframe>
+</div>
+```
+
+<Tip>
+	A wider frame gives more table; the power / english meter always stays pinned
+	to the right edge at its natural width.
+</Tip>
+
+## Notes
+
+- **Equipment ids, not colors:** `cloth`, `rail`, `diamond`, `cue`, and `ballset`
+  take loadout catalog ids (see the tables above). A hex color is not a catalog
+  id — it is dropped with a warning and the table renders its default felt. For a
+  whole coordinated look, use a `table=` preset instead.
+- **Transient overrides:** equipment is applied as a non-persisted override. The
+  viewer's saved loadout is untouched, and locked items render without being
+  granted.
+- **Rack precedence:** `diagram=` wins over `balls=`, which wins over the standard
+  `game=` rack.
+- **Rules vs. layout:** with a `balls=` layout, `flow` is compiled against the
+  balls you placed. With a `diagram=`, `flow` overrides the diagram's own rules.
+  Without either, `flow` applies to the standard `game=` rack.
+- **Aim aids:** the ghost ball and trajectory lines are always on in embeds —
+  they don't inherit the viewer's saved trainer settings. Turn either off with
+  `ghost=0` / `trajectories=0`.
+- **Audio:** the embed does not autoplay music; sound effects follow the browser's
+  autoplay policy and begin after the first interaction.
+
+## Related
+
+- [Embed postMessage API](/trainer/embed-api) — drive the table from the host page
+- [Shorthand DSL](/trainer/custom-rules/shorthand) — the full `flow` grammar
+- [Camera](/trainer/camera) — how presets are defined and switched at runtime

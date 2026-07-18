@@ -1,33 +1,66 @@
 ---
 title: 'Lines & Trajectories'
-description: 'Drawing coach lines, curved paths, and visualizing shot trajectories'
+description: 'Drawing coach lines, curved paths, and measuring shot geometry'
 ---
 
 ## Coach Lines
 
-Coach lines connect two balls to illustrate shot paths.
+Coach lines connect two balls to illustrate shot paths. `addLine()` takes an `IAddLineOptions` object so call sites can supply optional `color`, `lineStyle`, and `controlPoint` fields without juggling argument order.
 
 ```typescript
-const lineManager = tableManager.lineManager;
+import { Enum } from '@chalkysticks/sdk-pad';
 
-// Draw line between two balls
-lineManager.addLine(cueBall, targetBall);
+const lineManager = table.lineManager;
 
-// Draw line with options
-lineManager.addLine(cueBall, targetBall, {
-    color: '#ff0000',
-    dashed: true
+// Minimum signature — connect two ball IDs
+lineManager.addLine({
+    startBallId: cueBall.id,
+    endBallId:   targetBall.id,
+});
+
+// With style + explicit color
+lineManager.addLine({
+    startBallId: cueBall.id,
+    endBallId:   targetBall.id,
+    color:       '#FF0000',
+    lineStyle:   Enum.LineStyle.Dashed,
+});
+
+// With a quadratic bezier control point
+lineManager.addLine({
+    startBallId:  cueBall.id,
+    endBallId:    targetBall.id,
+    controlPoint: { x: 300, y: 150 },
 });
 ```
 
-## Line Types
+Line IDs are deterministic: `` `${startBallId}-${endBallId}` ``. New lines are created `active: true`.
 
-| Type | Purpose |
-|------|---------|
-| Coach line | Direct line between balls |
-| Aim line | Line from cue through ghost ball |
-| Trajectory | Predicted ball path after impact |
-| Curved line | Bezier curve for massé shots |
+### Ball Resolvers
+
+The line manager resolves ball positions and objects through callbacks rather than owning the ball collection. `Manager.Table` wires these automatically.
+
+```typescript
+lineManager.setBallPositionResolver((ballId) => ballManager.byId(ballId));
+lineManager.setBallResolver((ballId) => ballManager.byId(ballId));
+```
+
+### Color Resolution
+
+When a line has no explicit `color`, `getLineColor()` falls back to the start ball's type via the `BallLineColor` map, then to `DEFAULT_LINE_COLOR` (`#000000`).
+
+```typescript
+import { Constant } from '@chalkysticks/sdk-pad';
+
+Constant.BallLineColor.cue;       // '#000000'
+Constant.BallLineColor['1'];      // '#F8E100' (yellow solid)
+Constant.DEFAULT_LINE_COLOR;      // '#000000'
+
+const color = lineManager.getLineColor(lineId);            // explicit > ball type > default
+const color2 = lineManager.getLineColor(lineId, '#FF8800'); // override the default
+
+lineManager.setLineColor(lineId, '#00AA00');
+```
 
 ---
 
@@ -42,10 +75,14 @@ Lines can be styled as solid, dashed, or dotted.
 | `Dotted` | Small dots | `2,4` |
 
 ```typescript
-import * as Enum from '@chalkysticks/sdk-pad/Enum';
+import { Enum } from '@chalkysticks/sdk-pad';
 
 // Add line with style
-lineManager.addLine(startBallId, endBallId, undefined, Enum.LineStyle.Dashed);
+lineManager.addLine({
+    startBallId,
+    endBallId,
+    lineStyle: Enum.LineStyle.Dashed,
+});
 
 // Set/update style on existing line
 lineManager.setLineStyle(lineId, Enum.LineStyle.Dotted);
@@ -58,15 +95,25 @@ const dashArray = lineManager.getStrokeDashArray(lineId);
 // "8,4" for dashed, "2,4" for dotted, "none" for solid
 ```
 
+You can also cycle styles for the active ball's line:
+
+```typescript
+table.cycleLineStyle();   // solid → dashed → dotted → solid
+```
+
 ---
 
 ## Curved Lines (Bezier)
 
-For massé shots and curved paths, you can add a control point to create a quadratic Bezier curve.
+For massé shots and curved paths, add a control point to create a quadratic Bezier curve.
 
 ```typescript
 // Add line with a control point for curve
-lineManager.addLine(startBallId, endBallId, { x: 300, y: 150 });
+lineManager.addLine({
+    startBallId,
+    endBallId,
+    controlPoint: { x: 300, y: 150 },
+});
 
 // Set/update control point on existing line
 lineManager.setControlPoint(lineId, { x: 300, y: 150 });
@@ -84,8 +131,8 @@ lineManager.clearControlPoint(lineId);
 ### SVG Path Generation
 
 ```typescript
-// Get SVG path d attribute for rendering
-const pathD = lineManager.getPath(lineId);
+// Get SVG path d attribute for rendering (optional offsets shift to ball center)
+const pathD = lineManager.getPath(lineId, offsetX, offsetY);
 // Straight: "M 100,200 L 400,200"
 // Curved:   "M 100,200 Q 300,150 400,200"
 ```
@@ -93,10 +140,10 @@ const pathD = lineManager.getPath(lineId);
 ### Curve Calculations
 
 ```typescript
-// Get point along curve at parameter t (0-1)
+// Get point along the line at parameter t (0-1); follows the bezier when curved
 const point = lineManager.getPointOnCurve(lineId, 0.5);
 
-// Get total curve length
+// Get total curve length (straight distance when no control point)
 const length = lineManager.getCurveLength(lineId);
 
 // Get midpoint of curve
@@ -106,22 +153,59 @@ const midpoint = lineManager.getCurveMidpoint(lineId);
 const angle = lineManager.getCurveTangentAngle(lineId, 0.5);
 ```
 
+---
+
 ## Managing Lines
 
 ```typescript
-// Remove a specific line
-lineManager.removeLine(line);
+// Remove a line by ID
+lineManager.removeLineById(lineId);
 
-// Clear all lines
-lineManager.clearLines();
+// Remove lines by their endpoints
+lineManager.removeLineByStartId(startBallId);
+lineManager.removeLineByEndId(endBallId);
+lineManager.removeLinesByBallId(ballId);       // any line touching this ball
+lineManager.removeEverythingAfterBall(ballId); // alias for removeLineByStartId
 
-// Get all lines
-const lines = lineManager.getLines();
+// Clear all lines (inherited from Base)
+lineManager.clear();
 
-// Get lines by ball type
+// Access the collection
+const lines = lineManager.lines;
+const line = lineManager.byId(lineId);
+
+// Lookups by endpoint
+const fromBall = lineManager.getLinesByStartBallId(ballId);
+const toBall = lineManager.getLinesByEndBallId(ballId);
+const touching = lineManager.getLinesByBallId(ballId);
+const hasAny = lineManager.hasBall(ballId);
+
+// Lookups by ball type
 const cueShotLines = lineManager.getLinesByBallType('cue');
 const ghostLines = lineManager.getLinesStartingWithType('ghost');
-const toSolidLines = lineManager.getLinesEndingWithType('solid');
+const toNineLines = lineManager.getLinesEndingWithType('9');
+
+// Chain traversal (lines that share endpoints)
+const next = lineManager.getNextLine(lineId);
+const previous = lineManager.getPreviousLine(lineId);
+
+// Re-point a line at different balls
+lineManager.moveLine(lineId, newStartBallId, newEndBallId);
+
+// Selection
+lineManager.activateLine(lineId);
+lineManager.deactivateLines();
+const activeLines = lineManager.getActiveLines();
+const anyActive = lineManager.isAnyLineActive();
+```
+
+### Proximity
+
+`getNearestLine()` measures curved lines against their rendered bezier geometry (32 samples), not the straight chord between endpoints.
+
+```typescript
+const nearest = lineManager.getNearestLine(x, y);            // default threshold 50
+const nearestTight = lineManager.getNearestLine(x, y, 20);
 ```
 
 ---
@@ -139,7 +223,7 @@ const length = lineManager.getLength(lineId);
 // Get line midpoint
 const midpoint = lineManager.getMidpoint(lineId);
 
-// Get line slope
+// Get line slope (undefined for vertical lines)
 const slope = lineManager.getSlope(lineId);
 
 // Get total length of all lines
@@ -151,46 +235,68 @@ const totalLength = lineManager.getTotalLength();
 ## Line Relationships
 
 ```typescript
-// Check if two lines are parallel
+// Check if two lines are parallel (tolerance in degrees, default 1)
 const parallel = lineManager.isParallelTo(lineIdA, lineIdB);
 
-// Get intersection point of two lines
+// Get intersection point of two lines (extended infinitely)
 const intersection = lineManager.getIntersectionPoint(lineIdA, lineIdB);
 
-// Get angle between two lines
+// Get the cut angle between two lines
 const angleBetween = lineManager.getAngleBetweenLines(lineIdA, lineIdB);
 
-// Calculate reflection angle off a rail
-const reflectionAngle = lineManager.getReflectionAngle(lineId, railAngle);
+// Reflection angle off a rail side: 'top' | 'bottom' | 'left' | 'right'
+const reflectionAngle = lineManager.getReflectionAngle(lineId, 'top');
 ```
+
+---
 
 ## Trajectories
 
-Trajectory manager shows predicted ball paths.
+`Manager.Trajectory` is a plain `Base`-derived container for `IDiagramTrajectory` items (`{ ballId, points }`). It has no path-prediction methods of its own — collision math lives on the table manager (`calculateCollisionWithBall()`, `calculateCollisionWithRail()`).
 
 ```typescript
-const trajectoryManager = tableManager.trajectoryManager;
+const trajectoryManager = table.trajectoryManager;
 
-// Show trajectory from cue to target
-trajectoryManager.showTrajectory(cueBall, targetBall);
+// Standard Base API
+trajectoryManager.trajectories;        // collection
+trajectoryManager.clear();
+trajectoryManager.exportState();
+trajectoryManager.importState(state);
+```
 
-// Show trajectory with bounce
-trajectoryManager.showTrajectory(cueBall, targetBall, {
-    showBounce: true
-});
+## Line Interface
 
-// Clear trajectories
-trajectoryManager.clearTrajectories();
+```typescript
+interface IDiagramLine {
+    active: boolean;
+    color?: string;
+    controlPoint?: IVector;
+    endBallId: string;
+    id: string;            // `${startBallId}-${endBallId}`
+    lineStyle?: string;
+    startBallId: string;
+}
 ```
 
 ## Line Events
 
+Event names use singular verbs (`line:add`, not `line:added`).
+
 ```typescript
-lineManager.on('line:added', (line) => {
-    console.log('Line added');
+lineManager.on('line:add', (e) => {
+    console.log('Line added:', e.data.id);
 });
 
-lineManager.on('line:removed', (line) => {
-    console.log('Line removed');
+lineManager.on('line:remove', (e) => {
+    console.log('Line removed:', e.data.id);
 });
 ```
+
+See [Events Reference](/sdk/pad/events) for the complete event catalog.
+
+## Recent Changes
+
+- 1.5.16 — `getNearestLine()` measures curved lines against sampled bezier geometry instead of the straight chord
+- 1.3.x — Line styles and colors participate in exported layouts (`strokeDashArray` in 1.3.11, `lineStyle` in 1.3.16, `stroke` in 1.3.24, `color` in 1.3.35 on `IExportedLine`)
+- 1.3.24 — `addLine()` switched from positional parameters to the `IAddLineOptions` object; explicit `color` field and `getLineColor()`/`setLineColor()` fallback chain added
+- Docs correction vs. 1.5.x pages: removal is `removeLineById(id)` (not `removeLine(line)`), clearing is `clear()` (not `clearLines()`), the collection accessor is `lines` (not `getLines()`), `getReflectionAngle()` takes a rail side string (not a rail angle), and `trajectoryManager.showTrajectory()` does not exist

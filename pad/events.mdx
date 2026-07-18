@@ -1,0 +1,228 @@
+---
+title: 'Events Reference'
+description: 'Complete catalog of pad events'
+---
+
+## Event Architecture
+
+The pad uses a dual-channel event system powered by the `emitPad()` function. Every event fires on two channels simultaneously:
+
+1. **Local Vue event** via `this.$emit(event, payload)` on the component
+2. **Global Event Bus** via `ChalkySticks.Core.Event.Bus.dispatch('pad.' + event, payload)` with a `pad.` prefix
+
+For `change` events, the payload is automatically enriched with the current table state.
+
+```typescript
+// Listening via component ref
+this.$refs.pad.$on('ball:add', (payload) => {
+    console.log('Ball added:', payload);
+});
+
+// Listening via Event Bus (note the pad. prefix)
+ChalkySticks.Core.Event.Bus.on('pad.ball:add', (event) => {
+    console.log('Ball added:', event.data);
+});
+```
+
+---
+
+## Emitted Events
+
+These events are emitted by the pad during user interaction. They fire on both channels (local + bus).
+
+### Ball Events
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `ball:add` | `{ x, y, type? }` | Double-tap on empty area, or during rack |
+| `ball:select` | `{ x, y }` | Tap near a ball |
+| `ball:selectNearby` | `{ x, y }` | Hold gesture near multiple balls |
+| `ball:deselect` | `{ x, y }?` | Tap on empty area, or after racking |
+| `ball:move` | `{ x, y }` | Drag active balls (SVG-space deltas) |
+| `ball:cycle` | `{ x, y }` | Tap where multiple balls overlap |
+| `ball:toggle` | `string` (ball ID) | Tap on a single nearby ball |
+| `ball:remove` | — | Hold gesture when active balls exist |
+| `ball:update` | — | Pointer down (resets drag offsets) |
+| `ball:connect` | `{ x, y }` | Double-tap when two balls are selected |
+
+### Line Events
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `line:add` | `{ x, y }` | Double-tap from an active ball |
+| `line:reflect` | `{ x, y }` | Double-tap when ball is touching a rail |
+
+### Shape Events
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `shape:select` | Shape object | Tap on a shape |
+| `shape:remove` | — | Hold gesture when active shapes exist |
+
+### Text Events
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `text:select` | Text object | Tap on a text element |
+| `text:remove` | — | Hold gesture when active text exists |
+
+### Table Events
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `table:loading` | — | Diagram import starting |
+| `table:loaded` | — | Diagram import complete |
+
+### Zoom Events
+
+| Event | Payload | Trigger |
+|-------|---------|---------|
+| `zoom:left` | — | Zoom prop changed to `'left'` |
+| `zoom:right` | — | Zoom prop changed to `'right'` |
+| `zoom:full` | — | Zoom prop changed to `'full'` |
+
+### Change Event
+
+The `change` event fires after any table mutation. Its payload is automatically enriched with the full table state.
+
+```typescript
+this.$refs.pad.$on('change', (payload) => {
+    console.log(payload.tableState);
+    // {
+    //     balls: [...],
+    //     lines: [...],
+    //     shapes: [...],
+    //     text: [...],
+    // }
+});
+
+// Or via Event Bus
+ChalkySticks.Core.Event.Bus.on('pad.change', (event) => {
+    autoSave(event.data.tableState);
+});
+```
+
+---
+
+## API-Only Events
+
+These events have registered listeners but are never emitted by user interaction. They are designed to be triggered programmatically via `$emit` on the component ref.
+
+### Ball API
+
+```typescript
+// Load a full rack of balls
+this.$refs.pad.$emit('ball:rack', [
+    { x: 0.25, y: 0.5, type: 'cue' },
+    { x: 0.7, y: 0.5, type: '1' },
+    { x: 0.72, y: 0.48, type: '2' },
+]);
+
+// Shuffle ball positions randomly
+this.$refs.pad.$emit('ball:shuffle');
+```
+
+### Shape API
+
+```typescript
+// Add a shape
+this.$refs.pad.$emit('shape:add', { x: 0.5, y: 0.5, type: 'rect' });
+
+// Deselect all shapes
+this.$refs.pad.$emit('shape:deselect');
+
+// Move active shapes
+this.$refs.pad.$emit('shape:move', { x: 0.6, y: 0.4 });
+
+// Rotate a shape
+this.$refs.pad.$emit('shape:rotate', { id: 'shape-123', angle: 45 });
+
+// Scale a shape
+this.$refs.pad.$emit('shape:scale', { id: 'shape-123', scaleX: 1.5, scaleY: 1.5 });
+```
+
+### Text API
+
+```typescript
+// Add a text element
+this.$refs.pad.$emit('text:add', { x: 0.5, y: 0.5, text: 'Aim here' });
+
+// Deselect all text
+this.$refs.pad.$emit('text:deselect');
+
+// Move active text
+this.$refs.pad.$emit('text:move', { x: 0.6, y: 0.4 });
+
+// Rotate a text element
+this.$refs.pad.$emit('text:rotate', { id: 'text-123', angle: 90 });
+
+// Update text content
+this.$refs.pad.$emit('text:update', { id: 'text-123', text: 'Updated label' });
+```
+
+### Table API
+
+```typescript
+// Clear the entire table
+this.$refs.pad.$emit('table:clear');
+
+// Load a diagram model
+this.$refs.pad.$emit('table:load', diagramModel);
+```
+
+### History API
+
+```typescript
+// Undo last mutation
+this.$refs.pad.$emit('history:undo');
+
+// Redo last undo
+this.$refs.pad.$emit('history:redo');
+```
+
+Keyboard shortcuts are also available: `Ctrl+Z` / `Cmd+Z` for undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` for redo.
+
+---
+
+## Event Bus Events
+
+These events are dispatched on the global Event Bus without the `pad.` prefix. They are used for cross-component communication.
+
+| Event | Source | Description |
+|-------|--------|-------------|
+| `balltray:select` | Ball tray component | Ball type selected from the tray |
+| `pad.shape:add` | External | Add a shape to the table |
+| `pad.text:add` | External | Add a text element to the table |
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk';
+
+// Select a ball type from the tray
+ChalkySticks.Core.Event.Bus.dispatch('balltray:select', 'stripe-9');
+
+// Add a shape via bus
+ChalkySticks.Core.Event.Bus.dispatch('pad.shape:add', {
+    x: 0.5,
+    y: 0.5,
+    type: 'rect',
+});
+
+// Add text via bus
+ChalkySticks.Core.Event.Bus.dispatch('pad.text:add', {
+    x: 0.5,
+    y: 0.3,
+    text: 'Annotation',
+});
+```
+
+---
+
+## Coordinate System
+
+All coordinate payloads use the table's normalized coordinate system:
+
+- `(0, 0)` = Top-left corner of the playable area
+- `(1, 1)` = Bottom-right corner
+- `(0.5, 0.5)` = Center of the table
+
+For `ball:move`, the `{ x, y }` payload represents SVG-space deltas (total offset from drag start), not absolute positions.

@@ -1,0 +1,204 @@
+---
+title: 'Homography'
+description: 'Perspective correction and coordinate transformation for pool table images'
+---
+
+The `Homography` namespace handles the math behind projecting a perspective-distorted camera view onto a flat, canonical table rectangle. This is what lets you convert pixel coordinates from a freehand phone photo into standardized table positions.
+
+## Import
+
+```typescript
+import { Homography } from '@chalkysticks/sdk-inference';
+```
+
+## How It Works
+
+```
+Camera image (perspective)          Canonical table (portrait)
+┌─────────────────────┐             ┌──────────────┐
+│    ●  ○              │             │  ●    ○      │
+│      ●    ○          │  ──────▶   │              │
+│        ○  ●          │ homography  │    ●    ●    │
+│           ●          │             │  ○           │
+└─────────────────────┘             └──────────────┘
+  (distorted by angle)               1000 × 2010 mm, normalized 0-1
+```
+
+A homography matrix maps the four corner pocket positions to the corners of a canonical rectangle. Once computed, every ball position can be transformed into table coordinates. The canonical table is **portrait**: `Config.Table.TableWidth` (1000 mm, short side) × `Config.Table.TableHeight` (2010 mm, long side). Landscape sources are solved landscape, then rotated so output is always portrait.
+
+## TransformationPipeline
+
+Centralizes the layout → orientation → solve → transform → stabilize sequence. `ImageAnalyzer` owns one; use it directly only when building a custom analyzer.
+
+```typescript
+const pipeline = new Homography.TransformationPipeline();
+
+pipeline.setStabilizationFlags({ ballPosition: true, homography: true, pockets: true });
+
+const transformed = pipeline.transform(balls, pockets, cameraType, /* autoOrient */ false);
+// Inference.ITransformedData | null
+```
+
+`transform()` returns `null` when fewer than 3 pockets are visible or no complete layout can be resolved. On success:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `balls` | `ITransformedBall[]` | Portrait table space, bounds-filtered, EMA-smoothed; `normalizedX/Y` are 0-1 |
+| `completePockets` | `IPocketPositions` | Full layout including inferred pockets |
+| `identifiedPockets` | `IPocketPositions` | Slots as labeled from detections |
+| `stabilizedPockets` | `IPocketPositions` | After `PocketStabilizer` |
+| `isLandscape` | `boolean` | Detected source orientation |
+| `pocketInferenceDiagnostics` | `IPocketInferenceDiagnostics` | Strategy / confidence |
+| `tableWidth` / `tableHeight` | `number` | 1000 / 2010 |
+
+State management (used by camera-state restore):
+
+```typescript
+pipeline.peekTrustedLayout(cameraType);          // IPocketPositions | null
+pipeline.seedTrustedLayout(layout, cameraType);  // replay a memorized pocket layout
+pipeline.seedHomography(matrix);                 // replay a memorized matrix
+pipeline.getCurrentHomography();                 // THomographyMatrix | null
+pipeline.reset();                                // clear all internal stabilizers
+```
+
+## HomographySolver
+
+Computes the 3×3 homography matrix (`Inference.THomographyMatrix`, a 9-element array). The class is named `HomographySolver` (file: `Homography/Solver.ts`).
+
+### From Pockets
+
+```typescript
+const matrix = Homography.HomographySolver.computeFromPockets(completePockets, isLandscape);
+```
+
+Primary method. Takes a **complete** `IPocketPositions` layout — all four corner slots must be present (use `PocketInference` to fill gaps first). Maps corners to the canonical rectangle; `isLandscape` swaps the target dimensions. Falls back to geometric orientation detection when `isLandscape` is omitted.
+
+### Basic Computation
+
+```typescript
+const matrix = Homography.HomographySolver.computeBasic(points);
+```
+
+Lower-level fallback that takes an unlabeled `IPoint[]` (at least `Config.Detection.MinPocketsForHomography` = 4), picks the four extreme corners itself, and maps them to the canonical rectangle. Throws if fewer than 4 points.
+
+### Utilities
+
+```typescript
+Homography.HomographySolver.computeInverse(matrix);                      // table → image
+Homography.HomographySolver.validateHomography(matrix);                  // boolean sanity check
+Homography.HomographySolver.refineWithAllPockets(matrix, allPockets);    // stub — currently returns the input matrix unchanged
+```
+
+## CoordinateTransformer
+
+Applies a computed homography to points, balls, or images. The class is named `CoordinateTransformer` (file: `Homography/Transformer.ts`).
+
+### Points and Balls
+
+```typescript
+const tablePoint = Homography.CoordinateTransformer.transformPoint(pixelPoint, matrix);
+const tablePoints = Homography.CoordinateTransformer.transformPoints(pixelPoints, matrix);
+
+const transformedBalls = Homography.CoordinateTransformer.transformBalls(balls, matrix);
+// each ball keeps its detection metadata with x/y updated to table space
+```
+
+### Normalization and Bounds
+
+```typescript
+// table-space millimeters ⇄ 0.0-1.0
+const normalized = Homography.CoordinateTransformer.normalizeCoordinates(point, width, height);
+const denormalized = Homography.CoordinateTransformer.denormalizeCoordinates(point, width, height);
+
+const isOnTable = Homography.CoordinateTransformer.isWithinBounds(point, width, height);
+const clamped = Homography.CoordinateTransformer.clampToBounds(point, width, height);
+```
+
+### Image Warping
+
+```typescript
+const warpedCanvas = Homography.CoordinateTransformer.warpImage(sourceCanvas, matrix);
+// optional: warpImage(canvas, matrix, dstWidth, dstHeight)
+// defaults: Config.Table.TableWidth × Config.Table.TableHeight
+```
+
+Produces a top-down "bird's eye" view by warping the source canvas through the homography. **Requires OpenCV.js on `window.cv` at runtime** — it is not a package dependency, so you must load it yourself; without it, `warpImage` throws. All point/ball transforms above work without OpenCV.
+
+### Portrait Rotation
+
+```typescript
+const rotated = Homography.CoordinateTransformer.rotatePortraitToLandscape(points, width, height);
+```
+
+Rotates an array of **points** 90 degrees (not the image itself) for sources captured in portrait.
+
+## HomographyDecomposer
+
+Diagnostic decomposition of a matrix into interpretable components (used by `HomographyStabilizer` for component-wise smoothing).
+
+```typescript
+const components = Homography.HomographyDecomposer.decompose(matrix);
+const rebuilt = Homography.HomographyDecomposer.recompose(components);
+const blended = Homography.HomographyDecomposer.interpolate(from, to, 0.5);
+Homography.HomographyDecomposer.validateComponents(components);
+```
+
+## Matrix Functions
+
+Low-level math exported directly from the namespace:
+
+```typescript
+const H = Homography.computeHomography(srcPoints, dstPoints); // 4+ correspondences, DLT
+const p = Homography.applyHomography({ x, y }, H);
+const inverse = Homography.invert3x3(H);
+const ok = Homography.validateHomography(H);
+```
+
+## Example: Manual Transform
+
+```typescript
+import { Detection, Homography } from '@chalkysticks/sdk-inference';
+
+function transformDetections(predictions: Inference.IPrediction[], cameraType: CameraType) {
+    // 1. Identify and complete the pocket layout
+    const pockets = Detection.PocketDetector.extractPockets(predictions);
+    const analysis = Detection.PocketDetector.analyzePocketLayout(pockets, cameraType);
+
+    if (!analysis.completePockets) {
+        return null;
+    }
+
+    // 2. Compute homography
+    const matrix = Homography.HomographySolver.computeFromPockets(analysis.completePockets);
+
+    if (!matrix) {
+        return null;
+    }
+
+    // 3. Transform deduped balls to table space
+    const balls = Detection.BallDetector.removeDuplicates(Detection.BallDetector.extractBalls(predictions));
+    const transformed = Homography.CoordinateTransformer.transformBalls(balls, matrix);
+
+    // 4. Drop projections outside the canonical rectangle
+    return Detection.BallDetector.filterOutOfBounds(transformed);
+}
+```
+
+For video, prefer `TransformationPipeline` (or `ImageAnalyzer` with `autoTransform: true`) — it adds pocket/homography/ball stabilization for free.
+
+## Table Dimensions
+
+The canonical **portrait** table used by the solver:
+
+| Config Constant | Value | Unit | Meaning |
+|----------------|-------|------|---------|
+| `Config.Table.TableWidth` | 1000 | mm | Short side |
+| `Config.Table.TableHeight` | 2010 | mm | Long side |
+| `Config.Table.AspectRatioMin` | 1.5 | — | Valid height/width lower bound |
+| `Config.Table.AspectRatioMax` | 2.5 | — | Valid height/width upper bound |
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — `TransformationPipeline` gained `seedTrustedLayout`, `seedHomography`, `getCurrentHomography`, and `reset` for camera-state restore.
+- **1.13.0** — `TransformationPipeline` introduced; output is always portrait-normalized (landscape sources rotated 90° CCW); post-transform ball smoothing via `TransformedBallStabilizer`.
+- **1.11.1** — Classes renamed with the module restructure: `HomographyComputer` → `HomographySolver`, `CoordinateTransformer` moved to `Homography/Transformer.ts`, `LightweightHomography` → `Homography/Matrix.ts` functions.

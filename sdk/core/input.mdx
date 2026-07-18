@@ -1,0 +1,277 @@
+---
+title: 'Input'
+description: 'Keyboard, pointer, gamepad, XR, sensor, and video input handling'
+---
+
+The `Input` namespace exposes a family of dispatchers for different input modalities. Each one extends `Event.Dispatcher`, so events flow through the same `dispatch()` / `on()` / `off()` API as the rest of the SDK.
+
+## Available Inputs
+
+| Export | Purpose |
+|--------|---------|
+| `Input.InputManager` | Action / binding orchestrator across all sources |
+| `Input.Shortcut` | Keyboard shortcut registration with phases and alias resolution |
+| `Input.ShortcutSequencer` | Keyboard sequence detection (e.g. `a, b, c, d`) |
+| `Input.Keyboard` | Thin dispatcher wrapper that owns a default `Shortcut` |
+| `Input.Pointer` | Pointer / touch / gesture events |
+| `Input.Gamepad` | Gamepad polling (PS4-style mapping) with rumble support |
+| `Input.GamepadSequencer` | Combo detection (double-tap, simultaneous, sequential) |
+| `Input.XRController` | Push-driven WebXR controller normalizer (Meta Touch mapping) |
+| `Input.Sensor` | Device motion / orientation |
+| `Input.Video` | Video input device enumeration for inference / scanning |
+
+All exports are classes; construct them yourself (`new Input.Gamepad()`). `Input.Shortcut` additionally offers static methods that proxy an internal singleton.
+
+## Keyboard Shortcuts
+
+```typescript
+import { Input } from '@chalkysticks/sdk-core';
+
+// Static singleton API
+Input.Shortcut.add('cmd+s', () => save());
+Input.Shortcut.add('ctrl+shift+z', () => redo());
+Input.Shortcut.remove('cmd+s');
+Input.Shortcut.clear();
+
+// Instance API with options
+const shortcut = new Input.Shortcut({
+    ignoreInputs: true,    // skip when focus is in <input>/<textarea> (default true)
+    repeatDelay: 400,      // ms before hold/repeat begins
+    repeatInterval: 100,   // ms between repeat fires
+});
+
+shortcut.add('space', () => jump());
+```
+
+### Phases
+
+`add(key, callback, phase)` accepts a phase: `'press'` (default), `'hold'`, `'repeat'`, or `'release'`.
+
+```typescript
+shortcut.add('space', () => beginCharge(), 'press');
+shortcut.add('space', (e) => charge(e.repeatCount), 'repeat');
+shortcut.add('space', (e) => fire(e.timeHeld), 'release');
+```
+
+Callbacks receive an `IShortcutEvent`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `key` | `string` | Normalized key from the triggering event |
+| `match` | `string` | The registered combo that matched (e.g. `'cmd+s'`) |
+| `originalEvent` | `KeyboardEvent` | Raw browser event |
+| `phase` | `TShortcutPhase` | `press` / `hold` / `repeat` / `release` |
+| `repeatCount` | `number` | Number of repeat fires so far |
+| `timeHeld` | `number` | ms since press |
+| `timestamp` | `number` | Fire time |
+
+### Alias Resolution & Layouts
+
+Modifier aliases resolve automatically: `cmd` / `command` / `meta` are equivalent, as are `ctrl` / `control` and `option` / `opt` / `alt` (v1.57.0). Physical key identity is derived from `KeyboardEvent.code` (`Digit9` → `9`, `KeyA` → `a`) so `shift+9` matches even when the OS produces `(` — and shortcuts behave consistently across QWERTY, AZERTY, and Dvorak.
+
+### Catch-all and Instance Events
+
+Register `'<any>'` to observe every keydown that reaches the shortcut layer. Each instance also dispatches `shortcut:found` (`e.data.match`, `e.data.originalEvent`, `e.data.phase`) whenever a combo matches.
+
+### Sequences
+
+```typescript
+Input.ShortcutSequencer.add(['a', 'b', 'c', 'd'], () => {
+    console.log('A, B, C, then D was pressed');
+});
+
+Input.ShortcutSequencer.remove(['a', 'b', 'c', 'd']);
+```
+
+## Pointer
+
+```typescript
+// eventType: 'pointer' | 'mouse' | 'touch', target defaults to document
+const pointer = new Input.Pointer('pointer', false, element, 'default');
+
+// Core events
+pointer.on('down', ({ data }) => console.log(data.x, data.y));
+pointer.on('move', ({ data }) => console.log(data.dx, data.dy));
+pointer.on('drag', ({ data }) => console.log(data.distanceTraveled));
+pointer.on('up',   ({ data }) => console.log(data.timeDownDifference));
+
+// Gesture events
+pointer.on('tap',        ({ data }) => console.log('tap at', data.x, data.y));
+pointer.on('doubletap',  ({ data }) => console.log('double tap'));
+pointer.on('hold:long',  ({ data }) => console.log('held', data.timeDownDifference));
+pointer.on('swipe:left', ({ data }) => console.log('velocity', data.velocity));
+pointer.on('zoom',       ({ data }) => console.log(data.scale, data.type)); // 'pinch' | 'wheel'
+```
+
+Or use the shared instance: `Input.Pointer.start()` creates `Input.Pointer.instance` bound to `document`.
+
+### Gesture Events
+
+| Event | Variants |
+|-------|----------|
+| `tap` | `tap:small`, `tap:xsmall` (distance-threshold variants) |
+| `doubletap` | — |
+| `hold` | `hold:short` (250ms), `hold:long` (1000ms) |
+| `swipe` | `swipe:left`, `swipe:right`, `swipe:up`, `swipe:down` |
+| `zoom` | `zoom:in`, `zoom:out` (pinch or trackpad/wheel) |
+| `twofingertap` | `twofingerdoubletap` |
+
+Payloads are `IPointerEvent`: position (`x`, `y`, `dx`, `dy`, relative `rx`/`ry`), physics (`vx`, `vy`, `inertia`), timing (`timeDown`, `timeDifference`), touch data (`touches`, `distanceBetweenTouches`), gesture metadata (`gesture`, `gestureVariant`, `gestureFull`), and gesture-specific extras (`direction`, `velocity`, `duration`, `scale`, `delta`).
+
+### Presets & Configuration
+
+Constructor accepts a preset name — `'default'` (everything on), `'minimal'` (drag + tap), `'precise'` (doubletap cancels tap, pinch-only zoom). Tune at runtime:
+
+```typescript
+pointer.applyPreset('minimal');
+pointer.configureGesture('hold', { variants: [{ name: 'long', timeThreshold: 750 }] });
+pointer.enableGesture('zoom');
+pointer.disableGesture('swipe');
+pointer.configureSwipe({ distanceThreshold: 80, timeThreshold: 250, velocityThreshold: 0.4 });
+pointer.capturePinchZoom(true);   // preventDefault on ctrl+wheel / gesture zoom
+pointer.applyForMobile();          // disable touchmove scrolling, context menu, etc.
+```
+
+## Gamepad
+
+Polling-based handling for standard gamepads (PS4 DualShock button naming via `Enum.GamepadButton`). The gamepad index is auto-detected unless you pass `gamepadIndex` explicitly (v1.62.0).
+
+```typescript
+const pad = new Input.Gamepad({
+    deadzone: 0.15,
+    pollRate: 60,
+    repeatDelay: 400,
+    repeatInterval: 100,
+    sequenceTimeout: 500,
+});
+
+pad.start();
+
+pad.on('button:press', ({ data }) => console.log('pressed', data.button.name));
+pad.on('button:press:cross', () => console.log('cross!'));
+pad.on('button:repeat:r2', ({ data }) => console.log('repeat #', data.button.repeatCount));
+pad.on('stick:left:move', ({ data }) => console.log(data.leftStick.x, data.leftStick.y));
+pad.on('stick:left:direction', ({ data }) => console.log(data.leftStick.direction));
+pad.on('connected', () => console.log('gamepad connected'));
+
+await pad.rumble({ duration: 200, weakMagnitude: 0.5, strongMagnitude: 0.8 });
+await pad.rumbleLight();   // also rumbleMedium(), rumbleHeavy()
+
+pad.stop();
+```
+
+Events: `connected`, `disconnected`, `poll`, `button:press[:name]`, `button:release[:name]`, `button:hold[:name]`, `button:repeat[:name]`, `trigger:left` / `trigger:right` (analog L2/R2), `stick:left` / `stick:right` (start), `:move`, `:direction`, `:release`. Every payload is an `IGamepadEvent` with `button`, `buttons`, `leftStick`, `rightStick`, `connected`, `gamepadIndex`, and `timestamp`.
+
+State queries: `isButtonPressed(name)`, `isButtonHeld(name)`, `getButtonState(name)`, `getRawGamepad()`, `setDeadzone(n)`, `setGamepadIndex(i)`.
+
+### Sequences
+
+Combo detection is built in — no separate wiring needed:
+
+```typescript
+pad.addSequence(['cross', 'circle', 'triangle'], () => console.log('combo!'));
+pad.addSimultaneous(['l1', 'r1'], () => console.log('both bumpers'));
+pad.addDoubleTap('cross', () => console.log('double-tapped'), 300);
+pad.clearSequences();
+```
+
+The standalone `Input.GamepadSequencer` class powers this and dispatches `sequence:matched` if you need to drive it manually via `recordInput()`.
+
+## XRController
+
+Normalizes WebXR controller gamepads (which live on `XRInputSource.gamepad`, not `navigator.getGamepads()`). Push-driven: feed it raw gamepads from your XR frame loop.
+
+```typescript
+const xr = new Input.XRController({ deadzone: 0.15 });
+
+// Inside your XRSession frame loop:
+xr.step({ left: leftInputSource.gamepad, right: rightInputSource.gamepad });
+
+xr.on('button:press:right-trigger', () => shoot());
+xr.on('button:hold:left-grip', () => grab());
+xr.on('stick:left:move', ({ data }) => move(data.leftStick));
+xr.on('connected:right', () => console.log('right controller on'));
+```
+
+Button names are `<hand>-<control>`: hands `left` / `right`, controls `trigger`, `grip`, `thumbstick`, `primary` (X/A), `secondary` (Y/B). Events fire at four specificities: `button:press`, `button:press:right-trigger`, `button:press:right:trigger`, and `button:press:trigger`. Sequences, double-taps, and simultaneous combos work the same as `Gamepad`.
+
+## Sensor
+
+```typescript
+const sensor = new Input.Sensor();   // attaches listeners automatically
+
+if (sensor.hasSensors) {
+    sensor.on('orientation', ({ data }) => {
+        const { absolute, alpha, beta, gamma } = data;
+    });
+
+    sensor.on('accelerometer', ({ data }) => console.log(data));         // acceleration
+    sensor.on('accelerometer:gravity', ({ data }) => console.log(data)); // incl. gravity
+    sensor.on('gyroscope', ({ data }) => console.log(data));             // rotation rate
+}
+
+sensor.detachEvents();
+```
+
+Capability getters: `hasMotion`, `hasOrientation`, `hasSensors`. Safe to construct in non-browser environments.
+
+## Video
+
+```typescript
+const sources = await Input.Video.getSources();
+// [{ deviceId: '...', label: 'FaceTime HD Camera' }, ...]
+```
+
+## InputManager
+
+Bind logical actions to physical inputs across keyboard, gamepad, pointer, and XR sources.
+
+```typescript
+const manager = new Input.InputManager();
+
+// Uses internal singleton sources by default; pass instances to override
+manager.start();
+// manager.start(pad, shortcut, pointer, xr);
+
+// Multi-source binding
+manager.addAction('shoot', [
+    { event: 'space', type: 'keyboard' },
+    { event: 'button:press:r2', type: 'gamepad' },
+    { event: 'tap', type: 'pointer' },
+]);
+
+// Listen by action name, regardless of source
+manager.on('action:shoot', (e) => {
+    fireShot(e.data.source); // 'keyboard' | 'gamepad' | 'pointer' | 'xr-controller'
+});
+
+// Or catch everything
+manager.on('action', (e) => console.log(e.data.action, e.data.phase));
+
+// Single-binding shorthand and sequences
+manager.mapAction('jump', 'gamepad', 'button:press:cross');
+manager.mapSequence('combo-attack', 'gamepad', ['cross', 'circle', 'triangle']);
+
+// Phases on the same action
+manager.addAction('charge-shot', [
+    { event: 'button:press:r2', phase: 'press', type: 'gamepad' },
+    { event: 'button:hold:r2', phase: 'hold', type: 'gamepad' },
+    { event: 'button:release:r2', phase: 'release', type: 'gamepad' },
+]);
+
+// Context switching via groups
+manager.addToGroup('shoot', ['gameplay']);
+manager.disableGroup('gameplay');
+manager.enableGroup('menu');
+
+manager.stop();
+```
+
+Action payloads are `IInputManagerEvent`: `action`, `binding`, `originalData`, `phase`, `source`, `timestamp`. Other methods: `removeAction()`, `removeBinding()`, `enableAction()` / `disableAction()`, `isActionEnabled()`, `getAction()`, `getGroupActions()`, `actionNames`, `isActive`.
+
+## Recent Changes
+
+- `1.64.0` — Shortcut phases (`press` / `hold` / `repeat` / `release`) with `repeatDelay` / `repeatInterval` options; InputManager forwards phases.
+- `1.62.0` — `XRController` added for WebXR (Oculus/Meta Touch); `Gamepad` auto-detects the gamepad index instead of assuming slot 0.
+- `1.59.4` — Shortcut clears stuck modifiers on window blur / tab hide (OS-swallowed keyups no longer cause phantom combos).
+- `1.57.0` — Modifier alias resolution (`cmd` ≡ `meta`, etc.) and layout-independent key matching via `KeyboardEvent.code`.

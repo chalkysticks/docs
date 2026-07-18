@@ -1,0 +1,155 @@
+---
+title: 'Matches & Matchmaking'
+description: 'Multi-game matches (race to N) and queue-based matchmaking'
+---
+
+A match contains multiple games (race to N). Use [Games](/api/games) for individual game state, shots, and innings.
+
+## Matches
+
+### List Matches
+
+```bash
+GET /v3/matches
+GET /v3/matches?status=in_progress&user_id=1
+```
+
+Filters: `allow_spectators`, `challenge_id`, `has_winner`, `is_online`, `format`, `mode`, `room_code`, `status`, `user_id`, `visibility`.
+
+This is always a public representation. Supplying a bearer token does not reveal private matches or change the response for the owner.
+
+### Get Complete User History
+
+Use the authenticated user resource for complete owner history:
+
+```bash
+GET /v3/users/{user}/matches
+Authorization: Bearer YOUR_TOKEN
+```
+
+The owner and administrators receive `200`. Another user receives `403`; an unauthenticated caller receives `401`. This response never enters shared cache.
+
+<Warning>
+Do not use `/v3/matches?user_id={user}` for an inbox or private history. That URL is intentionally public and identity-independent.
+</Warning>
+
+### Get Match
+
+```bash
+GET /v3/matches/{match}
+```
+
+### Create Match
+
+```bash
+POST /v3/matches
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "format": "8ball",
+  "race_to": 5,
+  "user1_id": 1,
+  "user2_id": 2,
+  "is_online": true,
+  "mode": "virtual",
+  "visibility": "public"
+}
+```
+
+Required: `format`, `race_to`, `user1_id`. Optional: `user2_id`, `match_type` (`standard`/`challenge`), `mode` (`virtual`/`physical`), `visibility` (`public`/`friends`/`private`), `room_code`, `allow_spectators`, `handicap_type` (`none`/`apa`/`bca`/`custom`), `player1_handicap`, `player2_handicap`, `challenge_id`, `night_id`, `skill_level`, `started_at`.
+
+### Update Match
+
+```bash
+PUT /v3/matches/{match}
+Authorization: Bearer YOUR_TOKEN
+```
+
+Accepts the same fields as create plus `ended_at` and `winner_id`.
+
+### Delete Match
+
+```bash
+DELETE /v3/matches/{match}
+Authorization: Bearer YOUR_TOKEN
+```
+
+Match writes authorize the caller against the match and invalidate the public match-list keys. Clients should refetch the appropriate public list or private history after a successful mutation.
+
+## Games Within A Match
+
+### List Match Games
+
+```bash
+GET /v3/matches/{match}/games
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Create Match Game
+
+```bash
+POST /v3/matches/{match}/games
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Get Match Game
+
+```bash
+GET /v3/matches/{match}/games/{game}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Update Match Game
+
+```bash
+PUT /v3/matches/{match}/games/{game}
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Start Match Game
+
+```bash
+POST /v3/matches/{match}/games/{game}/start
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Matchmaking Queue
+
+The matchmaking queue pairs users looking for a game by game type and skill.
+
+### List Queue
+
+```bash
+GET /v3/matchmaking/queue
+GET /v3/matchmaking/queue?game_type=8ball
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Join Queue
+
+```bash
+POST /v3/matchmaking/queue
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "game_type": "8ball",
+  "race_to": 5,
+  "skill_level": 5,
+  "max_skill_difference": 2
+}
+```
+
+`game_type` and `race_to` are required. `race_to` must be between 1 and 25.
+
+### Leave Queue
+
+```bash
+DELETE /v3/matchmaking/queue/{matchmakingQueue}
+Authorization: Bearer YOUR_TOKEN
+```

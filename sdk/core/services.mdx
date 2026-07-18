@@ -1,0 +1,143 @@
+---
+title: 'Services'
+description: 'Remote app configuration orchestration and feature flag resolution'
+---
+
+The `Service` namespace hosts framework-agnostic singletons and resolvers that sit above models: `Service.AppConfig` (remote config lifecycle) and `Service.Feature` (feature flag resolution).
+
+```typescript
+import { Service } from '@chalkysticks/sdk-core';
+```
+
+## Service.AppConfig
+
+Singleton orchestrator for remote application configuration (`GET /config/app`). It owns the fetch/refresh lifecycle host apps previously duplicated: ensure-once loading, in-flight dedupe, throttled refreshes, failure tolerance (declared defaults stay in force), and change broadcasting. The singleton converges through `globalThis`, so a duplicate SDK module copy cannot fork the registry.
+
+### Boot
+
+```typescript
+Service.AppConfig.instance
+    .configure({
+        minRefreshIntervalMs: 60000,
+        refreshOnVisibilityChange: true,
+    })
+    .load();
+```
+
+### Options (`IAppConfigServiceOptions`)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `minRefreshIntervalMs` | `60000` | Non-forced `refresh()` calls inside this window resolve with the current model |
+| `refreshOnVisibilityChange` | `false` | Refresh when the browser tab is foregrounded (throttled) |
+| `modelFactory` | `() => new Model.AppConfig()` | Override model construction (a fresh model is built per fetch) |
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `load()` | Ensure-once first fetch; concurrent/repeat callers share it. Never rejects |
+| `refresh(force = false)` | Fetch fresh config; dedupes in-flight and throttles non-forced calls |
+| `registerDefaults(record)` | Additively register package-owned `IFeatureMetadata` (last write wins per key); fires `change` |
+| `getConfig()` | Raw attribute snapshot (`features`, `feed_structure`, `version`, ...) |
+| `getFeatures()` | Remote feature values from the last successful fetch |
+| `getRegisteredDefaults()` | Copy of the package-defaults registry |
+| `getModel()` | Last fetched `Model.AppConfig`, if any |
+| `isLoaded()` | Whether at least one fetch has succeeded |
+| `configure(options)` | Merge options; attaches/detaches the visibility listener |
+| `reset()` | Pristine state (tests); fires `change` with source `'reset'` |
+
+### Events
+
+On the service (it extends `Event.Dispatcher`):
+
+| Event | Payload | When |
+|-------|---------|------|
+| `change` | `IAppConfigChangePayload` (`config`, `features`, `source: 'load' \| 'refresh' \| 'registry' \| 'reset'`) | Successful load/refresh, registry mutation, reset |
+| `error` | `IAppConfigErrorPayload` | Failed fetch (prior state kept) |
+
+On the global `Event.Bus`: `app.config` fires with the raw model attributes after every successful fetch — host apps mirror it into their stores.
+
+### Package Defaults Registry
+
+Consumable packages (vue2-pad, vue2-trainer) register the flags **they** gate on at plugin install time, so host apps stop copy-pasting declarations. Registration is order-independent — late installers (lazy-loaded packages) still appear in the resolver immediately:
+
+```typescript
+import { Enum, Service } from '@chalkysticks/sdk-core';
+
+Service.AppConfig.instance.registerDefaults({
+    custom_table_presets: {
+        category: 'pad',
+        default: Enum.FeatureState.EnabledForAdmins,
+        name: 'custom_table_presets',
+    },
+});
+```
+
+## Service.Feature
+
+Framework-agnostic feature flag resolver with audience scoping, dependencies, permissions, and overrides. Three layers merge, later winning:
+
+1. `defaults` — `IFeatureMetadata` definitions (baseline state, category, dependencies, permissions, description)
+2. `features` — remote/API values (e.g. from `Service.AppConfig`)
+3. `overrides` — local in-process overrides (debug toggles, QA)
+
+Each layer accepts a plain record **or a function** returning one, so the resolver can point at a mutable store without holding a stale snapshot.
+
+### Setup and Gating
+
+```typescript
+import { Enum, Service } from '@chalkysticks/sdk-core';
+
+const features = new Service.Feature({
+    context: () => ({
+        isAdmin: currentUser?.isAdmin() === true,
+        isAuthenticated: !!currentUser,
+        isPremium: currentUser?.isPremium() === true,
+        user: currentUser,
+    }),
+    defaults: {
+        tournament_brackets: {
+            default: Enum.FeatureState.Enabled,
+            description: 'Tournament brackets',
+            name: 'tournament_brackets',
+        },
+        tournament_brackets_admin_tools: {
+            default: Enum.FeatureState.EnabledForAdmins,
+            dependencies: ['tournament_brackets'],
+            name: 'tournament_brackets_admin_tools',
+        },
+    },
+    features: () => Service.AppConfig.instance.getFeatures(),
+});
+
+features.isEnabled('tournament_brackets');
+features.setOverride('tournament_brackets_admin_tools', true); // local force-enable
+```
+
+### Value Normalization
+
+Values normalize onto `Enum.FeatureState` — booleans, numbers, strings (`'enabled'`, `'admin_only'`, `'staff'`, `'premium'`, `'logged_in'`, ...), or nested `{ enabled, state, value }` objects all work. Audience states cascade: admin ⊂ staff ⊂ special ⊂ premium, and `EnabledForAuthenticatedUsers` checks the authenticated flag. States: `Disabled (0)`, `EnabledForAdmins (20)`, `EnabledForStaff (30)`, `EnabledForSpecialUsers (40)`, `EnabledForPremiumUsers (45)`, `EnabledForAuthenticatedUsers (50)`, `Enabled (100)`.
+
+### Key Methods
+
+| Method | Description |
+|--------|-------------|
+| `isEnabled(name)` / `enabled(name)` | Resolve for the current context (includes metadata `permissions` gate) |
+| `getState(name)` / `state(name)` | Normalized `Enum.FeatureState` |
+| `getLockTier(name)` / `lockTier(name)` | Badge tier: `'unlocked' \| 'members' \| 'premium' \| 'locked'`; undeclared flags are `'unlocked'` |
+| `hasAll(names)` / `hasAny(names)` / `hasNone(names)` | Bulk membership checks |
+| `isFullyEnabled(name)` | Feature AND all recursive dependencies enabled |
+| `validate()` | Human-readable dependency errors for enabled features |
+| `getFeatures()` / `list()` | Merged defaults + remote values |
+| `byCategory()` | Feature names grouped by category |
+| `setContext(ctx)` / `setFeatures(src)` / `setOverrides(src)` / `setOverride(name, value)` | Layer setters (`setOverride(name, null)` removes) |
+| `getMetadata(name)` / `dependencies(name)` / `getDependents(name)` | Metadata inspection |
+
+The access context (`IFeatureAccessContext`) may expose boolean flags (`isAdmin`, `isStaff`, `isPremium`, `isAuthenticated`, ...), a `hasPermission(permission)` callback, a `permissions` array, or a user model with `hasPermission` / `hasPermissionTo` / `can` methods — all are probed for permission gates.
+
+## Recent Changes
+
+- `1.68.0` — `Feature.getLockTier()` and `Enum.FeatureState.EnabledForPremiumUsers` with the premium cascade.
+- `1.67.1` — `Service.AppConfig` orchestrator added.
+- `~1.61.0` — `Service.Feature` extracted into sdk-core for reuse downstream (previously app-local).

@@ -127,6 +127,8 @@ A match is complete when:
 
 When complete, `Event.Match.End` and `Event.Match.Won` are dispatched.
 
+The [presentation layer](/trainer/presentation) picks `Match.Won` up from there, plays the post-game takeover, and emits `Event.Match.PostGameSettled` once the player has chosen a follow-up action. Embedders should listen for that rather than `Match.End` when they need to know the post-game flow is finished.
+
 ## Match Status
 
 The match status is tracked in the Vuex store at `store.state.match.status`:
@@ -203,6 +205,7 @@ GameService.matchManager.configure({
 | `Event.Match.ReadyForNextGame` | Ready for next game, waiting for `continueToNextGame()` |
 | `Event.Match.End` | Match ended (target reached or manual) |
 | `Event.Match.Won` | A player won the match |
+| `Event.Match.PostGameSettled` | The post-game flow settled (takeover closed, or none was shown) |
 | `Event.Match.ShotClockStart` | Shot clock started |
 | `Event.Match.ShotClockTick` | Shot clock tick (every 100ms) |
 | `Event.Match.ShotClockExpired` | Shot clock time ran out |

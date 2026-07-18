@@ -112,6 +112,23 @@ game.getState()
 game.ballManager.getAllBalls().forEach(b => console.log(b.number, b.position))
 ```
 
+## Presentation
+
+A second handle, `window.__presentation`, drives match callouts, intros, and the post-game takeover. It dispatches the real bus events, so previews match production timing exactly. See [Presentation Layer](/trainer/presentation) for the full method list.
+
+```javascript
+// Force presentation on, even in solo Practice
+__presentation.on()
+
+__presentation.banner('Nice shot', 'info')
+__presentation.foul('Scratch')
+__presentation.intro('Alice', 'Bob')
+__presentation.takeover({ scores: { playerOne: 5, playerTwo: 3 } })
+
+__presentation.clear()
+__presentation.off()
+```
+
 ## Quick Test Shots
 
 ```javascript

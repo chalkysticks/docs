@@ -1,0 +1,266 @@
+---
+title: 'Utility'
+description: 'Modals, slideshow, gallery, pagination, camera, video players, alerts'
+---
+
+The `Utility` namespace contains general-purpose UI pieces that don't fit cleanly into a domain bucket. Thirteen components plus four utility classes.
+
+## Modal
+
+### UtilityModal
+
+General-purpose modal with GSAP enter / leave animations, keyboard handling, and configurable backdrop.
+
+```html
+<ChalkyUtilityModal
+    :is-visible="open"
+    :show-close-button="true"
+    :show-footer="true"
+    :close-on-backdrop-click="true"
+    :close-on-escape="true"
+>
+    <h2>Title</h2>
+    <p>Body</p>
+    <template #footer>
+        <ChalkyButtonContinue @click="confirm" />
+    </template>
+</ChalkyUtilityModal>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `isVisible` | boolean | `false` |
+| `showCloseButton` | boolean | `true` |
+| `showFooter` | boolean | `false` |
+| `backdropColor` | string | dark backdrop |
+| `closeOnBackdropClick` | boolean | `true` |
+| `closeOnEscape` | boolean | `true` |
+
+### UtilityAlertPrompt
+
+Alert / confirm dialog with custom button arrays. Each button has a `label` and a `callback`.
+
+```html
+<ChalkyUtilityAlertPrompt
+    :visible="confirmOpen"
+    title="Delete venue?"
+    message="This cannot be undone."
+    :buttons="[
+        { label: 'Cancel', callback: () => (confirmOpen = false) },
+        { label: 'Delete', callback: deleteVenue, variant: 'danger' },
+    ]"
+/>
+```
+
+## Gallery
+
+### UtilityGallery
+
+Image gallery with stacked or grid layouts, swipe / click navigation, and the same `MediaInput` normalizer used by `MediaFeed`.
+
+```html
+<ChalkyUtilityGallery
+    :media="venue.media.models"
+    layout="stacked"
+    object-fit="cover"
+    :active-index="0"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `media` | `MediaInput[]` | — |
+| `activeIndex` | number | `0` |
+| `layout` | `'stacked' \| 'grid'` | `'stacked'` |
+| `objectFit` | `'contain' \| 'cover'` | `'cover'` |
+| `model` | any | — |
+
+### UtilitySlideshow
+
+Slideshow with keyboard, swipe, and click navigation; crossfade or slide transition via GSAP.
+
+```html
+<ChalkyUtilitySlideshow
+    :slide-count="slides.length"
+    :automatic="true"
+    :interval="5000"
+    transition="crossfade"
+    :show-dots="true"
+    :loop="true"
+>
+    <template v-for="(slide, i) in slides">
+        <img :key="i" :src="slide.url" />
+    </template>
+</ChalkyUtilitySlideshow>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `slideCount` | number | — |
+| `automatic` | boolean | `false` |
+| `interval` | number | — |
+| `transition` | `'crossfade' \| 'slide'` | `'crossfade'` |
+| `showNavigation` | boolean | — |
+| `showDots` | boolean | — |
+| `startIndex` | number | `0` |
+| `loop` | boolean | `false` |
+
+### UtilityDots
+
+Pagination dots with smart ellipsis truncation. Pair with `UtilitySlideshow` or any indexable container.
+
+```html
+<ChalkyUtilityDots :amount="10" :active-index="3" :max-visible-dots="5" />
+```
+
+## Navigation & Tabs
+
+### UtilityTabGroup
+
+Tab container with built-in selector and content slots; supports swipe navigation between tabs.
+
+```html
+<ChalkyUtilityTabGroup
+    :tabs="['Overview', 'Hours', 'Reviews']"
+    :use-url="true"
+    url-key="tab"
+>
+    <template #overview>…</template>
+    <template #hours>…</template>
+    <template #reviews>…</template>
+</ChalkyUtilityTabGroup>
+```
+
+### UtilityTabSelector
+
+Horizontal tab strip, no content slots. Use when you want to drive your own switching logic.
+
+```html
+<ChalkyUtilityTabSelector v-model="activeTab" :tabs="tabs" :use-url="true" url-key="tab" />
+```
+
+### UtilityPagination
+
+Pagination controls wired to a `restmc` collection. Syncs page state to URL query parameters.
+
+```html
+<ChalkyUtilityPagination
+    :collection="venueCollection"
+    :max-pages-allowed="50"
+    :show-numbers="true"
+/>
+```
+
+### UtilitySettingsPanel
+
+Modal settings panel with horizontal tabs along the top and a content slot per tab.
+
+```html
+<ChalkyUtilitySettingsPanel
+    :is-visible="settingsOpen"
+    :tabs="['Profile', 'Notifications', 'About']"
+    active-tab-slug="profile"
+/>
+```
+
+## Camera
+
+### UtilityCamera
+
+Browser camera capture with canvas, multi-camera support, file fallback, and configurable controls.
+
+```html
+<ChalkyUtilityCamera
+    :width="1280"
+    :height="720"
+    :show-controls="true"
+    :enable-control-facing-mode="true"
+    :enable-control-select-file="true"
+/>
+```
+
+## Orientation Helpers
+
+### UtilityForceLandscape
+
+Fullscreen landscape enforcer — shows a portrait overlay until the device is rotated; includes a swipe-to-begin step.
+
+```html
+<ChalkyUtilityForceLandscape />
+```
+
+### UtilityPortraitOverlay
+
+Portrait-mode overlay used by the web-app to coach users into installing the PWA. Browser-specific instructions are rendered automatically.
+
+```html
+<ChalkyUtilityPortraitOverlay />
+```
+
+### UtilityScrollToBegin
+
+Full-screen "swipe up to begin" prompt with an animated finger icon and branded badge.
+
+## Video Players
+
+These five video components are dispatched-to by `TvVideoTheater` (and elsewhere) based on the source URL — most callers don't need to instantiate them directly.
+
+### UtilityVideoBasic
+
+Minimal HTML5 `<video>` wrapper that hides the element until playback actually starts (a Capacitor Android compatibility fix).
+
+```html
+<ChalkyUtilityVideoBasic
+    :autoplay="true"
+    :controls="false"
+    :muted="true"
+    :playsinline="true"
+    src="/clip.mp4"
+/>
+```
+
+### UtilityVideoYouTube
+
+YouTube player via the official IFrame API.
+
+```html
+<ChalkyUtilityVideoYouTube
+    :url="youtubeUrl"
+    :should-play="true"
+    :allow-control="true"
+    :allow-bumper="true"
+    :start-time="0"
+/>
+```
+
+### UtilityVideoYouTubeiOS
+
+iOS-specific YouTube wrapper using a proxy page — works around WKWebView restrictions on Capacitor iOS. Use whenever Capacitor reports iOS.
+
+### UtilityVideoFacebook
+
+Facebook video player using the FB SDK. Lazy-loaded.
+
+### UtilityVideoNative
+
+HLS-capable Video.js player for `.mp4`, `.webm`, and `.m3u8` streams.
+
+```html
+<ChalkyUtilityVideoNative
+    :url="streamUrl"
+    :media-model="mediaModel"
+    :should-play="true"
+    :allow-control="true"
+/>
+```
+
+## Utility Classes
+
+Also exported from `Utility/index.ts` (non-Vue):
+
+| Export | Purpose |
+|--------|---------|
+| `MediaNormalizer` | Normalize varied media payloads into a common shape; also exports `IHasMedia`, `IHasTaggedMedia`, `IMediaNormalizerOptions`, `MediaInput` types |
+| `NsfwDetector` | In-browser NSFW image classifier |
+| `TableDetector` | Standalone table detection (used by `InputTableDetector`) |
+| `YouTube` | YouTube URL parsing / video ID helpers |

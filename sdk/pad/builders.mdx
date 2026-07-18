@@ -12,15 +12,17 @@ Fluent builder for programmatic diagram construction with method chaining.
 ```typescript
 import { Builder } from '@chalkysticks/sdk-pad';
 
-const diagram = new Builder.DiagramBuilder()
+const table = new Builder.DiagramBuilder()
     .setBounds({ x: 0, y: 0, width: 800, height: 400 })
     .setBallSize(20)
     .addCueBall(0.25, 0.5)
-    .addBall({ x: 0.5, y: 0.3, type: 'solid', number: 1 })
-    .addBall({ x: 0.7, y: 0.5, type: 'solid', number: 2 })
+    .addBall({ type: '1', x: 0.5, y: 0.3 })
+    .addBall({ type: '2', x: 0.7, y: 0.5 })
     .connectLastTwoBalls()
     .build();
 ```
+
+Defaults: bounds `{ x: 0, y: 0, width: 500, height: 250 }`, ball size `20`, ball type `'chalkysticks'`, table type `'table-horizontal-9'`.
 
 ### Configuration Methods
 
@@ -33,7 +35,7 @@ builder.setBounds({ x: 0, y: 0, width: 800, height: 400 });
 // Set ball size in pixels
 builder.setBallSize(20);
 
-// Set ball type/style
+// Set ball type/set
 builder.setBallType('chalkysticks');
 
 // Set table type
@@ -42,25 +44,22 @@ builder.setTableType('table-horizontal-9');
 
 ### Adding Balls
 
+Ball options are `IDiagramBallOptions`: `{ active?, id?, type?, x?, y? }`. Types are strings — `'cue'`, `'1'`–`'15'`, `'ghost'`, `'arrow'`. Coordinates are normalized (0-1). If no `id` is given, balls get `ball-<index>` ids.
+
 ```typescript
-// Add cue ball (normalized 0-1 coordinates)
+// Add cue ball (defaults to 0.25, 0.5)
 builder.addCueBall(0.25, 0.5);
 
 // Add ghost ball for aiming
 builder.addGhostBall(0.55, 0.45);
 
 // Add ball with options
-builder.addBall({
-    x: 0.5,
-    y: 0.3,
-    type: 'solid',
-    number: 1
-});
+builder.addBall({ type: '1', x: 0.5, y: 0.3 });
 
 // Add multiple balls
 builder.addBalls([
-    { x: 0.3, y: 0.3, type: 'solid', number: 1 },
-    { x: 0.5, y: 0.5, type: 'striped', number: 9 }
+    { type: '1', x: 0.3, y: 0.3 },
+    { type: '9', x: 0.5, y: 0.5 },
 ]);
 ```
 
@@ -76,6 +75,8 @@ builder.connectLastTwoBalls();
 
 ### Preset Racks
 
+Each preset clears any previously added balls and includes a cue ball at (0.25, 0.5).
+
 ```typescript
 // 8-ball rack (15 balls, 8-ball in center)
 builder.useEightBallRack();
@@ -83,7 +84,7 @@ builder.useEightBallRack();
 // 9-ball diamond rack (9 balls, 9-ball in center)
 builder.useNineBallRack();
 
-// Straight pool rack
+// Straight pool rack (15 balls in order)
 builder.useStraightPoolRack();
 ```
 
@@ -93,7 +94,7 @@ builder.useStraightPoolRack();
 // Get Table manager instance
 const tableManager = builder.build();
 
-// Convert to Diagram model (for API persistence)
+// Convert to Diagram model (calls Diagram.fromTableState internally)
 const diagramModel = builder.toDiagram();
 
 // Export as ITableState object
@@ -104,7 +105,7 @@ const state = builder.toTableState();
 
 ## TableBuilder
 
-Factory-style builder with static methods for common table setups.
+Factory-style builder with static methods for common table setups. All methods return a `Manager.Table`; `ballSize` defaults to `20`.
 
 ### Empty Table
 
@@ -126,7 +127,7 @@ const table8 = Builder.TableBuilder.eightBallRack(bounds, ballSize);
 // 9-ball rack
 const table9 = Builder.TableBuilder.nineBallRack(bounds, ballSize);
 
-// Straight pool rack
+// Straight pool (14.1) rack
 const tableStraight = Builder.TableBuilder.straightPoolRack(bounds, ballSize);
 ```
 
@@ -134,25 +135,27 @@ const tableStraight = Builder.TableBuilder.straightPoolRack(bounds, ballSize);
 
 ```typescript
 const table = Builder.TableBuilder.custom({
-    bounds: { x: 0, y: 0, width: 800, height: 400 },
     ballSize: 20,
     balls: [
-        { x: 0.25, y: 0.5, type: 'cue' },
-        { x: 0.5, y: 0.3, type: 'solid', number: 1 }
+        { type: 'cue', x: 0.25, y: 0.5 },
+        { type: '1', x: 0.5, y: 0.3 },
     ],
+    bounds: { x: 0, y: 0, width: 800, height: 400 },
     lines: [
-        { startId: 'ball-0', endId: 'ball-1' }
-    ]
+        { startId: 'ball-0', endId: 'ball-1' },
+    ],
 });
 ```
+
+`ITableBuilderConfig` also accepts `ballType` and `tableType`.
 
 ### Restore from State
 
 ```typescript
-// From saved table state
+// From saved table state (ITableState)
 const table = Builder.TableBuilder.fromTableState(savedState, bounds, ballSize);
 
-// From Diagram model layout data
+// From Diagram model layout data (diagram.getLayout())
 const table = Builder.TableBuilder.fromDiagramModel(layoutData, bounds, ballSize);
 ```
 
@@ -170,8 +173,8 @@ const diagram = new Builder.DiagramBuilder()
     // Add cue ball
     .addCueBall(0.2, 0.5)
     // Add object balls
-    .addBall({ x: 0.5, y: 0.4, type: 'solid', number: 1 })
-    .addBall({ x: 0.7, y: 0.3, type: 'solid', number: 2 })
+    .addBall({ type: '1', x: 0.5, y: 0.4 })
+    .addBall({ type: '2', x: 0.7, y: 0.3 })
     // Add ghost ball for aim point
     .addGhostBall(0.48, 0.42)
     // Connect cue to ghost (aim line)
@@ -184,3 +187,7 @@ const diagram = new Builder.DiagramBuilder()
 // Export for saving
 const state = diagram.exportTableState();
 ```
+
+## Recent Changes
+
+- **2.0.0** — No API changes to builders; ball options remain `{ type, x, y }` with string types (`'1'`, `'cue'`, ...). Older docs showed a `number` field on ball options — that field does not exist.

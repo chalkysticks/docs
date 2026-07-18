@@ -1,7 +1,9 @@
 ---
 title: 'Extras Package'
-description: 'Facts, rulebooks, and statistics'
+description: 'Facts, rulebooks, AI Q&A, statistics, venue candidates, computer vision, and realtime services'
 ---
+
+Current version: `1.13.7`
 
 ## Installation
 
@@ -9,80 +11,301 @@ description: 'Facts, rulebooks, and statistics'
 npm install @chalkysticks/sdk-extras
 ```
 
+## Exports
+
+```typescript
+import {
+    Collection,   // Fact, Rulebook, Statistic, VenueCandidate
+    Core,         // Re-export of @chalkysticks/sdk-core
+    Enum,         // VenueCandidateStatus
+    Factory,      // Fact, GooglePlace, Rulebook, Statistic, VenueCandidate, YouTube
+    Model,        // Ask, Fact, GooglePlace, Rulebook, Statistic, TableScan, VenueCandidate, YouTube
+    Service,      // AblyChannel, Chat, Game
+} from '@chalkysticks/sdk-extras';
+```
+
+Shared types (`Extras.IAskOptions`, `Extras.ITablePredictionResult`, `Extras.IDiagramResponse`, ...) live on the global `Extras` namespace declared in `types/index.d.ts`.
+
 ## Facts
-
-Random pool/billiards facts.
-
-```typescript
-import { Collection, Factory } from '@chalkysticks/sdk-extras';
-
-// Get all facts
-const facts = new Collection.Fact();
-await facts.fetch();
-
-// Get random fact
-const randomFact = await Factory.Fact.random();
-console.log(randomFact.text);
-```
-
-## Rulebooks
-
-Official game rules.
-
-```typescript
-import { Collection, Model } from '@chalkysticks/sdk-extras';
-
-// Get all rulebooks
-const rulebooks = new Collection.Rulebook();
-await rulebooks.fetch();
-
-// Get specific rulebook
-const rules8ball = new Model.Rulebook({ id: '8ball' });
-await rules8ball.fetch();
-
-console.log(rules8ball.title);
-console.log(rules8ball.content);  // Markdown content
-```
-
-## Available Rulebooks
-
-| ID | Game |
-|----|------|
-| `8ball` | 8-Ball |
-| `9ball` | 9-Ball |
-| `10ball` | 10-Ball |
-| `straight` | Straight Pool |
-| `one_pocket` | One Pocket |
-| `bank` | Bank Pool |
-| `snooker` | Snooker |
-
-## Statistics
-
-Player and game statistics.
-
-```typescript
-import { Collection } from '@chalkysticks/sdk-extras';
-
-// Get global statistics
-const stats = new Collection.Statistic();
-await stats.fetch();
-
-stats.models.forEach(stat => {
-    console.log(stat.name, stat.value);
-});
-```
-
-## Google Places Integration
 
 ```typescript
 import { Factory } from '@chalkysticks/sdk-extras';
 
-// Search for places
-const places = await Factory.GooglePlace.search('pool hall near me');
+const facts = Factory.Fact.collection();
+await facts.fetch();
 
-// Get place details
-const place = await Factory.GooglePlace.getDetails('ChIJ...');
-console.log(place.name);
-console.log(place.address);
-console.log(place.rating);
+const fact = facts.getRandomFact(); // Model.Fact | null
+fact?.getFact();
+fact?.getSource();
+fact?.isValidated();
 ```
+
+`Model.Fact` fields: `context`, `fact`, `source`, `validated` — getters `getContext()`, `getFact()`, `getSource()`, `isValidated()`.
+
+## Rulebooks
+
+```typescript
+const rulebooks = Factory.Rulebook.collection();
+await rulebooks.fetch();
+
+const rulebook = Factory.Rulebook.model();
+await rulebook.fetch({ id: '8ball' });
+rulebook.getContent();
+```
+
+## Ask (new in 1.13.0)
+
+Natural-language Q&A answered from a ChalkySticks knowledge source (`POST /v3/ask`). Default context is `rulebooks`.
+
+```typescript
+import { Model } from '@chalkysticks/sdk-extras';
+
+const answer = await Model.Ask.ask('In 8-ball what happens if 3 balls dont hit a rail?');
+
+answer.getAnswer();                 // string
+answer.getCitation()?.cited_text;   // Extras.IAskCitation | null (added in 1.13.5)
+answer.getSources();                // Extras.IAskSource[] — { source, score }
+answer.getTotalLatency();           // number (ms); also getRetrievalLatency(), getGenerationLatency()
+answer.isCached();                  // boolean
+```
+
+`Extras.IAskOptions` (second argument to `ask()`):
+
+| Option | Type | Meaning |
+|--------|------|---------|
+| `baseUrl` | `string` | API base URL override |
+| `context` | `string` | Retrieval context; defaults to `'rulebooks'` |
+| `headers` | `HeadersInit` | Additional request headers |
+| `signal` | `AbortSignal` | Cancel the request |
+| `token` | `string` | Explicit bearer token (falls back to the stored token) |
+
+## Statistics
+
+```typescript
+const stats = Factory.Statistic.collection();
+await stats.fetch();
+
+stats.getByKey('venues.count');   // Model.Statistic (scope defaults to 'global')
+stats.getValue('venues.count');   // number | null
+```
+
+`Model.Statistic` fields: `key`, `scope`, `subscope`, `value`, `created_at`, `updated_at`.
+
+## Venue Candidates
+
+Venue candidates are discovered by coverage analysis and queued for human review. Use these endpoints from the admin UI to approve / deny them.
+
+```typescript
+import { Enum, Factory } from '@chalkysticks/sdk-extras';
+
+const queue = Factory.VenueCandidate.collection();
+queue.byStatus(Enum.VenueCandidateStatus.Pending).byCountry('US').bySourceCity('New York');
+await queue.fetch();
+
+const stats = await queue.fetchStats(); // IVenueCandidateStats — { approved, denied, pending, total }
+
+const candidate = queue.first();
+candidate.isPending;                    // boolean; also isApproved, isDenied
+
+const approval = await candidate.approve();          // IVenueCandidateApproveResponse
+const denial = await candidate.deny('Not a hall');   // IVenueCandidateDenyResponse; notes optional
+```
+
+`Model.VenueCandidate` getters cover every field: `getAddress()`, `getCity()`, `getCountryCode()`, `getCreatedAt()`, `getGooglePlaceId()`, `getLatitude()`, `getLongitude()`, `getName()`, `getNotes()`, `getPrimaryType()`, `getRating()`, `getReviewedAt()`, `getReviewedBy()`, `getReviews()`, `getSourceCity()`, `getStatus()`, `getSummary()`.
+
+`Enum.VenueCandidateStatus`:
+
+| Value | Meaning |
+|-------|---------|
+| `Pending` | Awaiting review |
+| `Approved` | Promoted to a real venue (job dispatched server-side) |
+| `Denied` | Rejected |
+
+## Table Scanning (new in 1.10, diagram pipeline in 1.12.0)
+
+`Model.TableScan` uploads a photo of a pool table for object detection. Accepts `HTMLImageElement`, `File`, `Blob`, or a Node `Buffer`; HTMLImageElements are resized client-side (`maxWidth = 1920`, `maxHeight = 1080`, `quality = 0.7`).
+
+```typescript
+import { Model } from '@chalkysticks/sdk-extras';
+
+const scanner = new Model.TableScan();
+
+// Raw detection: bounding boxes in image space (POST /v3/data/table-scan-full)
+const predictions = await scanner.scan(imageBlob); // Extras.ITablePredictionResult
+predictions.forEach((p) => console.log(p.class, p.x, p.y, p.confidence)); // class: 'Ball' | 'Pocket' | 'Table' | 'Cue'
+
+// Full pipeline: homography-normalized ball positions (POST /v3/data/image-to-diagram)
+const result = await scanner.imageToDiagram(imageBlob, {
+    saveDiagram: true,
+    title: 'Break shot',
+});
+
+result.balls;              // Extras.IDiagramBall[] — { ball_type, confidence, x, y } normalized 0–1
+result.is_transformed;     // false = homography failed, coordinates are raw image space
+result.diagram?.png_url;   // persisted renders; only present when saveDiagram was set
+```
+
+`Extras.IImageToDiagramOptions`: `ballType` (default `'chalkysticks'`), `description`, `saveDiagram`, `tableType` (default `'table-horizontal-9'`), `title`.
+
+## YouTube
+
+```typescript
+const video = await Model.YouTube.search('https://youtu.be/dQw4w9WgXcQ');
+video.getTitle();
+video.getThumbnailUrl();
+video.getEmbedUrl();
+video.getChannelTitle();
+
+// Grab a single frame as a Blob (added in 1.12.0)
+const frame = await Model.YouTube.fetchFrame('https://youtu.be/dQw4w9WgXcQ', '00:01:23');
+imageElement.src = URL.createObjectURL(frame);
+```
+
+## Google Places
+
+```typescript
+const place = await Model.GooglePlace.search('Amsterdam Billiards New York');
+
+place.getName();
+place.getAddress();
+place.getLatitude();
+place.getLng();
+place.getPhone();
+place.getRating();
+place.getWebsite();
+place.getPhotos();   // Array<{ url: string; type: string }>
+```
+
+## Realtime Services
+
+The `Service` namespace wraps Ably realtime channels. `AblyChannel` is the abstract base managing one shared Ably connection per app; `Chat` and `Game` are domain-specific singletons operating on the `cs:chat:` and `cs:game:` namespaces. All incoming messages dispatch through the sdk-core `Event.Dispatcher` — listeners receive an event whose `.data` is an `IRealtimePayload<T>` (`channelId`, `data`, `event`, `timestamp`).
+
+### Initialization and auth (changed in 1.13.6)
+
+`initialize()` accepts a raw key or an `IAblyAuthOptions` object. The connection is shared and created once; subsequent calls are no-ops.
+
+```typescript
+import { Service } from '@chalkysticks/sdk-extras';
+
+const chat = Service.Chat.instance;
+
+// authCallback (preferred): invoked on every token fetch/renewal, so it
+// reads the CURRENT credential. The API key never reaches the browser.
+await chat.initialize({
+    authCallback: (tokenParams, callback) => {
+        fetchAblyTokenRequest().then((tokenRequest) => callback(null, tokenRequest));
+    },
+});
+
+// authUrl: static token endpoint (POST). Headers are fixed at init time.
+await chat.initialize({ authHeaders: { Authorization: `Bearer ${token}` }, authUrl: 'https://api.chalkysticks.com/v3/ably/token' });
+
+// Raw API key: full publish/subscribe on every channel — local dev only.
+await chat.initialize(ABLY_API_KEY);
+```
+
+Token auth must NOT set a clientId — the token's clientId governs (Ably rejects mismatches with error 40102).
+
+### AblyChannel
+
+```typescript
+// Connection state events dispatched to every service instance
+chat.on('connection:connected', () => {});
+chat.on('connection:disconnected', () => {});
+chat.on('connection:failed', () => {});
+chat.getConnectionState(); // 'connected' | 'connecting' | 'disconnected' | 'failed' | 'suspended'
+
+// Publish arbitrary events on a channel (public since 1.11.3)
+await chat.publishToChannel('room-42', 'my:event', { hello: 'world' });
+
+// Presence (all methods take the channel id first)
+await chat.enterPresence('room-42', { name: 'Matt', userId: 1 });
+chat.onPresence('room-42', 'enter', (member) => console.log(member)); // action: 'enter' | 'leave' | 'update'
+chat.offPresence('room-42', 'enter', handler);
+await chat.leavePresence('room-42');
+
+await chat.disconnect();          // unsubscribes THIS instance's channels
+Service.AblyChannel.closeConnection(); // closes the shared connection for all services
+```
+
+Channel ids are prefixed with the service namespace (`room-42` → `cs:chat:room-42`) UNLESS already fully qualified with `cs:` — server-owned channels like `cs:lobby` and `cs:user:{id}` pass through unchanged (added in 1.13.6).
+
+### Chat
+
+In-app chat rooms. Events: `message`, `message:delete`, `message:edit`. Room type is derived from the id prefix (`match-123` → `match`).
+
+```typescript
+const chat = Service.Chat.instance;
+await chat.initialize(auth);
+
+await chat.subscribeToRoom('match-123');
+
+chat.on('message', (e) => {
+    const payload = e.data; // IRealtimePayload<IChatMessage>
+    console.log(`[${payload.channelId}]`, payload.data.body);
+});
+
+await chat.sendMessage('match-123', {
+    body: 'Hello world',
+    user: { id: 'user-42', name: 'Matt' },
+    user_id: 'user-42',
+}); // body and user_id are required
+
+await chat.editMessage('match-123', messageId, 'Fixed typo');
+await chat.deleteMessage('match-123', messageId);
+
+const history = await chat.getHistory('match-123', 50); // IChatMessage[], oldest first
+
+await chat.unsubscribeFromRoom('match-123');
+```
+
+`IChatMessage`: `body`, `id`, `room_id`, `room_type`, `timestamp`, `type` (`'moderator' | 'system' | 'user'`), `user` (`IChatUser` — `id`, `name`, `avatar?`), `user_id`. Send/edit/delete resolve to `IChatOperationResult` (`success`, `message?`, `error?`).
+
+### Game
+
+Realtime in-game events on the `cs:game:` namespace.
+
+```typescript
+const game = Service.Game.instance;
+await game.initialize(auth);
+
+await game.joinGame('game-789');
+
+// e.data is IRealtimePayload<IGameMessage> — the domain data sits under .data.payload
+game.on('shot:taken', (e) => console.log(e.data.data.payload));       // IShotData
+game.on('game:state', (e) => updateLocalState(e.data.data.payload));  // IGameState
+game.on('state:request', () => game.sendGameState('game-789', currentState)); // late-join sync
+
+await game.sendShot('game-789', { angle: 45, force: 0.8, position: { x: 100, y: 200 } });
+await game.sendCueMove('game-789', { angle: 45, position: { x: 100, y: 200 } });
+await game.sendGameState('game-789', { balls: [], turn_user_id: 'user-42' });
+await game.sendMatchStart('game-789'); // also sendMatchCreate/End/Join/Leave
+
+const history = await game.getHistory('game-789', 50); // IGameMessage[], oldest first
+
+await game.leaveGame('game-789');
+```
+
+Subscribed events (Ably delivers per event NAME — unlisted events are never received):
+
+| Event | Meaning |
+|-------|---------|
+| `ball:move` | Ball position update (added in 1.12.1) |
+| `cue:move` | Cue stick position/angle (`ICueMoveData`) |
+| `game:state` | Full state snapshot (`IGameState`) |
+| `match:create` / `match:end` / `match:join` / `match:leave` / `match:start` | Match lifecycle |
+| `matchmaking:matched` | Matchmaker pairing notification on `cs:user:{id}` (added in 1.13.7) |
+| `shot:taken` | Shot telemetry (`IShotData`) |
+| `state:request` | Peer requests current game state (added in 1.11.3) |
+
+## Recent Changes
+
+- Unreleased — `Collection.Statistic.getValue(key, scope, subscope)` now forwards `scope`/`subscope` to the lookup (previously ignored — every call resolved against `scope: 'global'`).
+- `1.13.7` — `matchmaking:matched` added to `GAME_EVENTS`; without it, Quick Match pairing pushes on `cs:user:{id}` were never delivered.
+- `1.13.6` — Ably token auth: `initialize()` accepts `IAblyAuthOptions` (`authCallback` preferred, or `authUrl` + `authHeaders`) in addition to a raw key; `cs:`-prefixed channel ids now pass through without re-namespacing.
+- `1.13.5` — `Model.Ask` citations: `getCitation()` / `getCitations()` returning `Extras.IAskCitation`.
+- `1.13.0` — `Model.Ask` — natural-language Q&A over rulebooks via `POST /v3/ask`.
+- `1.12.1` — `ball:move` added to `GAME_EVENTS`.
+- `1.12.0` — `TableScan.imageToDiagram()`, `YouTube.fetchFrame()`, and the global `Extras.*` type namespace.
+- `1.11.4` — Full venue candidate workflow (model, collection, factory, enum, approve/deny endpoints).
+- `1.11.0`–`1.11.3` — Realtime services introduced (`AblyChannel`, `Chat`, `Game`); presence support; `publishToChannel()` promoted to public; `state:request` event.

@@ -1,0 +1,176 @@
+---
+title: 'Create a custom service provider'
+description: 'Write and register your own ServiceProvider subclass'
+---
+
+## When to Use a Provider
+
+Use a ServiceProvider when you need to:
+
+- Register named services (logging, analytics, feature flags)
+- Override how SDK classes are constructed
+- Run initialization logic after all services are registered
+
+## Basic Provider
+
+```typescript
+import { ServiceProvider } from '@chalkysticks/sdk-core/Provider/ServiceProvider';
+
+export class AppServiceProvider extends ServiceProvider {
+    /**
+     * Register bindings into the container.
+     *
+     * @return void
+     */
+    public register(): void {
+        this.container.singleton('logger', () => {
+            return new ConsoleLogger({ level: 'info' });
+        });
+
+        this.container.singleton('feature-flags', () => {
+            return new FeatureFlagService({
+                defaults: {
+                    darkMode: true,
+                    newDashboard: false,
+                },
+            });
+        });
+    }
+
+    /**
+     * Boot-time initialization after all providers have registered.
+     *
+     * @return void
+     */
+    public boot(): void {
+        const logger = this.container.make<ConsoleLogger>('logger');
+        logger.info('AppServiceProvider booted');
+    }
+}
+```
+
+## Register the Provider
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+import { AppServiceProvider } from './Provider/AppServiceProvider';
+
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com',
+    providers: [AppServiceProvider],
+});
+```
+
+## Provider with Factory Overrides
+
+Override how SDK models are constructed to add default behavior:
+
+```typescript
+import { ServiceProvider } from '@chalkysticks/sdk-core/Provider/ServiceProvider';
+import { Model, Collection } from '@chalkysticks/sdk-core';
+
+export class EnhancedModelProvider extends ServiceProvider {
+    /**
+     * Register factory overrides for SDK classes.
+     *
+     * @return void
+     */
+    public register(): void {
+        // Every resolved Venue model includes hours and media by default
+        this.container.registerFactory(Model.Venue, (attributes, options) => {
+            const venue = new Model.Venue(
+                attributes,
+                Object.assign({ baseUrl: 'https://api.chalkysticks.com/v3' }, options),
+            );
+
+            venue.setQueryParam('include', 'hours,media');
+
+            return venue;
+        });
+
+        // Every resolved Feed collection has a page size of 20
+        this.container.registerFactory(Collection.Feed, (options) => {
+            const feed = new Collection.Feed(
+                Object.assign({ baseUrl: 'https://api.chalkysticks.com/v3' }, options),
+            );
+
+            feed.setQueryParam('limit', '20');
+
+            return feed;
+        });
+    }
+}
+```
+
+## Provider with Dependencies
+
+Use `boot()` to resolve other services after all providers have registered:
+
+```typescript
+import { ServiceProvider } from '@chalkysticks/sdk-core/Provider/ServiceProvider';
+
+export class TrackingProvider extends ServiceProvider {
+    /**
+     * Register the tracking service.
+     *
+     * @return void
+     */
+    public register(): void {
+        this.container.singleton('tracking', () => {
+            return new TrackingService();
+        });
+    }
+
+    /**
+     * Wire up dependencies during boot.
+     *
+     * @return void
+     */
+    public boot(): void {
+        const tracking = this.container.make<TrackingService>('tracking');
+        const logger = this.container.make<ConsoleLogger>('logger');
+
+        // Connect tracking to the logger registered by another provider
+        tracking.setLogger(logger);
+        tracking.initialize();
+    }
+}
+```
+
+## Multiple Providers Together
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+import { AppServiceProvider } from './Provider/AppServiceProvider';
+import { EnhancedModelProvider } from './Provider/EnhancedModelProvider';
+import { TrackingProvider } from './Provider/TrackingProvider';
+
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com',
+    providers: [
+        AppServiceProvider,
+        EnhancedModelProvider,
+        TrackingProvider,
+    ],
+});
+
+// All three providers are registered and booted
+const logger = ChalkySticks.make<ConsoleLogger>('logger');
+const tracking = ChalkySticks.make<TrackingService>('tracking');
+```
+
+## Lifecycle Diagram
+
+```
+configure()
+  ├── CoreServiceProvider.register()     ← SDK defaults
+  ├── AppServiceProvider.register()      ← your bindings
+  ├── EnhancedModelProvider.register()   ← factory overrides
+  ├── TrackingProvider.register()        ← more bindings
+  │
+  boot()
+  ├── CoreServiceProvider.boot()
+  ├── AppServiceProvider.boot()
+  ├── EnhancedModelProvider.boot()
+  └── TrackingProvider.boot()            ← safe to resolve anything
+```

@@ -1,6 +1,6 @@
 ---
 title: 'Authentication Package'
-description: 'User authentication and JWT handling'
+description: 'Login, registration, JWT storage, and OAuth (Capacitor) for ChalkySticks clients'
 ---
 
 ## Installation
@@ -9,103 +9,176 @@ description: 'User authentication and JWT handling'
 npm install @chalkysticks/sdk-authentication
 ```
 
-## Login
+Native social login additionally requires the Capacitor peer dependencies: `@byteowls/capacitor-oauth2 >= 5.0.0`, `@capacitor/browser >= 6.0.0`, `@capacitor/core >= 6.0.0`. They are lazy-imported, so web-only builds do not need them.
+
+## Exports
 
 ```typescript
-import { Factory } from '@chalkysticks/sdk-authentication';
-
-// Email/password login
-const user = await Factory.Authentication.login({
-    email: 'user@example.com',
-    password: 'password'
-});
-
-console.log(user.name);
-console.log(user.token);
+import {
+    Core,      // full re-export of @chalkysticks/sdk-core
+    Event,     // Event.Authentication enum (typed event names)
+    Factory,   // Factory.Authentication.model()
+    Model,     // Model.Authentication, Model.Jwt, Model.User
+} from '@chalkysticks/sdk-authentication';
 ```
 
-## Google OAuth
+`Model.User` is re-exported from `@chalkysticks/sdk-core`.
+
+## Creating the Model
 
 ```typescript
 import { Factory } from '@chalkysticks/sdk-authentication';
 
-// Start Google OAuth flow
-await Factory.Authentication.loginWithGoogle();
+// Bound to Constants.API_URL_V3 by default; options are merged over that.
+const auth = Factory.Authentication.model();
+const staging = Factory.Authentication.model({ baseUrl: 'https://api.staging.chalkysticks.com/v3' });
+```
 
-// Handle callback (in Capacitor app)
-Factory.Authentication.on('login:success', (user) => {
-    console.log('Logged in as:', user.name);
+## Login
+
+`login(email, password)` takes positional arguments and resolves with a hydrated `Model.User`. It rejects with a structured error object (`{ code, message, ... }`).
+
+```typescript
+try {
+    const userModel = await auth.login('user@example.com', 'password');
+    console.log('Logged in:', userModel);
+} catch (error) {
+    console.warn(error.code, error.message);
+}
+```
+
+On success the model also:
+
+- Sets the token on the returned `Model.User` (Bearer header for its future requests)
+- Populates the `auth.jwt` and `auth.user` relationships
+- Writes `state.token` / `state.user` to the shared `Provider.Store` and dispatches `authentication/login` to it
+
+## Authentication Events (typed)
+
+Since `1.8.2` events are dispatched via the `Event.Authentication` string enum instead of raw literals. Always reference the enum.
+
+| Enum member                          | Value             | Fired when                                                    |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------- |
+| `Event.Authentication.Login`         | `'login'`         | Successful login / token login / signup response was handled  |
+| `Event.Authentication.LoginError`    | `'login:error'`   | A login / signup / password request failed                    |
+| `Event.Authentication.LoginSuccess`  | `'login:success'` | Native (Capacitor) social login completed                     |
+| `Event.Authentication.LoginFailure`  | `'login:failure'` | Native (Capacitor) social login token exchange failed         |
+
+Events fire on two channels with different payload shapes:
+
+```typescript
+import { Core, Event } from '@chalkysticks/sdk-authentication';
+
+// Model-level (RestMC dispatcher) — payload is on `e.detail`
+auth.on(Event.Authentication.Login, (e) => {
+    console.log('Logged in:', e.detail.userModel);
 });
+
+auth.on(Event.Authentication.LoginError, (e) => {
+    console.warn('Login failed:', e.detail.error.message);
+});
+
+// Global bus (sdk-core) — payload is on `e.data`
+Core.Event.Bus.on(Event.Authentication.Login, (e) => {
+    console.log('Token:', e.data.token, 'User:', e.data.user);
+});
+```
+
+The global bus receives `Login` and `LoginError`; `LoginSuccess` / `LoginFailure` fire on the model only.
+
+## Social Login (Google / Facebook)
+
+```typescript
+auth.loginWithGoogle();                       // shorthand for loginSocial('google', '/')
+auth.loginWithFacebook();                     // shorthand for loginSocial('facebook', '/')
+await auth.loginSocial('google', '/lobby');   // provider + post-login redirect
+```
+
+- **Web** — redirects the browser to `{baseUrl}/auth/{provider}?redirectTo=...`; the server finishes OAuth and returns with a `?token=` you can pick up via `Model.Authentication.getAuthToken()` + `loginWithToken()`.
+- **Capacitor native** — runs a PKCE flow through `@byteowls/capacitor-oauth2`, exchanges the Google `id_token` with the ChalkySticks API for a token, then calls `loginWithToken()`. The model dispatches `LoginSuccess` or `LoginFailure`.
+
+## Token Login
+
+```typescript
+// e.g. after an OAuth redirect lands with ?token=...
+const token = Model.Authentication.getAuthToken();
+
+if (token) {
+    const userModel = await auth.loginWithToken(token);
+}
 ```
 
 ## Registration
 
-```typescript
-import { Factory } from '@chalkysticks/sdk-authentication';
+Registration is `signup()`, not `register()`.
 
-const user = await Factory.Authentication.register({
-    name: 'New User',
+```typescript
+await auth.signup({
     email: 'new@example.com',
+    name: 'New User',
     password: 'password',
-    password_confirmation: 'password'
+    password_confirmation: 'password',
 });
+```
+
+`signup(options: IAuthenticationSignupOptions)` posts to `auth/register` and resolves with a `Model.User`; it fires the same events as `login()`.
+
+Check email availability first:
+
+```typescript
+const isAvailable: boolean = await auth.validateEmail('new@example.com');
 ```
 
 ## JWT Handling
 
-```typescript
-import { Model } from '@chalkysticks/sdk-authentication';
+`Model.Jwt` is a thin RestMC model that stores the token — it does not decode claims or check expiry.
 
-// Get current JWT
-const jwt = Model.Jwt.getToken();
-
-// Check if token is valid
-if (Model.Jwt.isValid()) {
-    console.log('Token is valid');
-}
-
-// Refresh token
-await Model.Jwt.refresh();
-
-// Clear token (logout)
-Model.Jwt.clear();
-```
-
-## Current User
+| Field  | Accessor         | Description                 |
+| ------ | ---------------- | --------------------------- |
+| `token` | `jwt.getToken()` | Raw token string            |
+| `type`  | `jwt.getType()`  | Token type, e.g. `'bearer'` |
 
 ```typescript
-import { Factory } from '@chalkysticks/sdk-authentication';
-
-// Get current user
-const user = Factory.Authentication.getCurrentUser();
-
-if (user) {
-    console.log('Logged in as:', user.name);
-} else {
-    console.log('Not logged in');
-}
+auth.isLoggedIn();       // boolean — user relationship has an id
+auth.user;               // Model.User relationship
+auth.jwt.getToken();     // string
 ```
 
-## Logout
+There is no `logout()` method on the model; clear the token/user in your application store (sdk-core listens for `authentication:logout` / `logout` on the event bus for subscription teardown).
+
+## Password Management
 
 ```typescript
-import { Factory } from '@chalkysticks/sdk-authentication';
+// Request a reset email
+await auth.forgotPassword('user@example.com');
 
-await Factory.Authentication.logout();
+// Complete the reset (confirmation is sent automatically)
+await auth.resetPassword('reset-token', 'newpassword');
+
+// Change while logged in
+await auth.changePassword('currentpassword', 'newpassword', 'newpassword');
 ```
 
-## Password Reset
+## Method Reference
 
-```typescript
-import { Factory } from '@chalkysticks/sdk-authentication';
+| Method                                           | Returns               | Endpoint                          |
+| ------------------------------------------------ | --------------------- | --------------------------------- |
+| `login(email, password)`                         | `Promise<Model.User>` | `POST auth/login`                 |
+| `loginWithToken(token)`                          | `Promise<Model.User>` | `POST auth/login-with-token`      |
+| `loginSocial(provider?, redirectTo?)`            | `Promise<void>`       | Browser redirect / native OAuth   |
+| `loginWithGoogle(redirectTo?)`                   | `void`                | via `loginSocial`                 |
+| `loginWithFacebook(redirectTo?)`                 | `void`                | via `loginSocial`                 |
+| `signup(options)`                                | `Promise<Model.User>` | `POST auth/register`              |
+| `validateEmail(email)`                           | `Promise<boolean>`    | `POST auth/validate-email`        |
+| `forgotPassword(email)`                          | `Promise<void>`       | `POST auth/forgot-password`       |
+| `resetPassword(token, password)`                 | `Promise<void>`       | `POST auth/reset-password/{token}`|
+| `changePassword(current, new, confirmation)`     | `Promise<void>`       | `POST auth/change-password`       |
+| `isLoggedIn()`                                   | `boolean`             | —                                 |
+| `static getAuthToken()`                          | `string`              | reads `?token=` from the URL      |
 
-// Request reset email
-await Factory.Authentication.forgotPassword('user@example.com');
+## Recent Changes
 
-// Reset with token
-await Factory.Authentication.resetPassword({
-    token: 'reset-token',
-    password: 'newpassword',
-    password_confirmation: 'newpassword'
-});
-```
+- `1.8.4`–`1.8.7` — Dependency housekeeping: `@chalkysticks/sdk-core` moved to a semver peer dependency (`^1.61.5`); rebuilds only, no API changes.
+- `1.8.3` — Hardened error handling: login errors now tolerate missing/partial server responses and always include `code` and a default `message` (e.g. "Could not reach the server. Please try again." when unreachable).
+- `1.8.2` — Added the `Event.Authentication` enum; the model now dispatches via the enum rather than string literals.
+- `1.7.16` — Removed redundant double-triggers in success/error paths.

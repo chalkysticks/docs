@@ -1,0 +1,222 @@
+---
+title: 'Jobs & Commands'
+description: 'Background queue jobs and Artisan console commands'
+---
+
+These are server-side workers that run outside the request lifecycle. Most are not directly invokable by API clients but are dispatched as side effects of endpoints or scheduled by cron.
+
+## Queue Jobs
+
+Dispatched onto the queue worker. Roughly grouped by domain.
+
+### Core
+
+| Job | Purpose |
+|-----|---------|
+| `Accomplishment` | Award an accomplishment to a user |
+| `AddToWallet` | Credit a wallet transaction (often dispatched by RevenueCat webhook) |
+| `EvaluateMedia` | Evaluate uploaded media for quality / moderation |
+| `ImportVenueCandidate` | Promote an approved candidate into a real venue |
+| `Purge` | Purge Varnish cache by URL and surrogate key |
+| `SendEmail` | Generic queued mailable dispatch |
+| `SendPushNotification` | Send a push notification to a single user |
+| `StoreUserScan` | Persist a user-submitted table scan to S3 |
+| `UpdateUserLocation` | Update a user's geolocation in the background |
+| `WarmUrl` | Warm a URL into Varnish |
+
+### Email
+
+| Job | Purpose |
+|-----|---------|
+| `Email\SendForgotPasswordEmail` | Password reset link |
+| `Email\SendReceiptEmail` | Transaction receipt |
+| `Email\SendResetPasswordConfirmationEmail` | Password reset confirmation |
+| `Email\SendRevisionEmail` | Notify admin of new venue revision |
+| `Email\SendVerificationEmail` | New-user email verification |
+| `Email\SendWelcomeEmail` | Welcome email for new registrations |
+
+### Embeddings
+
+| Job | Purpose |
+|-----|---------|
+| `Embedding\GenerateImageEmbedding` | Generate a vector embedding for venue media via Gemini |
+| `Embedding\RemoveImageEmbedding` | Remove a vector embedding from Postgres |
+
+### Diagram
+
+| Job | Purpose |
+|-----|---------|
+| `Diagram\SyncToV2` | Sync diagrams to the legacy v2 system |
+
+### Feed Activity Stream
+
+| Job | Purpose |
+|-----|---------|
+| `Feed\BeaconAdd` | Beacon to feed |
+| `Feed\ContentAdd` | Content to feed |
+| `Feed\UserAdd` | User activity to feed |
+| `Feed\UserMediaAdd` | User media to feed |
+| `Feed\UserUpdate` | User update to feed |
+| `Feed\VenueAdd` | Venue to feed |
+| `Feed\VenueCheckin` | Venue check-in to feed |
+| `Feed\VenueMediaAdd` | Venue media to feed |
+| `Feed\VenueUpdate` | Venue update to feed |
+
+### Venue
+
+| Job | Purpose |
+|-----|---------|
+| `Venue\EnrichVenueDetails` | Async venue enrichment via Google Places + AI |
+| `Venue\GenerateRevisionSummary` | AI-generated summary of venue revisions |
+
+## Console Commands
+
+All commands run via `php artisan <signature>`. Grouped by domain.
+
+### AI
+
+| Command | Description |
+|---------|-------------|
+| `ai:generate` | Generate text via OpenAI / Gemini / Claude |
+| `ai:test` | Smoke-test AI service methods |
+
+### Cache
+
+| Command | Description |
+|---------|-------------|
+| `cache:warm` | Preload Varnish cache with key pages |
+| `cache:purge` | Purge Varnish by URL or surrogate key |
+| `varnish:cache` | Purge Varnish by key / URL / model class |
+
+### Users
+
+| Command | Description |
+|---------|-------------|
+| `user:create` | Create a user (email + password) |
+| `user:token` | Issue a Sanctum token for a user |
+| `user:change-password` | Change a user's password |
+| `user:password` | Hash a password value |
+| `user:remove` | Soft-delete a user (with dry-run) |
+| `user:sync-roles` | Sync roles from the `Roles` enum |
+| `user:roles` | Add/remove/list a user's roles |
+| `user:manage-roles` | Interactive role management |
+| `user:fetch-google-avatar` | Fetch Google avatar by email |
+| `user:import-google-image` | Fetch + upload Google image, attach as UserMedia |
+
+### Venues
+
+| Command | Description |
+|---------|-------------|
+| `venue:lookup` | Search venues by name / address / coords |
+| `venue:check-similar` | Find similar venues for duplicate detection |
+| `venue:clean-duplicate-media` | Remove duplicate media from venues |
+| `venue:coverage-analysis` | Analyze geographic coverage |
+| `venue:enrich-missing-data` | Fill missing details from external sources |
+| `venue:fix-slugs` | Regenerate and validate URL slugs |
+| `venue:generate-image` | Generate AI venue images |
+| `venue:generate-revision-summary` | Summarize venue revision history |
+| `venue:generate-site-preview` | Build preview metadata |
+| `venue:generate-social-post` | Generate social media posts |
+| `venue:backfill-media-metadata` | Backfill venue media metadata |
+| `venue:merge-duplicates` | Merge duplicate venue records |
+| `venuebuilder:create` | Create a venue via Google Places API |
+| `venuebuilder:checkpermanentlyclosed` | Mark closed venues |
+| `venuebuilder:evaluateimages` | Evaluate venue images |
+
+### Content
+
+| Command | Description |
+|---------|-------------|
+| `content:generate-slugs` | Generate content slugs |
+| `content:saveyoutube` | Fetch + store a YouTube video as content |
+
+### Embeddings
+
+| Command | Description |
+|---------|-------------|
+| `embeddings:index` | Index venue media as embeddings via Gemini |
+| `embeddings:search` | Search by text query |
+| `embeddings:status` | Show index status |
+| `embeddings:backfill-metadata` | Backfill venue metadata onto embeddings |
+
+### Billing
+
+| Command | Description |
+|---------|-------------|
+| `billing:aws` | View AWS billing & cost analysis |
+| `billing:google` | View Google Cloud billing via BigQuery |
+
+### TV & YouTube
+
+| Command | Description |
+|---------|-------------|
+| `tv:channels` | List TV channels |
+| `tv:channels-refresh` | Refresh channel data |
+| `tv:check` | Check channel status |
+| `tv:confirm-live` | Confirm live stream status |
+| `tv:fetch` | Fetch TV schedule data |
+| `tv:fetch-facebook-live` | Facebook live ingest |
+| `tv:fetch-live` | Live ingest |
+| `tv:get-channel-id` | Resolve YouTube channel ID by name |
+| `tv:get-live-channel` | Identify currently-live channels |
+| `tv:purge-schedule` | Clear TV schedule cache |
+| `tv:reverse-fetch` | Reverse-lookup TV channels |
+| `youtube:check-live` | Check a YouTube channel for live |
+| `youtube:subscribe` | Subscribe via WebSub |
+| `youtube:scan-live` | Scan for live via yt-dlp |
+| `youtube:test` | Verify API key |
+
+### Data Integrations
+
+| Command | Description |
+|---------|-------------|
+| `google:fetchvenue` | Test Google Places search |
+| `yelp:fetchvenue` | Test Yelp search |
+| `yelp:searchnext` | Walk zipcodes via Yelp |
+| `data:import-cities` | Import cities |
+| `news:sync` | Sync news articles |
+| `news:preview` | Preview news content |
+| `reddit:search` | Search Reddit |
+| `social:recur-post:post-history` | Manage social post history |
+| `challenges:generate` | Ensure a challenge row exists for series/date |
+| `beacon:archive` | Archive old beacons |
+| `statistics:sync` | Fill in statistics |
+
+### Database & Maintenance
+
+| Command | Description |
+|---------|-------------|
+| `database:fake-migrations` | Mark migrations as run |
+| `database:seed-from-csv` | Seed a table from a CSV file |
+| `diagrams:normalize-layout` | Rebuild diagram layouts with normalized coords |
+| `sitemap:generate-index` | Build sitemap index |
+| `sitemap:generate-venues` | Build venue sitemaps |
+| `sitemap:generate-content` | Build content sitemaps |
+
+### Facts
+
+| Command | Description |
+|---------|-------------|
+| `fact:add` | Add a fact |
+| `fact:generate` | Generate facts via AI |
+| `fact:random` | Show a random fact |
+| `fact:verify` | Verify fact accuracy |
+
+### Email & Notifications
+
+| Command | Description |
+|---------|-------------|
+| `email:mjml` | Process MJML email templates |
+| `email:test` | Send a test email |
+
+### Misc
+
+| Command | Description |
+|---------|-------------|
+| `pad:create` | Create a pad entity |
+| `matchmaking:process` | Process the matchmaking queue |
+| `leaderboards:freeze` | Freeze leaderboard scores for a period |
+| `leaderboards:backfill-bogus-scoring-events` | Repair malformed scoring events |
+| `test:imageanalyzer` | Test image analyzer |
+| `test:google-avatar-import` | Test Google avatar import |
+| `test:venuesearch` | Test venue search |

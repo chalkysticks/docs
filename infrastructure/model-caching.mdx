@@ -1,0 +1,140 @@
+---
+title: 'Browser Model Caching'
+description: 'Service worker cache-first strategy for offline-first browser inference'
+---
+
+When running `sdk-inference` in the browser, model weights are fetched from Roboflow's CDN on first use. A service worker intercepts these requests and caches everything locally, so subsequent page loads — and all inference after the first — work completely offline.
+
+## What Gets Cached
+
+| Asset | Origin | Size |
+|-------|--------|------|
+| HTML page | Your server | ~50 KB |
+| inferencejs CDN script | `cdn.roboflow.com` | ~200 KB |
+| Web Worker bootstraps | `cdn.roboflow.com` | ~50 KB |
+| Model JSON metadata | `serverless.roboflow.com` | ~2 KB per model |
+| Model weight shards (.bin) | `serverless.roboflow.com` | ~100-120 MB per model |
+
+After the first full load, the browser has everything it needs on disk. No network calls are made on subsequent visits.
+
+## Cache Strategy
+
+The service worker uses **cache-first with network fallback**:
+
+```
+Browser request
+│
+├── Cache hit?  → Return immediately (zero latency)
+│
+└── Cache miss? → Fetch from network
+                  ├── Success → Store in cache, return response
+                  └── Failure → Throw (offline + never cached)
+```
+
+This means:
+- **First load**: All requests go to the network. Model shards download once.
+- **Every load after**: All requests served from cache. Instant startup.
+- **Offline**: Works exactly the same as a cached load. No degradation.
+
+## Registration
+
+Register the service worker on page load:
+
+```typescript
+if ('serviceWorker' in navigator) {
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    console.log('SW registered:', registration.scope);
+}
+```
+
+The worker calls `skipWaiting()` on install and `clients.claim()` on activate, so it takes control immediately without requiring a second page load.
+
+## Service Worker Implementation
+
+```javascript
+const CACHE_NAME = 'roboflow-local-v4';
+
+// Install: activate immediately
+self.addEventListener('install', (event) => {
+    self.skipWaiting();
+});
+
+// Activate: prune old cache versions, claim clients
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((keys) =>
+            Promise.all(
+                keys
+                    .filter((key) => key !== CACHE_NAME)
+                    .map((key) => caches.delete(key)),
+            ),
+        ).then(() => self.clients.claim()),
+    );
+});
+
+// Fetch: cache-first, network fallback
+self.addEventListener('fetch', (event) => {
+    if (event.request.method !== 'GET') return;
+
+    const url = new URL(event.request.url);
+    if (!['http:', 'https:'].includes(url.protocol)) return;
+
+    event.respondWith(
+        caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+
+            return fetch(event.request).then((response) => {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, clone);
+                });
+                return response;
+            });
+        }),
+    );
+});
+```
+
+## Cross-Origin Model Requests
+
+Roboflow model shards are loaded from `serverless.roboflow.com`. The service worker caches these as **opaque responses** (no-cors). Opaque responses:
+
+- Cannot be inspected (status is 0, body is inaccessible to JS)
+- Can be stored in the Cache API and replayed verbatim
+- Count against the origin's storage quota at an inflated size (~7 MB per opaque response regardless of actual size)
+
+This is fine in practice — modern browsers allocate generous storage quotas, and the model shards are large enough that the inflation factor is negligible.
+
+## Cache Versioning
+
+To force a fresh download of all assets (e.g., after a model version update):
+
+1. Bump the version string in the service worker:
+   ```javascript
+   const CACHE_NAME = 'roboflow-local-v5'; // was v4
+   ```
+2. Deploy the updated `sw.js`
+3. On next page load, the new SW activates, prunes the old `v4` cache, and re-fetches everything
+
+The old cache is deleted automatically during the `activate` event. Users do not need to clear their browser cache manually.
+
+## Storage Inspection
+
+Check what is cached in Chrome DevTools:
+
+1. **Application** tab → **Cache Storage** → `roboflow-local-v4`
+2. You will see entries for every cached URL, including the model shards
+3. **Application** tab → **Service Workers** shows the active SW and its status
+
+## Comparison: Browser Cache vs Docker Sidecar
+
+| | Browser (Service Worker) | Docker (Sidecar) |
+|---|---|---|
+| **Where** | End-user's browser | Your server |
+| **Cache location** | Browser Cache Storage API | Docker named volume |
+| **Offline support** | Full (after first load) | Full (after warmup) |
+| **Model size on disk** | ~220 MB (two models) | ~230 MB (two models) |
+| **Who runs inference** | User's device (Web Workers) | Server container (Python) |
+| **Use case** | Client-side apps, prototypes | API backends, batch processing |
+
+See [Roboflow Sidecar](roboflow-sidecar) for the server-side equivalent.

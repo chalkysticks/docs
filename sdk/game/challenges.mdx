@@ -1,0 +1,141 @@
+---
+title: 'Challenges & Leaderboards'
+description: 'Daily challenges, challenge matches, and ranked boards'
+---
+
+Challenges are Wordle-style daily racks, shootouts, and time trials. The surface spans `Model.GameChallenge` (the puzzle), challenge-typed `GameMatch` rows (the attempts), `Service.Challenge` (aggregated player metrics), and two leaderboard flavors.
+
+## GameChallenge
+
+`Model.GameChallenge` / `Collection.GameChallenge` — endpoint `/game-challenges`. Links to a `diagrams` row for the ball layout via the default-included `diagram` relation (typed as `PadModel.Diagram` from `@chalkysticks/sdk-pad`).
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `active_on` | string | YYYY-MM-DD the challenge is live (daily puzzles) |
+| `diagram_id` | number | Ball layout |
+| `difficulty` | string | e.g. `'easy'`, `'hard'` |
+| `game_type` | `Enum.GameType` | Single-game variant; `MatchFormat` does not apply |
+| `rules` | JSON | Rule strategy spec — see below |
+| `rules_hash` / `seed` | string | Generation provenance |
+| `slug` | string | |
+| `time_limit_ms` | number | `0` = unlimited |
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-game';
+
+const challenges = Factory.GameChallenge.collection();
+await challenges.fetch();
+
+const challenge = challenges.models[0];
+challenge.getGameType();    // Enum.GameType (default: EightBall)
+challenge.getTimeLimitMs(); // number; 0 = unlimited
+challenge.hasTimeLimit();   // boolean
+challenge.getRules();       // IGameChallengeRuleSpec | null
+challenge.diagram;          // PadModel.Diagram
+```
+
+### Rule Spec
+
+`getRules()` returns an `IGameChallengeRuleSpec` — either a named strategy or a Custom strategy with inline config that drops directly into the trainer's Custom rules constructor:
+
+```typescript
+{ name: 'NineBall' }
+{ name: 'Custom', rules: { mode: 'global', /* ... */ } }
+```
+
+Legacy array-shaped payloads and shapes without a `name` string return `null`.
+
+### Regenerate (CMS)
+
+`regenerate()` re-runs the server-side factory for the challenge's `(slug, active_on)` with override — `POST /game-challenges/{id}/regenerate`. The original row is destroyed and replaced (the response carries a **different** `id`), so reload your collection afterward.
+
+```typescript
+await challenge.regenerate();        // keep difficulty
+await challenge.regenerate('hard');  // force difficulty
+```
+
+## Challenge Matches
+
+An attempt at a challenge is a normal `GameMatch` with `match_type: Enum.MatchType.Challenge` and a `challenge_id`:
+
+```typescript
+match.isChallenge();  // match_type === Enum.MatchType.Challenge
+match.challenge;      // hasOne<GameChallenge> — request via include: 'challenge'
+```
+
+## Service.Challenge
+
+Stateless static helpers that aggregate across a player's challenge matches (one paginated fetch each — no per-day N+1):
+
+```typescript
+import { Service } from '@chalkysticks/sdk-game';
+
+// Consecutive daily clears ending on the anchor date (UTC-day comparison)
+const streak = await Service.Challenge.getDailyClearStreak(userId, '2026-07-04'); // number
+
+// Per-day map for the archive calendar grid, keyed by active_on (YYYY-MM-DD)
+const history = await Service.Challenge.getDailyChallengeHistory(userId, '2026-06-01', '2026-06-30');
+// Record<string, IChallengeDayResult>
+// { attempted, cleared, bestTimeMs: number | null, difficulty: string | null }
+
+// Ranked board for one challenge (server-computed)
+const rows = await Service.Challenge.getChallengeLeaderboard(challengeId, { limit: 25, sort: 'best' });
+// IChallengeLeaderboardEntry[]
+// { avatarUrl, bestTimeMs, lastAttemptMs, rank, userId, userName }
+```
+
+## Per-Challenge Leaderboard
+
+`Collection.ChallengeLeaderboard` wraps `GET /game-challenges/{id}/leaderboard` — one row per winning user (fastest clear + most-recent win), computed server-side, with the `user` relation embedded:
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-game';
+
+const board = Factory.ChallengeLeaderboard.collection();
+await board.fetchByChallenge(challengeId, { limit: 25, sort: 'best' }); // sort: 'best' | 'latest'
+
+for (const row of board.models) {
+    row.getRank();          // 1-based
+    row.getBestTimeMs();    // number | null
+    row.getLastAttemptAt(); // string | null
+    row.getUserId();        // number
+    row.user;               // Model.User (name + avatar)
+}
+```
+
+## Metric Leaderboards
+
+`Collection.Leaderboard` wraps `GET /leaderboards/{metricKey}` — ranked boards keyed by a metric, live-computed for open periods or snapshotted for closed ones:
+
+```typescript
+const board = Factory.Leaderboard.collection();
+
+board.setQueryParams({
+    limit:      20,
+    period:     'daily',       // daily | weekly | monthly | yearly | alltime
+    scope_type: 'global',      // global | venue | city | cabinet
+});
+
+await board.fetchByMetric('pool.daily_rack.time_ms');
+
+for (const row of board.models) {
+    row.getRank();         // 1-based
+    row.getScore();        // metric-dependent aggregate
+    row.getEntriesCount(); // contributing events
+    row.getLastEventAt();  // string | null — tie breaker
+    row.user;              // Model.User
+}
+```
+
+Additional query params: `period_date` (YYYY-MM-DD anchor for historical boards; rejected with `period=alltime` or future dates) and `scope_id` (required when `scope_type !== 'global'`). Apply filters via `setQueryParams()` — `.where()` is a client-side attribute filter, not a URL query-param setter.
+
+## Recent Changes
+
+- `0.6.1` — `GameMatch.heartbeat()` keeps online challenge lobbies alive
+- `0.5.0` — `ChallengeLeaderboard` model/collection/factory; `Service.Challenge.getChallengeLeaderboard()` added, reading the server-computed board
+- `0.4.8` — `Service.Challenge.getDailyChallengeHistory()`
+- `0.4.7` — `Service` export introduced with `Service.Challenge.getDailyClearStreak()`
+- `0.4.2` — `GameChallenge.regenerate(difficulty?)`
+- `0.3.4` — `Leaderboard` model/collection/factory (`fetchByMetric()`)
+- `0.3.3` — `GameChallenge.getRules()` returns typed `IGameChallengeRuleSpec | null` (legacy array payloads rejected)
+- `0.3.1` — `GameChallenge` model/collection, `Enum.MatchType` (`Standard`, `Challenge`), `GameMatch.challenge_id` / `isChallenge()`

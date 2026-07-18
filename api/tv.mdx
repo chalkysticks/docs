@@ -1,9 +1,11 @@
 ---
-title: 'TV & Content'
-description: 'TV schedules, live streams, and rulebooks'
+title: 'TV'
+description: 'TV channels, live streams, and schedule management'
 ---
 
-## TV Overview
+ChalkySticks TV aggregates live and scheduled pool/billiards streams from YouTube, Facebook, and other sources.
+
+## Index
 
 ```bash
 GET /v3/tv
@@ -11,117 +13,77 @@ GET /v3/tv
 
 ## Channels
 
+### List Channels
+
 ```bash
 GET /v3/tv/channels
 ```
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "Matchroom Pool",
-      "logo": "https://..."
-    }
-  ]
-}
-```
+### Channel Map
 
-## Channel Map
+Mapping between channel IDs and metadata.
 
 ```bash
 GET /v3/tv/channel-map
 ```
 
-## Live Broadcasts
+## Live
+
+Currently-live streams.
 
 ```bash
 GET /v3/tv/live
 ```
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "title": "US Open 9-Ball",
-      "channel": "Matchroom Pool",
-      "stream_url": "https://...",
-      "started_at": "2025-01-01T14:00:00Z"
-    }
-  ]
-}
-```
-
 ## Schedule
 
-### Get Schedule
+### List Schedule
 
 ```bash
 GET /v3/tv/schedule
-GET /v3/tv/schedule?date=2025-01-15
 ```
 
-### Get Schedule Item
+### Get Scheduled Item
 
 ```bash
 GET /v3/tv/schedule/{id}
 ```
 
-### Create Schedule (Auth)
+### Create Schedule Entry
 
 ```bash
 POST /v3/tv/schedule
 Authorization: Bearer YOUR_TOKEN
-{
-  "title": "New Event",
-  "channel_id": 1,
-  "starts_at": "2025-01-15T14:00:00Z",
-  "ends_at": "2025-01-15T18:00:00Z"
-}
 ```
 
-## Content
-
-### List Content
+### Update Schedule Entry
 
 ```bash
-GET /v3/content
-GET /v3/content?type=rulebook
+PUT /v3/tv/schedule/{tvSchedule}
+Authorization: Bearer YOUR_TOKEN
 ```
 
-### Get Content
+### Delete Schedule Entry
 
 ```bash
-GET /v3/content/{id}
-GET /v3/content/{id}/detail
+DELETE /v3/tv/schedule/{tvSchedule}
+Authorization: Bearer YOUR_TOKEN
 ```
 
-## Rulebooks
+### Mark Watched
 
-### List Rulebooks
+Record that the authenticated user watched a scheduled stream.
 
 ```bash
-GET /v3/rulebooks
+POST /v3/tv/schedule/{tvSchedule}/watch
+Authorization: Bearer YOUR_TOKEN
 ```
 
-### Get Rulebook
+## Ingest
+
+Internal ingest endpoint for external schedulers to push channel/stream data. Requires an ingest API key.
 
 ```bash
-GET /v3/rulebooks/{id}
+POST /v3/tv/ingest
+X-Ingest-Api-Key: YOUR_INGEST_KEY
 ```
-
-**Response:**
-```json
-{
-  "data": {
-    "id": "8ball",
-    "title": "8-Ball Rules",
-    "content": "## Official Rules\n\n..."
-  }
-}
-```
-
-Available rulebooks: `8ball`, `9ball`, `10ball`, `straight`, `one_pocket`, `bank`, `snooker`

@@ -34,9 +34,15 @@
             "group": "Core",
             "pages": [
               "sdk/core/index",
+              "sdk/core/container",
+              "sdk/core/providers",
+              "sdk/core/services",
               "sdk/core/models",
               "sdk/core/collections",
+              "sdk/core/enums",
               "sdk/core/events",
+              "sdk/core/input",
+              "sdk/core/sound",
               "sdk/core/utilities"
             ]
           },
@@ -46,20 +52,52 @@
               "sdk/pad/index",
               "sdk/pad/builders",
               "sdk/pad/managers",
+              "sdk/pad/table-manager",
               "sdk/pad/geometry",
               "sdk/pad/balls",
               "sdk/pad/lines",
-              "sdk/pad/saving"
+              "sdk/pad/shapes",
+              "sdk/pad/stickers",
+              "sdk/pad/texts",
+              "sdk/pad/saving",
+              "sdk/pad/rules",
+              "sdk/pad/enums",
+              "sdk/pad/events"
             ]
           },
           {
             "group": "Game",
             "pages": [
               "sdk/game/index",
-              "sdk/game/physics",
               "sdk/game/balls",
               "sdk/game/shots",
-              "sdk/game/racking"
+              "sdk/game/racking",
+              "sdk/game/challenges",
+              "sdk/game/physics"
+            ]
+          },
+          {
+            "group": "Physics",
+            "pages": [
+              "sdk/physics"
+            ]
+          },
+          {
+            "group": "Inference",
+            "pages": [
+              "sdk/inference/index",
+              "sdk/inference/image-analyzer",
+              "sdk/inference/detection",
+              "sdk/inference/homography",
+              "sdk/inference/tracking",
+              "sdk/inference/camera-fingerprint",
+              "sdk/inference/configuration"
+            ]
+          },
+          {
+            "group": "Table Scanner",
+            "pages": [
+              "sdk/table-scanner"
             ]
           },
           {
@@ -84,13 +122,35 @@
             ]
           },
           {
-            "group": "Components",
+            "group": "Auth & Users",
             "pages": [
               "vue/authentication",
-              "vue/ui-elements",
+              "vue/user",
+              "vue/wallet"
+            ]
+          },
+          {
+            "group": "Forms & Inputs",
+            "pages": [
+              "vue/form",
+              "vue/input",
+              "vue/button"
+            ]
+          },
+          {
+            "group": "Content",
+            "pages": [
+              "vue/venue",
               "vue/media",
               "vue/social",
-              "vue/venue",
+              "vue/tv"
+            ]
+          },
+          {
+            "group": "UI & Branding",
+            "pages": [
+              "vue/ui-elements",
+              "vue/utility",
               "vue/branding"
             ]
           }
@@ -102,7 +162,9 @@
           {
             "group": "Overview",
             "pages": [
-              "trainer/index"
+              "trainer/index",
+              "trainer/embedding",
+              "trainer/embed-api"
             ]
           },
           {
@@ -120,8 +182,32 @@
             "group": "Match System",
             "pages": [
               "trainer/match-system",
+              "trainer/presentation",
               "trainer/opponents",
               "trainer/ai-opponent"
+            ]
+          },
+          {
+            "group": "Custom Rules",
+            "pages": [
+              "trainer/custom-rules/index",
+              "trainer/custom-rules/shorthand",
+              "trainer/custom-rules/schema",
+              "trainer/custom-rules/engine",
+              "trainer/custom-rules/integration",
+              "trainer/custom-rules/recipes"
+            ]
+          },
+          {
+            "group": "Multiplayer",
+            "pages": [
+              "trainer/multiplayer/index",
+              "trainer/multiplayer/architecture",
+              "trainer/multiplayer/connectivity",
+              "trainer/multiplayer/protocol",
+              "trainer/multiplayer/sync-flows",
+              "trainer/multiplayer/components",
+              "trainer/multiplayer/debugging"
             ]
           },
           {
@@ -151,6 +237,12 @@
               "pad/lines",
               "pad/export"
             ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "pad/events"
+            ]
           }
         ]
       },
@@ -164,17 +256,64 @@
             ]
           },
           {
-            "group": "Endpoints",
+            "group": "Auth & Users",
             "pages": [
               "api/authentication",
               "api/users",
+              "api/notifications"
+            ]
+          },
+          {
+            "group": "Venues & Check-ins",
+            "pages": [
               "api/venues",
+              "api/checkins"
+            ]
+          },
+          {
+            "group": "Gameplay",
+            "pages": [
               "api/games",
-              "api/media",
-              "api/diagrams",
+              "api/matches",
+              "api/shots",
+              "api/innings",
+              "api/game-challenges"
+            ]
+          },
+          {
+            "group": "Stats & Social",
+            "pages": [
+              "api/stats",
+              "api/accomplishments",
               "api/comments",
+              "api/reactions"
+            ]
+          },
+          {
+            "group": "Media & Diagrams",
+            "pages": [
+              "api/media",
+              "api/diagrams"
+            ]
+          },
+          {
+            "group": "Content & TV",
+            "pages": [
+              "api/content",
               "api/tv",
-              "api/services"
+              "api/facts"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "api/config",
+              "api/services",
+              "api/webhooks",
+              "api/billing",
+              "api/settings",
+              "api/admin",
+              "api/jobs-and-commands"
             ]
           }
         ]
@@ -194,7 +333,16 @@
               "recipes/sdk/add-balls",
               "recipes/sdk/draw-lines",
               "recipes/sdk/search-venues",
-              "recipes/sdk/save-diagrams"
+              "recipes/sdk/save-diagrams",
+              "recipes/sdk/resolve-models",
+              "recipes/sdk/custom-provider",
+              "recipes/sdk/bind-named-services",
+              "recipes/sdk/override-factories",
+              "recipes/sdk/test-isolation",
+              "recipes/sdk/singleton-services",
+              "recipes/sdk/scan-single-frame",
+              "recipes/sdk/process-video-stream",
+              "recipes/sdk/offline-inference"
             ]
           },
           {
@@ -211,6 +359,43 @@
               "recipes/api/fetch-venues",
               "recipes/api/record-shots",
               "recipes/api/get-schedule"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Infrastructure",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "infrastructure/index"
+            ]
+          },
+          {
+            "group": "API & Caching",
+            "pages": [
+              "infrastructure/api-cache-safety"
+            ]
+          },
+          {
+            "group": "Inference",
+            "pages": [
+              "infrastructure/roboflow-sidecar",
+              "infrastructure/inference-tool",
+              "infrastructure/model-caching"
+            ]
+          },
+          {
+            "group": "Cloud Deployment",
+            "pages": [
+              "infrastructure/aws-deployment"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "infrastructure/faq"
             ]
           }
         ]

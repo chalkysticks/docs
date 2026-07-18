@@ -1,0 +1,100 @@
+---
+title: 'Scan a single frame'
+description: 'Run inference on one image or video frame and read the results'
+---
+
+## From an Image
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+const analyzer = new Core.ImageAnalyzer();
+const img = document.getElementById('tablePhoto') as HTMLImageElement;
+
+analyzer.setElement(img);
+
+await analyzer.process();
+
+const result = analyzer.getTransformedPositions();
+
+console.log('Camera type:', result.cameraType);
+console.log('Balls found:', result.balls.length);
+
+result.balls.forEach((ball) => {
+    console.log(`  ${ball.label} #${ball.number} at (${ball.x.toFixed(2)}, ${ball.y.toFixed(2)})`);
+});
+
+analyzer.dispose();
+```
+
+## From a Video Frame
+
+Pause or scrub to the desired frame, then scan:
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+const analyzer = new Core.ImageAnalyzer();
+const video = document.getElementById('gameVideo') as HTMLVideoElement;
+
+analyzer.setElement(video);
+
+// Scrub to 30 seconds
+video.currentTime = 30;
+
+// Wait for the frame to be ready
+await new Promise((resolve) => {
+    video.addEventListener('seeked', resolve, { once: true });
+});
+
+await analyzer.process();
+
+const result = analyzer.getTransformedPositions();
+console.log('Balls:', result.balls);
+console.log('Pockets:', result.pockets);
+
+analyzer.dispose();
+```
+
+## Reading the Results
+
+`getTransformedPositions()` returns an object with:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `balls` | Array | Detected balls with normalized (0-1) table positions |
+| `pockets` | Array | Detected pockets with identified positions |
+| `cameraType` | string | `'overhead'`, `'freehand'`, or `'unknown'` |
+
+Each ball entry contains:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `x` | number | Normalized X position (0 = left rail, 1 = right rail) |
+| `y` | number | Normalized Y position (0 = top rail, 1 = bottom rail) |
+| `label` | string | Detection class label |
+| `number` | number | Ball number (0-15), if color identification succeeded |
+| `confidence` | number | Model confidence (0-1) |
+
+## Lower-Level: Using Detection Directly
+
+If you want more control over the pipeline:
+
+```typescript
+import { Detection, Homography } from '@chalkysticks/sdk-inference';
+
+// Assuming you already have raw predictions from the model
+const balls = Detection.BallDetector.extractBalls(predictions);
+const filtered = Detection.BallDetector.filterByConfidence(balls, 0.4);
+const unique = Detection.BallDetector.removeDuplicates(filtered);
+
+const pockets = Detection.PocketDetector.extractPockets(predictions);
+const identified = Detection.PocketDetector.identifyPocketPositions(pockets);
+
+const matrix = Homography.HomographySolver.computeFromPockets(identified);
+
+if (matrix) {
+    const transformed = Homography.CoordinateTransformer.transformBalls(unique, matrix);
+    console.log('Transformed balls:', transformed);
+}
+```

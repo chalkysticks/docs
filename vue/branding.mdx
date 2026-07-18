@@ -1,87 +1,46 @@
 ---
-title: 'Branding Components'
-description: 'Logos, badges, and splash screens'
+title: 'Branding'
+description: 'ChalkySticks logo, badge, and splash components'
 ---
-
-## BrandingStandard
-
-Standard ChalkySticks logo.
-
-```html
-<ChalkyBrandingStandard />
-<ChalkyBrandingStandard v-bind:variant="'light'" />
-<ChalkyBrandingStandard v-bind:variant="'dark'" />
-```
-
-### Props
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `variant` | string | 'default' | 'default', 'light', 'dark' |
-| `width` | number | 200 | Logo width in px |
-| `animated` | boolean | false | Enable animation |
 
 ## BrandingBadge
 
-Compact badge logo.
+ChalkySticks logo mark with theming and size control. Use anywhere you need just the icon (favicon, app tile, loading indicator).
 
 ```html
-<ChalkyBrandingBadge />
-<ChalkyBrandingBadge v-bind:size="'small'" />
+<ChalkyBrandingBadge mode="dark" size="md" />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `mode` | `'deep' \| 'dark' \| 'light'` | `'dark'` |
+| `size` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl'` | `'sm'` |
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `size` | string | 'medium' | 'small', 'medium', 'large' |
-| `variant` | string | 'default' | 'default', 'light', 'dark' |
+## BrandingStandard
+
+ChalkySticks wordmark (with optional icon). Use in headers and nav.
+
+```html
+<ChalkyBrandingStandard mode="light" size="md" :use-icon="true" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `mode` | `'dark' \| 'light'` | `'dark'` |
+| `size` | sizing variants | `'md'` |
+| `useIcon` | boolean | `true` |
 
 ## BrandingSplash
 
-Full-screen splash/loading screen.
+Animated splash screen used during cold-start of the web-app. Three-part cascade animation; full-screen by default.
 
 ```html
-<ChalkyBrandingSplash
-    v-bind:visible="isLoading"
-    v-bind:progress="loadProgress"
-/>
+<ChalkyBrandingSplash :auto-animate="true" :fullscreen="true" />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `autoAnimate` | boolean | `true` |
+| `fullscreen` | boolean | `true` |
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `visible` | boolean | true | Show splash screen |
-| `progress` | number | null | Loading progress 0-100 |
-| `message` | string | 'Loading...' | Loading message |
-| `animated` | boolean | true | Animate logo |
-
-## Usage Examples
-
-### App Header
-
-```html
-<header class="app-header">
-    <ChalkyBrandingStandard v-bind:width="150" />
-</header>
-```
-
-### Loading State
-
-```html
-<ChalkyBrandingSplash
-    v-bind:visible="!appReady"
-    v-bind:progress="loadProgress"
-    message="Preparing your game..."
-/>
-```
-
-### Footer
-
-```html
-<footer class="app-footer">
-    <ChalkyBrandingBadge v-bind:size="'small'" />
-    <span>Powered by ChalkySticks</span>
-</footer>
-```
+Pair with `BrandingStandard` when you want the wordmark to land after the animation.

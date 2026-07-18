@@ -1,107 +1,269 @@
 ---
 title: 'UI Elements'
-description: 'Badge, progress bars, tooltips, and more'
+description: 'Toasts, tooltips, progress, statistics, coach marks, and modals'
 ---
 
-## Badge
+The `Ui` and `Modal` namespaces contain generic display widgets used across the app.
 
-Display status or count badges.
+## Toasts
 
-```html
-<ChalkyBadge v-bind:count="5" />
-<ChalkyBadge type="success" text="Active" />
-```
+### UiToast
 
-### Props
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `count` | number | Numeric badge |
-| `text` | string | Text badge |
-| `type` | string | 'default', 'success', 'warning', 'error' |
-
-## ProgressBar
-
-Animated progress indicator.
+Single toast notification with auto-dismiss, action button, and hover-pause.
 
 ```html
-<ChalkyProgressBar v-bind:value="75" />
-```
-
-### Props
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `value` | number | 0 | Progress 0-100 |
-| `showLabel` | boolean | false | Show percentage label |
-| `color` | string | 'primary' | Bar color |
-
-## BarGraph
-
-Horizontal bar chart.
-
-```html
-<ChalkyBarGraph
-    v-bind:data="[
-        { label: 'Wins', value: 45 },
-        { label: 'Losses', value: 12 }
-    ]"
+<ChalkyUiToast
+    message="Saved!"
+    type="success"
+    :duration="3000"
+    action-label="Undo"
+    @action="restore()"
 />
 ```
 
-## CoachMark
+| Prop | Type | Notes |
+|------|------|-------|
+| `message`, `title` | string | Body / heading |
+| `type` | string | `success`, `error`, `info`, `warning` |
+| `theme` | string | `dark` / `light` |
+| `icon`, `image` | string | Optional leading visual |
+| `duration` | number | ms — `0` for sticky |
+| `closable`, `tappable` | boolean | |
+| `pauseOnHover` | boolean | |
+| `actionLabel` | string | |
+| `actionCallback` | Function | |
 
-Highlight and explain UI elements.
+Emits: `click`, `action`, `close`.
+
+### UiToastGroup
+
+Container for multiple toasts. Typically rendered once near the app root.
 
 ```html
-<ChalkyCoachMark
-    v-bind:target="$refs.targetElement"
-    title="New Feature"
-    description="Click here to access the new feature"
-/>
+<ChalkyUiToastGroup position="top-right" direction="down" theme="dark" />
 ```
 
-## CoachMarkSequencer
+| Prop | Type | Default |
+|------|------|---------|
+| `direction` | `'up' \| 'down'` | — |
+| `position` | string | — |
+| `theme` | `'dark' \| 'light'` | `'dark'` |
+| `inline` | boolean | `false` |
+| `toasts` | `IToastData[]` | bound by `ToastPlugin` |
 
-Guide users through multiple coach marks.
+Emits: `toast:action`, `toast:click`, `toast:close`.
 
-```html
-<ChalkyCoachMarkSequencer
-    v-bind:steps="[
-        { target: '#step1', title: 'Step 1', description: 'First step' },
-        { target: '#step2', title: 'Step 2', description: 'Second step' }
-    ]"
-    v-on:complete="onTourComplete"
-/>
+Pair with the `ToastPlugin` for imperative API:
+
+```typescript
+this.$toast.show({ message: 'Saved', type: 'success' });
 ```
 
 ## Tooltip
 
-Hover tooltips.
+### UiTooltip
+
+Floating tooltip pinned to a target element.
 
 ```html
-<ChalkyTooltip text="More information">
-    <button>Hover me</button>
-</ChalkyTooltip>
+<ChalkyUiTooltip
+    :target="$refs.btn"
+    placement="top"
+    :has-close-button="false"
+    :click-to-close="true"
+>
+    Lorem ipsum
+</ChalkyUiTooltip>
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `id` | string | — |
+| `target` | Element | — |
+| `placement` | string | `'top'` |
+| `position` | string | — |
+| `theme` | string | — |
+| `arrow` | boolean | `true` |
+| `clickToClose` | boolean | `true` |
+| `hasCloseButton` | boolean | `false` |
+| `hasOkButton` | boolean | `false` |
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `text` | string | - | Tooltip text |
-| `position` | string | 'top' | 'top', 'bottom', 'left', 'right' |
-| `delay` | number | 200 | Show delay in ms |
+Emits: `close`.
 
-## FeatureCard
+## Coach Marks
 
-Promotional feature cards.
+### UiCoachMark
+
+Tooltip- or card-style coach mark anchored to a target element. Persistence and dismissal state lives in the `userGuidance` Vuex module.
 
 ```html
-<ChalkyFeatureCard
-    title="Premium Features"
-    description="Unlock all features"
-    icon="crown"
-    v-on:click="showUpgrade"
+<ChalkyUiCoachMark
+    id="rack-button-intro"
+    type="card"
+    :target="$refs.rackBtn"
+    placement="bottom"
+    media="/img/rack-demo.gif"
+>
+    Tap here to rack the balls.
+</ChalkyUiCoachMark>
+```
+
+| Prop | Type |
+|------|------|
+| `type` | `'tooltip' \| 'card'` |
+| `id` | string |
+| `target` | Element |
+| `placement` / `position` | string |
+| `theme` | `'dark' \| 'light'` |
+| `media` | string |
+| `arrow`, `clickToClose`, `hasOkButton`, `hasCloseButton` | boolean |
+
+### UiCoachMarkSequencer
+
+Stitches multiple coach marks into a guided tour with previous / next navigation.
+
+```html
+<ChalkyUiCoachMarkSequencer
+    id="onboarding-v1"
+    :steps="onboardingSteps"
+    :use-previous="true"
+    @complete="markComplete"
 />
 ```
+
+| Prop | Type |
+|------|------|
+| `id` | string |
+| `steps` | `StepConfig[]` |
+| `usePrevious` | boolean |
+| `currentStep` | number |
+
+Emits: `close`, `complete`.
+
+## Progress & Statistics
+
+### UiBarGraph
+
+Horizontal or vertical bar progress indicator.
+
+```html
+<ChalkyUiBarGraph orientation="horizontal" size="medium" :value="0.65" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` |
+| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` |
+| `value` | number (0–1) | `0` |
+
+### UiCircularProgressBar
+
+SVG ring progress indicator.
+
+```html
+<ChalkyUiCircularProgressBar
+    :value="0.42"
+    color="#2563EB"
+    track-color="#E5E7EB"
+    :thickness="8"
+    direction="cw"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `value` | number (0–1) | — |
+| `color`, `trackColor` | string | theme |
+| `thickness` | number | — |
+| `startAngle` | number | — |
+| `direction` | `'cw' \| 'ccw'` | `'cw'` |
+
+### UiProgressBar
+
+Linear progress with optional label and caption.
+
+```html
+<ChalkyUiProgressBar :value="0.6" label="Uploading…" caption="3.2 MB / 5.0 MB" />
+```
+
+### UiStatisticSmall / UiStatisticBar
+
+Small numeric statistic display and bar-style label/value pair.
+
+```html
+<ChalkyUiStatisticSmall label="Games" :value="42" />
+<ChalkyUiStatisticBar label="S" :value="0.8" />
+```
+
+## Cards & Hero
+
+### UiFeatureCard
+
+Onboarding-style card with media (image or video), title, body, and an action slot.
+
+```html
+<ChalkyUiFeatureCard
+    id="welcome-card"
+    title="Welcome"
+    media="/img/welcome.mp4"
+    @continue="next"
+/>
+```
+
+| Prop | Type |
+|------|------|
+| `id`, `title` | string |
+| `media`, `image` | string (image legacy) |
+| `position` | string |
+
+Emits: `continue`.
+
+### UiPageHero
+
+Full-width hero with image background and overlaid title / description.
+
+```html
+<ChalkyUiPageHero
+    image-url="/img/hero.jpg"
+    title="Find a place to play"
+    description="Pool halls and bars near you"
+/>
+```
+
+### UiBadge
+
+Generic badge primitive (label / count).
+
+## Modals
+
+### ModalActionMenu
+
+Vertical button menu in a modal. Auto-closes on selection.
+
+```html
+<ChalkyModalActionMenu v-model="actionMenuOpen" :show-close-button="true">
+    <ChalkyButtonContinue @click="onContinue" />
+    <ChalkyButtonCancel @click="onCancel" />
+</ChalkyModalActionMenu>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `backdropColor` | string | `'rgba(0,0,0,0.75)'` |
+| `closeOnBackdropClick` | boolean | `true` |
+| `showCloseButton` | boolean | `true` |
+| `value` | boolean (v-model) | — |
+
+Emits: `input`, `show`, `shown`, `hide`, `hidden`.
+
+### ModalTableDetector
+
+Full-screen modal wrapping `InputTableDetector` with success state and camera controls. See [Input → TableDetector](/vue/input#inputtabledetector) for the underlying prop set.
+
+```html
+<ChalkyModalTableDetector v-model="scanOpen" @table:detected="onDetected" />
+```
+
+## Generic Modal (Utility)
+
+For ad-hoc modals not covered by `ModalActionMenu`, use [`UtilityModal`](/vue/utility#utilitymodal).

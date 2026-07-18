@@ -1,0 +1,87 @@
+---
+title: 'Form'
+description: 'Composite form components: media uploader, search, layout rows'
+---
+
+Three composite form components. For low-level inputs (chips, OTP, ratings, range, file picker, etc.) see [Input](/vue/input).
+
+## FormSearch
+
+Search form with optional autocomplete. Supports three modes: `location`, `venue`, and `user`. URL query parameters are bound automatically when `queryParameter` is set.
+
+```html
+<ChalkyFormSearch
+    type="venue"
+    placeholder="Search venues…"
+    :autocomplete="true"
+    :autocomplete-delay="300"
+    query-parameter="q"
+    :venue-collection="venueCollection"
+    @search:venue="onSearch"
+    @autocomplete:select="onPick"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `type` | `'location' \| 'venue' \| 'user'` | — |
+| `placeholder` | string | — |
+| `autocomplete` | boolean | `false` |
+| `autocompleteDelay` | number | `300` |
+| `queryParameter` | string | — |
+| `venueCollection` | `Collection.Venue` | — |
+| `userCollection` | `Collection.User` | — |
+| `geocodeModel` | `Model.Geocode` | — |
+
+Emits: `search:location`, `search:venue`, `search:user`, `search:start`, `autocomplete:select`, `autocomplete:open`, `autocomplete:close`, `click:badge`.
+
+## FormMediaUploader
+
+Unified media uploader with pluggable UI variants. Handles image and video uploads with drag-and-drop, validation, progress, and tagging.
+
+```html
+<ChalkyFormMediaUploader
+    :model="user"
+    variant="card"
+    :accept-types="['image/jpeg', 'image/png', 'video/mp4']"
+    :allow-multiple="true"
+    upload-button-text="Upload"
+    @complete="onComplete"
+    @error="onError"
+/>
+```
+
+| Prop | Type |
+|------|------|
+| `model` | **required** — `Model.User` or `Model.Venue` |
+| `variant` | string — `'card'`, `'inline'`, etc. |
+| `variantProps` | object — forwarded to the variant component |
+| `acceptTypes` | `string[]` |
+| `allowMultiple` | boolean |
+| `showDefaultActions` | boolean |
+| `uploadButtonText` | string |
+
+Emits: `complete`, `error`, `progress`.
+
+## FormRow
+
+Layout helper for settings-menu rows. Title + optional description on the left, control on the right; `stacked` puts the control on a new full-width line.
+
+```html
+<ChalkyFormRow title="Email notifications" description="Send a weekly digest">
+    <input type="checkbox" v-model="settings.emailDigest" />
+</ChalkyFormRow>
+
+<ChalkyFormRow title="Bio" stacked>
+    <textarea v-model="bio" />
+</ChalkyFormRow>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `title` | string | `''` |
+| `description` | string | `''` |
+| `titleFor` | string | `''` |
+| `stacked` | boolean | `false` |
+
+Adds `.form-row--stacked` when `stacked` is true.

@@ -1,7 +1,9 @@
 ---
 title: 'Authentication'
-description: 'Login, register, and token management'
+description: 'Login, register, tokens, and password management'
 ---
+
+All authentication endpoints are mounted under `/v3/auth`. Endpoints marked as authenticated require a Bearer token.
 
 ## Login
 
@@ -20,12 +22,38 @@ POST /v3/auth/login
 **Response:**
 ```json
 {
-  "data": {
+  "permissions": [],
+  "token": "your-sanctum-token",
+  "user": {
     "id": 1,
     "name": "User Name",
-    "email": "user@example.com",
-    "token": "your-jwt-token"
+    "email": "user@example.com"
   }
+}
+```
+
+## Login With Token
+
+Exchange an existing Sanctum token for a fresh one and refreshed user payload.
+
+```bash
+POST /v3/auth/login-with-token
+Authorization: Bearer YOUR_TOKEN
+```
+
+## CMS Login
+
+Login flow for the internal CMS / admin tooling.
+
+```bash
+POST /v3/auth/cms-login
+```
+
+**Request:**
+```json
+{
+  "email": "admin@example.com",
+  "password": "password"
 }
 ```
 
@@ -52,14 +80,29 @@ POST /v3/auth/logout
 Authorization: Bearer YOUR_TOKEN
 ```
 
+Revokes the current Sanctum token and returns `204 No Content`. The route requires `auth:sanctum`; the token must be supplied through the `Authorization` header.
+
+Authentication endpoints and responses are never shared-cache objects. Do not put bearer tokens or password-reset tokens in URLs or application logs.
+
 ## Google OAuth
 
-```bash
-# Redirect to Google
-GET /v3/auth/google
+### Web Redirect Flow
 
-# Login with Google token
+```bash
+GET /v3/auth/google
+GET /v3/auth/google/callback
+```
+
+### Token Exchange (Mobile / SPA)
+
+Send a Google-issued ID token to obtain a ChalkySticks token.
+
+```bash
 POST /v3/auth/google
+```
+
+**Request:**
+```json
 {
   "token": "google-id-token"
 }
@@ -67,19 +110,27 @@ POST /v3/auth/google
 
 ## Password Reset
 
-### Request Reset
+### Request Reset Email
 
 ```bash
 POST /v3/auth/forgot-password
+```
+
+**Request:**
+```json
 {
   "email": "user@example.com"
 }
 ```
 
-### Reset Password
+### Submit New Password
 
 ```bash
 POST /v3/auth/reset-password/{token}
+```
+
+**Request:**
+```json
 {
   "password": "newpassword",
   "password_confirmation": "newpassword"
@@ -91,6 +142,10 @@ POST /v3/auth/reset-password/{token}
 ```bash
 POST /v3/auth/change-password
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "current_password": "oldpassword",
   "password": "newpassword",
@@ -100,10 +155,14 @@ Authorization: Bearer YOUR_TOKEN
 
 ## Validate Email
 
-Check if email is available:
+Check whether an email is available for registration.
 
 ```bash
 POST /v3/auth/validate-email
+```
+
+**Request:**
+```json
 {
   "email": "check@example.com"
 }

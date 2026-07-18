@@ -1,0 +1,174 @@
+---
+title: 'Bind named services'
+description: 'Use the service container to register and resolve services by name'
+---
+
+## When to Use Named Bindings
+
+Named bindings are useful for services that are resolved by a logical name rather than a class reference — things like configuration, loggers, API clients, or feature flags.
+
+## Bind a Transient Service
+
+Every `make()` call returns a fresh instance:
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+
+const container = ChalkySticks.getContainer();
+
+container.bind('http-client', () => {
+    return new HttpClient({
+        baseUrl: 'https://api.chalkysticks.com/v3',
+        timeout: 5000,
+    });
+});
+
+// Each call creates a new client
+const clientA = ChalkySticks.make<HttpClient>('http-client');
+const clientB = ChalkySticks.make<HttpClient>('http-client');
+// clientA !== clientB
+```
+
+## Bind a Singleton Service
+
+First `make()` creates the instance; subsequent calls return the cached version:
+
+```typescript
+container.singleton('logger', () => {
+    return new ConsoleLogger({
+        level: 'info',
+        prefix: '[ChalkySticks]',
+    });
+});
+
+// Always the same instance
+const loggerA = ChalkySticks.make<ConsoleLogger>('logger');
+const loggerB = ChalkySticks.make<ConsoleLogger>('logger');
+// loggerA === loggerB
+```
+
+## Bind an Existing Value
+
+Use `instance()` when you already have a constructed object:
+
+```typescript
+const config = {
+    apiKey: 'abc123',
+    apiUrl: 'https://api.chalkysticks.com/v3',
+    environment: 'production',
+};
+
+container.instance('config', config);
+
+// Retrieve it anywhere
+const cfg = ChalkySticks.make<typeof config>('config');
+console.log(cfg.apiUrl);
+```
+
+## Resolve Dependencies Inside Factories
+
+Factories receive the container as their first argument, so bindings can depend on other bindings:
+
+```typescript
+container.singleton('config', () => ({
+    apiUrl: 'https://api.chalkysticks.com/v3',
+    analyticsKey: 'xyz789',
+}));
+
+container.singleton('analytics', (c) => {
+    const config = c.make<any>('config');
+
+    return new AnalyticsService({
+        apiKey: config.analyticsKey,
+        endpoint: config.apiUrl + '/events',
+    });
+});
+
+container.singleton('logger', (c) => {
+    const analytics = c.make<AnalyticsService>('analytics');
+
+    return new ConsoleLogger({
+        level: 'info',
+        onError: (message) => analytics.trackError(message),
+    });
+});
+```
+
+## Check Before Resolving
+
+```typescript
+if (container.bound('logger')) {
+    ChalkySticks.make<ConsoleLogger>('logger').info('Ready');
+}
+else {
+    console.log('No logger registered');
+}
+```
+
+## Replace a Binding
+
+Calling `bind()` or `singleton()` with the same key overwrites the previous binding:
+
+```typescript
+// Development logger
+container.singleton('logger', () => new ConsoleLogger({ level: 'debug' }));
+
+// Later, switch to production logger
+container.singleton('logger', () => new SilentLogger());
+```
+
+## Remove a Binding
+
+```typescript
+container.forget('logger');
+container.bound('logger'); // false
+```
+
+## Using the app() Shortcut
+
+```typescript
+import { app } from '@chalkysticks/sdk-core';
+
+// Resolve by key
+const logger = app<ConsoleLogger>('logger');
+
+// Get the container
+const container = app() as Container;
+container.bind('my-service', () => new MyService());
+```
+
+## Full Example in a Provider
+
+```typescript
+import { ServiceProvider } from '@chalkysticks/sdk-core/Provider/ServiceProvider';
+
+export class InfrastructureProvider extends ServiceProvider {
+    /**
+     * Register infrastructure services.
+     *
+     * @return void
+     */
+    public register(): void {
+        this.container.instance('config', {
+            apiUrl: 'https://api.chalkysticks.com/v3',
+            environment: 'production',
+        });
+
+        this.container.singleton('logger', (c) => {
+            const config = c.make<any>('config');
+
+            return new ConsoleLogger({
+                level: config.environment === 'production' ? 'warn' : 'debug',
+            });
+        });
+
+        this.container.bind('http-client', (c) => {
+            const config = c.make<any>('config');
+
+            return new HttpClient({
+                baseUrl: config.apiUrl,
+            });
+        });
+    }
+}
+```

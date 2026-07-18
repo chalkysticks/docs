@@ -1,236 +1,181 @@
 ---
 title: 'Managers'
-description: 'Pure logic managers for table, balls, lines, rails, and trajectories'
+description: 'Pure logic managers for table, balls, lines, shapes, stickers, text, rails, and trajectories'
 ---
 
-The sdk-pad uses manager classes that contain pure logic with no UI dependencies.
+The sdk-pad uses manager classes that contain pure logic with no UI dependencies. All element managers extend `Manager.Base`, which itself extends `Event.Dispatcher` and emits granular events. See the [Events Reference](/sdk/pad/events) for the complete event catalog.
+
+## Base Manager
+
+`Manager.Base<T>` provides the shared contract every element manager inherits:
+
+```typescript
+manager.clear();                    // remove all elements, dispatch `<element>:clear`
+manager.exportState();              // shallow-copied T[]
+manager.importState(state);         // replace all elements
+
+manager.activateItem(id);
+manager.deactivateAll();
+manager.getActiveItem();            // first active element
+manager.getActiveItems();
+manager.isAnyActive();
+manager.removeActiveItems();
+
+manager.getById(id);
+manager.removeById(id);
+manager.updateItem(id, updates);    // Object.assign partial updates
+
+manager.updateBounds(bounds);
+manager.onStateChange((items) => {});   // single callback slot
+manager.offStateChange();
+```
+
+Subclasses add typed aliases (e.g. `activateBall`, `deactivateShapes`) on top of these.
 
 ## Table Manager
 
-Main orchestrator that coordinates all sub-managers.
+Main orchestrator that coordinates all sub-managers. See [Table Manager](/sdk/pad/table-manager) for the full API.
 
 ```typescript
 import { Manager } from '@chalkysticks/sdk-pad';
 
 const table = new Manager.Table(bounds, ballSize);
-```
 
-### Sub-Managers
-
-```typescript
-table.ballManager       // Ball operations
-table.lineManager       // Line/connection operations
-table.railManager       // Boundary operations
-table.trajectoryManager // Path visualization
-```
-
-### Ball Operations
-
-```typescript
-// Add a ball
-table.addBall({ x: 0.5, y: 0.5, type: 'solid', number: 1 });
-
-// Remove a ball
-table.removeBall(ball);
-
-// Remove selected balls
-table.removeSelectedBalls();
-
-// Select/deselect
-table.selectBall(ball);
-table.deselectAllBalls();
-```
-
-### Line Operations
-
-```typescript
-// Add line between balls
-table.addLine(ball1, ball2);
-
-// Check if balls are connected
-const connected = table.areBallsConnected(ball1, ball2);
-
-// Get connected balls
-const connectedBall = table.getConnectedBall(ball);
-const allConnected = table.getConnectedBalls(ball);
-```
-
-### Movement
-
-```typescript
-// Move all selected balls
-table.moveBalls(deltaX, deltaY);
-
-// Shuffle ball positions
-table.shuffleBalls();
-```
-
-### Collision
-
-```typescript
-// Calculate collision with another ball
-const collision = table.calculateCollisionWithBall(ball, targetBall);
-
-// Calculate collision with rail
-const railCollision = table.calculateCollisionWithRail(ball);
-```
-
-### State
-
-```typescript
-// Import/export state
-table.importTableState(state);
-table.importDiagram(diagramModel);
-const state = table.exportTableState();
-
-// Rack balls
-table.rackBalls('8ball');
-
-// Clear everything
-table.clearAll();
-
-// Update bounds
-table.updateBounds(newBounds);
-```
-
-### Events
-
-```typescript
-// Subscribe to state changes
-table.onStateChange((state) => {
-    console.log('Table changed');
-});
-
-// Unsubscribe
-table.offStateChange(handler);
+table.ballManager;       // Ball operations
+table.lineManager;       // Line/connection operations
+table.shapeManager;      // Shape operations
+table.stickerManager;    // Sticker image operations
+table.textManager;       // Text annotation operations
+table.railManager;       // Boundary operations
+table.trajectoryManager; // Path visualization
 ```
 
 ---
 
 ## Ball Manager
 
-Pure logic for ball management.
+Pure logic for ball management. Constructor: `new Manager.Ball(ballSize, playableBounds)`.
 
 ```typescript
 const ballManager = table.ballManager;
 ```
 
+### Statics
+
+```typescript
+Manager.Ball.CUE_BALL_ALIASES;        // Set: '0', 'cue', 'cueball', 'w', 'white', 'whiteball'
+Manager.Ball.NEAREST_BALL_THRESHOLD;  // 90 (px, proximity detection)
+```
+
+Any cue alias passed as a ball `type` is normalized to the cue ball (case-insensitive, `ball-` prefixes stripped).
+
 ### CRUD Operations
 
 ```typescript
-// Add ball (pixel coordinates)
-ballManager.addBall({ x: 400, y: 200, type: 'solid', number: 1 });
+// Add ball (absolute pixel coordinates)
+ballManager.addBall({ type: '1', x: 400, y: 200 });
 
 // Add ball (normalized 0-1 coordinates)
-ballManager.addBallNormalized({ x: 0.5, y: 0.5, type: 'cue' });
+ballManager.addBallNormalized({ type: 'cue', x: 0.5, y: 0.5 });
 
-// Remove ball
-ballManager.removeBall(ball);
+// Add ball, clamped inside bounds (accepts normalized or absolute coords)
+ballManager.addBallWithinBounds({ type: '9' }, bounds);
+
+// Add ball at a line's midpoint (defaults to type 'ghost')
+ballManager.addBallAtIntersection(options, line);
+
+// Remove ball by ID
+ballManager.removeBall(ballId);
 
 // Get ball by ID
 const ball = ballManager.byId('ball-1');
 ```
 
+New balls without an explicit `id` get a generated `tmp-xxxx` id. Adding a ball nudges it out of overlaps automatically.
+
 ### Specialized Ball Getters
 
 ```typescript
-// Get specific ball types
 const cueBall = ballManager.getCueBall();
 const eightBall = ballManager.getEightBall();
 
-// Get ball groups
-const objectBalls = ballManager.getObjectBalls();  // All non-cue balls
+const objectBalls = ballManager.getObjectBalls();  // Numbered balls only (same set as getNumericBalls(); excludes cue, ghost, arrow)
 const solids = ballManager.getSolidBalls();        // Balls 1-7
 const stripes = ballManager.getStripedBalls();     // Balls 9-15
 
-// Get special marker balls
 const arrows = ballManager.getArrowBalls();        // Arrow indicators
 const ghosts = ballManager.getGhostBalls();        // Ghost balls
+const numbered = ballManager.getNumericBalls();    // Excludes cue, ghost, arrow
 
-// Get numbered balls only (excludes cue, ghost, arrow)
-const numbered = ballManager.getNumericBalls();
+const byType = ballManager.getBallsByType('ghost');
 
-// Get balls by specific type
-const customBalls = ballManager.getBallsByType('ghost');
-
-// Calculate distance between two balls
 const distance = ballManager.getDistanceBetweenBalls(ballIdA, ballIdB);
+```
+
+### Chain Traversal
+
+Requires the line resolver (wired automatically by `Manager.Table`):
+
+```typescript
+const upstream = ballManager.getBallsBefore(ballId);     // balls linked before this one
+const downstream = ballManager.getBallsAfter(ballId);    // balls linked after this one
+const connected = ballManager.getConnectedBalls(ballId); // full connected set
+
+ballManager.setLineResolver((ballId) => lineManager.getLinesByBallId(ballId));
 ```
 
 ### Activation
 
 ```typescript
-// Activate (select) a ball
-ballManager.activateBall(ball);
-
-// Deactivate all balls
+ballManager.activateBall(ballId);          // second arg true deactivates others first
 ballManager.deactivateBalls();
+ballManager.toggleBall(ballId);
 
-// Toggle activation
-ballManager.toggleBall(ball);
-
-// Get active/inactive balls
 const active = ballManager.getActiveBalls();
-const singleActive = ballManager.getActiveBall();
+const single = ballManager.getActiveBall();
 const inactive = ballManager.getInactiveBalls();
+ballManager.isAnyBallActive();
+ballManager.isOneBallActive();
 ```
 
 ### Proximity Detection
 
-Distance threshold: 90 pixels
+Distance threshold: `NEAREST_BALL_THRESHOLD` (90px). The optional `mustBeActive` flag restricts matches to selected balls.
 
 ```typescript
-// Get closest ball to coordinates
 const closest = ballManager.getClosestBall(x, y);
+const closestBalls = ballManager.getClosestBalls(x, y);        // all within threshold
+const nearestTo = ballManager.getClosestBallTo(ballId);
+const nearestSetTo = ballManager.getClosestBallsTo(ballId);
 
-// Get multiple closest balls
-const closestBalls = ballManager.getClosestBalls(x, y, count);
-
-// Get closest ball to another ball
-const nearestTo = ballManager.getClosestBallTo(ball);
-
-// Check if balls are nearby
 const nearby = ballManager.hasBallsNearby(x, y);
-
-// Check if two balls are touching
-const touching = ballManager.areBallsTouching(ball1, ball2);
-
-// Get all touching balls
-const touchingBalls = ballManager.getTouchingBalls(ball);
+const touching = ballManager.areBallsTouching(ballA, ballB);   // ball objects
+const touchingSelf = ballManager.isTouchingAnotherBall(ballId);
+const touchingPairs = ballManager.getTouchingBalls(radius);    // [ballA, ballB] pairs (radius arg is unused; threshold derives from ballSize)
 ```
 
 ### Movement
 
 ```typescript
-// Move ball to position
-ballManager.moveBall(ball, x, y);
+ballManager.moveBall(ballId, x, y);
+ballManager.moveBallRelative(ballId, deltaX, deltaY, bounds);   // clamped to bounds
 
-// Move ball relative
-ballManager.moveBallRelative(ball, deltaX, deltaY);
-
-// Shuffle all balls
-ballManager.shuffle();
-
-// Reset offsets/positions
-ballManager.resetBallOffsets();
+ballManager.shuffle(bounds, minDistance);   // random non-overlapping positions
+ballManager.resetBallOffsets(bounds);
 ballManager.resetBallPositions();
 ```
 
-### Special Operations
+### Selection Cycling
 
 ```typescript
-// Add ball at line midpoint
-ballManager.addBallAtIntersection(line);
-
-// Resolve overlapping balls (push apart)
-ballManager.resolveCollisions();
+ballManager.cycleGroup(x, y);   // tap-to-cycle through nearby balls
 ```
 
 ---
 
 ## Line Manager
 
-Pure logic for line/connection management.
+Pure logic for line/connection management. Constructor: `new Manager.Line(ballSize, playableBounds)`.
 
 ```typescript
 const lineManager = table.lineManager;
@@ -238,153 +183,141 @@ const lineManager = table.lineManager;
 
 ### CRUD Operations
 
+`addLine` takes an options object (`IAddLineOptions`):
+
 ```typescript
-// Add line between balls
-lineManager.addLine(ball1, ball2);
+lineManager.addLine({
+    color: '#FF0000',               // optional
+    controlPoint: { x: 300, y: 150 }, // optional (Bezier curve)
+    endBallId: 'ball-1',
+    lineStyle: 'dashed',             // optional
+    startBallId: 'ball-0',
+});
 
-// Add line with control point (for Bezier curve)
-lineManager.addLine(ball1, ball2, { x: 300, y: 150 });
-
-// Remove line by ID
+// Remove lines
 lineManager.removeLineById(lineId);
-
-// Remove all lines connected to a ball
+lineManager.removeLineByStartId(startBallId);
+lineManager.removeLineByEndId(endBallId);
 lineManager.removeLinesByBallId(ballId);
 
-// Move line
-lineManager.moveLine(line, deltaX, deltaY);
+// Re-point a line at different balls
+lineManager.moveLine(lineId, newStartBallId, newEndBallId);
+```
+
+### Color & Style
+
+```typescript
+// Fallback chain: explicit color > ball type color > default (#000000)
+const color = lineManager.getLineColor(lineId);
+lineManager.setLineColor(lineId, '#FF0000');
+
+const style = lineManager.getLineStyle(lineId);      // Enum.LineStyle
+lineManager.setLineStyle(lineId, Enum.LineStyle.Dashed);
+const dashArray = lineManager.getStrokeDashArray(lineId);   // '8,4' | '2,4' | 'none'
 ```
 
 ### Bezier Curve Support
 
 ```typescript
-// Set/update control point on existing line
 lineManager.setControlPoint(lineId, { x: 300, y: 150 });
-
-// Get control point
 const controlPoint = lineManager.getControlPoint(lineId);
-
-// Check if line has a curve
 const isCurved = lineManager.hasCurve(lineId);
-
-// Clear control point (make line straight)
 lineManager.clearControlPoint(lineId);
 
-// Get SVG path d attribute
+// SVG path d attribute (optional x/y offsets, e.g. half ball size)
 const pathD = lineManager.getPath(lineId);
 // Straight: "M 100,200 L 400,200"
 // Curved:   "M 100,200 Q 300,150 400,200"
 
-// Get point along curve at parameter t (0-1)
 const point = lineManager.getPointOnCurve(lineId, 0.5);
-
-// Get curve length
 const length = lineManager.getCurveLength(lineId);
-
-// Get curve midpoint
 const midpoint = lineManager.getCurveMidpoint(lineId);
-
-// Get tangent angle at point t
 const angle = lineManager.getCurveTangentAngle(lineId, 0.5);
 ```
 
 ### Activation
 
 ```typescript
-// Activate a line
-lineManager.activateLine(line);
-
-// Deactivate all lines
+lineManager.activateLine(lineId);    // second arg true deactivates others first
 lineManager.deactivateLines();
 
-// Get active/inactive lines
 const active = lineManager.getActiveLines();
 const inactive = lineManager.getInactiveLines();
+lineManager.isAnyLineActive();
 ```
 
 ### Queries
 
-Distance threshold: 50 pixels
+Distance threshold for `getNearestLine`: 50 pixels (override via third argument).
 
 ```typescript
-// Get line by ID
 const line = lineManager.byId(lineId);
-
-// Get lines connected to a ball
 const lines = lineManager.getLinesByBallId(ballId);
-
-// Get nearest line to coordinates
 const nearest = lineManager.getNearestLine(x, y);
 
-// Check if line contains a ball
-const hasBall = lineManager.hasBall(line, ball);
+// Does any line touch this ball?
+const hasBall = lineManager.hasBall(ballId);
 
-// Get lines by ball type
+// Directional lookups
+const fromBall = lineManager.getLineByStartBallId(ballId);
+const toBall = lineManager.getLineByEndBallId(ballId);
+const allFrom = lineManager.getLinesByStartBallId(ballId);
+const allTo = lineManager.getLinesByEndBallId(ballId);
+
+// Chain traversal
+const previous = lineManager.getPreviousLine(lineId);
+const next = lineManager.getNextLine(lineId);
+
+// By ball type (requires ball resolver)
 const cueShotLines = lineManager.getLinesByBallType('cue');
 const ghostLines = lineManager.getLinesStartingWithType('ghost');
-const toSolidLines = lineManager.getLinesEndingWithType('solid');
+const toSolids = lineManager.getLinesEndingWithType('1');
 ```
 
 ### Line Measurements
 
 ```typescript
-// Get line angle (compass-style: up=0°, right=90°, down=180°, left=270°)
+// Compass-style angle: up=0°, right=90°, down=180°, left=270°
 const angle = lineManager.getAngle(lineId);
 const angleRadians = lineManager.getAngle(lineId, false);
 
-// Get line length
 const length = lineManager.getLength(lineId);
-
-// Get line midpoint
 const midpoint = lineManager.getMidpoint(lineId);
-
-// Get line slope
 const slope = lineManager.getSlope(lineId);
-
-// Get total length of all lines
 const totalLength = lineManager.getTotalLength();
 ```
 
 ### Line Relationships
 
 ```typescript
-// Check if two lines are parallel
-const parallel = lineManager.isParallelTo(lineIdA, lineIdB);
-
-// Get intersection point of two lines
+const parallel = lineManager.isParallelTo(lineIdA, lineIdB);         // tolerance default 1°
 const intersection = lineManager.getIntersectionPoint(lineIdA, lineIdB);
-
-// Get angle between two lines
 const angleBetween = lineManager.getAngleBetweenLines(lineIdA, lineIdB);
-
-// Calculate reflection angle off a rail
-const reflectionAngle = lineManager.getReflectionAngle(lineId, railAngle);
+const reflection = lineManager.getReflectionAngle(lineId, railSide);  // railSide: 'top' | 'right' | ...
 ```
 
 ### Cleanup
 
 ```typescript
-// Remove everything after a ball in the chain
-lineManager.removeEverythingAfterBall(ball);
-
-// Reconnect lines when a ball is removed
-lineManager.reconnectLineDueToRemovedBall(removedBall);
+lineManager.removeEverythingAfterBall(ballId);
+lineManager.reconnectLineDueToRemovedBall(removedBallId);
+lineManager.resetLines();
 ```
 
-### Position Resolver
+### Resolvers
+
+`Manager.Table` wires these automatically; set them manually only when using the Line manager standalone:
 
 ```typescript
-// Inject callback to get ball positions (loose coupling)
-lineManager.setBallPositionResolver((ballId) => {
-    return { x: ball.x, y: ball.y };
-});
+lineManager.setBallPositionResolver((ballId) => ({ x, y }));
+lineManager.setBallResolver((ballId) => ballManager.byId(ballId));
 ```
 
 ---
 
 ## Rail Manager
 
-Pure logic for rail/boundary management.
+Pure logic for rail/boundary management. Constructor: `new Manager.Rail(ballSize, playableBounds)`.
 
 ```typescript
 const railManager = table.railManager;
@@ -395,25 +328,25 @@ const railManager = table.railManager;
 ```typescript
 import { Enum } from '@chalkysticks/sdk-pad';
 
-Enum.RailDirection.TOP     // 'top'
-Enum.RailDirection.RIGHT   // 'right'
-Enum.RailDirection.BOTTOM  // 'bottom'
-Enum.RailDirection.LEFT    // 'left'
+Enum.RailDirection.Top     // 'top'
+Enum.RailDirection.Right   // 'right'
+Enum.RailDirection.Bottom  // 'bottom'
+Enum.RailDirection.Left    // 'left'
 ```
 
 ### Methods
 
 ```typescript
-// Get nearest rail to coordinates
-const rail = railManager.getNearestRail(x, y);
+// Get nearest rail segment to coordinates
+const rail = railManager.getNearestRail(x, y);   // IDiagramRail with id/x1/y1/x2/y2
 
-// Get nearest rail type for a ball
-const direction = railManager.getNearestRailType(ball);
+// Get nearest rail direction for a ball
+const direction = railManager.getNearestRailType(ball);   // RailDirection
 
 // Get specific rail coordinates
-const railCoords = railManager.getRail(Enum.RailDirection.TOP);
+const railCoords = railManager.getRail(Enum.RailDirection.Top);
 
-// Check if position touches rail
+// Check if a ball position touches a rail (2px margin)
 const touching = railManager.isTouchingRail(x, y);
 
 // Update table boundaries
@@ -422,23 +355,97 @@ railManager.updateBounds(newBounds);
 
 ---
 
+## Shape Manager
+
+Pure logic for geometric shape management. See [Shapes](/sdk/pad/shapes) for full documentation.
+
+```typescript
+const shapeManager = table.shapeManager;
+
+// Add a shape ('rect' | 'circle' | 'ellipse' | 'arrow')
+shapeManager.addShape('rect', 400, 200);
+shapeManager.addShape('circle', 300, 150, { fill: 'rgba(0, 100, 255, 0.3)' });
+
+shapeManager.removeShape(shapeId);
+const shape = shapeManager.getShape(shapeId);
+
+// Manipulation
+shapeManager.moveShape(shapeId, 500, 300);
+shapeManager.rotateShape(shapeId, 45);
+shapeManager.scaleShape(shapeId, 1.5);        // optional second axis: scaleShape(id, sx, sy)
+shapeManager.resizeShape(shapeId, 100, 60);
+```
+
+---
+
+## Sticker Manager
+
+Pure logic for sticker image management. See [Stickers](/sdk/pad/stickers) for full documentation.
+
+```typescript
+const stickerManager = table.stickerManager;
+
+// Add a sticker (type first, then coordinates)
+stickerManager.addSticker('chalk', 400, 200);
+stickerManager.addSticker('custom', 300, 150, { imageUrl: '/img/logo.png' });
+
+stickerManager.removeSticker(stickerId);
+const sticker = stickerManager.getSticker(stickerId);
+
+// Manipulation
+stickerManager.moveSticker(stickerId, 500, 300);
+stickerManager.rotateSticker(stickerId, 90);
+stickerManager.scaleSticker(stickerId, 1.5);
+stickerManager.resizeSticker(stickerId, 80, 80);
+```
+
+---
+
+## Text Manager
+
+Pure logic for text annotation management. See [Text Annotations](/sdk/pad/texts) for full documentation.
+
+```typescript
+const textManager = table.textManager;
+
+// Add text
+textManager.addText(400, 200, 'Aim here');
+
+textManager.removeText(textId);
+const text = textManager.getText(textId);
+
+// Editing
+textManager.startEditing(textId);
+textManager.stopEditing(textId);
+textManager.stopAllEditing();
+textManager.updateTextContent(textId, 'New content');
+
+// Manipulation
+textManager.moveText(textId, 500, 300);
+textManager.rotateText(textId, 45);
+```
+
+---
+
 ## Trajectory Manager
 
-Pure logic for trajectory/path management.
+Thin `Base<IDiagramTrajectory>` subclass for trajectory/path storage.
 
 ```typescript
 const trajectoryManager = table.trajectoryManager;
-```
-
-### Methods
-
-```typescript
-// Clear all trajectories
-trajectoryManager.clearTrajectories();
-
-// Update table boundaries
-trajectoryManager.updateBounds(newBounds);
 
 // Access trajectories array
 const paths = trajectoryManager.trajectories;
+
+// Clear all trajectories (inherited from Base)
+trajectoryManager.clear();
+
+// Update table boundaries
+trajectoryManager.updateBounds(newBounds);
 ```
+
+## Recent Changes
+
+- **2.0.0** — No breaking manager changes; the major bump was the [Rules module](/sdk/pad/rules)
+- **1.5.13** — `Ball.CUE_BALL_ALIASES`: cue ball type strings are normalized (`'0'`, `'w'`, `'white'`, ... → cue)
+- **1.3.23** — `Line.addLine()` takes an `IAddLineOptions` object (not positional arguments); `getLineColor()` / `setLineColor()` added

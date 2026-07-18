@@ -1,0 +1,115 @@
+---
+title: 'Offline inference'
+description: 'Set up service worker caching for fully offline browser inference'
+---
+
+## Register the Service Worker
+
+Add this to your app's entry point:
+
+```typescript
+if ('serviceWorker' in navigator) {
+    try {
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        console.log('Service worker registered:', registration.scope);
+    } catch (error) {
+        console.warn('Service worker registration failed:', error);
+    }
+}
+```
+
+## Prime the Cache
+
+The first time your app loads, the service worker caches every asset it sees — including the ~220 MB of model weight shards. This happens automatically during normal use:
+
+1. Load the page (SW caches HTML, CSS, JS)
+2. Run inference at least once (SW caches inferencejs, model metadata, and all .bin shards)
+3. Done — the cache is fully primed
+
+There is no explicit "download models" step. The service worker transparently intercepts fetch requests and stores the responses.
+
+## Verify Offline Mode
+
+1. Open Chrome DevTools → **Application** → **Service Workers**
+2. Confirm the SW shows "activated and is running"
+3. Check **Cache Storage** → look for your cache name (e.g., `roboflow-local-v4`)
+4. You should see entries for the model shard URLs
+5. Toggle the **Offline** checkbox in the Network panel
+6. Reload and run inference — it should work identically
+
+## The Service Worker File
+
+Create `sw.js` in your public/static directory:
+
+```javascript
+const CACHE_NAME = 'inference-cache-v1';
+
+self.addEventListener('install', () => self.skipWaiting());
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys()
+            .then((keys) => Promise.all(
+                keys
+                    .filter((key) => key !== CACHE_NAME)
+                    .map((key) => caches.delete(key)),
+            ))
+            .then(() => self.clients.claim()),
+    );
+});
+
+self.addEventListener('fetch', (event) => {
+    if (event.request.method !== 'GET') return;
+
+    const url = new URL(event.request.url);
+    if (!['http:', 'https:'].includes(url.protocol)) return;
+
+    event.respondWith(
+        caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+
+            return fetch(event.request).then((response) => {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, clone);
+                });
+                return response;
+            });
+        }),
+    );
+});
+```
+
+## Update Models
+
+When you update to a new model version:
+
+1. Bump the cache name: `inference-cache-v1` → `inference-cache-v2`
+2. Deploy the updated `sw.js`
+3. On next page load, the new SW prunes the old cache and re-fetches everything
+
+Users do not need to clear their browser cache. The version bump handles it automatically.
+
+## Troubleshooting
+
+**Models not caching on first load?**
+The service worker needs to be active before the model requests happen. If your app loads models immediately on page load, the SW might not be ready yet. Add a `navigator.serviceWorker.ready` check before starting inference:
+
+```typescript
+await navigator.serviceWorker.ready;
+
+const analyzer = new Core.ImageAnalyzer();
+// Now all fetches go through the SW
+```
+
+**Cache growing too large?**
+Each model is ~100-120 MB. Two models = ~220-240 MB. This is well within modern browser storage quotas (typically several GB), but if you need to manage it:
+
+```typescript
+const estimate = await navigator.storage.estimate();
+console.log('Used:', (estimate.usage / 1024 / 1024).toFixed(0), 'MB');
+console.log('Quota:', (estimate.quota / 1024 / 1024).toFixed(0), 'MB');
+```
+
+**Stale models after update?**
+Make sure you bumped the `CACHE_NAME` version string. The old SW will keep serving old models until the new SW activates. Close all tabs and reopen to force activation, or use `skipWaiting()` (included in the template above).

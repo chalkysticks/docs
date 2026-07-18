@@ -1,0 +1,369 @@
+---
+title: 'Physics Package'
+description: 'Standalone billiards physics simulation with boundary parsing and trajectory prediction'
+---
+
+`@chalkysticks/sdk-physics` (v0.3.10) is a standalone billiards physics package. It owns the discrete + CCD collision engine, table boundary parsing, and trajectory prediction. The previous in-tree physics from the legacy vue2-trainer has been extracted here with game-specific logic removed; thresholds are config-driven through `IPhysicsConfig` (with a couple of `TrajectoryComputer` exceptions noted below). Requires `@chalkysticks/sdk-core` `^1.61.5` as a peer dependency (`Event.Dispatcher`, `Utility.Log`).
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-physics
+```
+
+## Top-Level Exports
+
+```typescript
+import {
+    Boundary,    // TableBoundary, BoundaryBuilder, BoundaryFeature, LineSegment, CircularArc, SvgPathParser, BezierTessellator
+    Config,      // PhysicsConfig
+    Core,        // FrameTimer, TrajectoryPlayer
+    Enum,        // CollisionType, PhysicsEvent, PhysicsStepStrategy
+    Model,       // PhysicsBody
+    Simulation,  // PhysicsEngine, CollisionDetector, CollisionResolver, Forces, Integrator, ShotCalculator,
+                 // TrajectoryComputer, TrajectoryPredictor, TrajectoryWorkerClient, TrajectorySearchWorkerPool
+    Strategy,    // Base, Discrete, Backtrack, BacktrackPlus, SweptCCD, AdaptiveSubsteps
+    Utility,     // Math (allocation-free vec3/quat ops)
+    PhysicsSimulation,
+} from '@chalkysticks/sdk-physics';
+
+import type { IPhysicsSimulationOptions } from '@chalkysticks/sdk-physics';
+```
+
+Within the SDK repo, interfaces (`IPhysicsBody`, `IShot`, `IPocket`, `IPrecomputedTrajectory`, …) are global ambient declarations from `types/index.d.ts` — no import needed. Note that the published npm package does not ship these ambient declarations (`files` whitelists only `build/esm` and `build/web`, and the build never emits `types/index.d.ts`), so external TypeScript consumers must currently provide their own declarations for these interfaces.
+
+## Primary Entry Point
+
+`PhysicsSimulation` is a facade that wires `CollisionDetector`, `CollisionResolver`, `Forces`, `Integrator`, and `ShotCalculator` together behind one object. Bodies are created and registered explicitly; shots are described by an `IShot`.
+
+```typescript
+import { Enum, PhysicsSimulation } from '@chalkysticks/sdk-physics';
+
+const sim = new PhysicsSimulation({
+    boundarySvg: tableSvgContent,          // OR boundary: existingTableBoundary
+    pockets: pocketDefinitions,            // IPocket[]; omit to disable pocketing
+    config: { ballRestitution: 0.95 },     // Partial<IPhysicsConfig> overrides
+});
+
+// Create + place bodies
+const cue = sim.createBody(0);
+cue.setPosition(-0.6, sim.getConfig().ballY, 0);
+
+const one = sim.createBody(1);
+one.setPosition(0.6, sim.getConfig().ballY, 0);
+
+sim.setBodies([cue, one]);
+
+// Apply a shot (impulse + spin via ShotCalculator)
+sim.shoot(cue, {
+    aim: { x: 1, y: 0, z: 0 },
+    elevation: 0,
+    english: { x: 0, y: -0.2 },
+    power: 0.5,
+});
+
+// Live simulation: advance one fixed timestep per tick
+sim.on(Enum.PhysicsEvent.CollisionBallPocket, (e) => {
+    console.log('Pocketed:', e.data.ball.id, 'in', e.data.pocket);
+});
+
+sim.update(sim.getConfig().physicsTimestep);
+```
+
+| Method | Purpose |
+|--------|---------|
+| `createBody(id?)` | New `PhysicsBody` bound to this simulation's config |
+| `setBodies(bodies)` | Register the bodies to simulate |
+| `shoot(body, shot)` | Apply shot impulse + spin to a body |
+| `update(deltaTime)` | Advance live simulation one step (forces → integrate → detect → resolve) |
+| `computeTrajectory(shot)` | Precompute an entire shot synchronously (`IPrecomputedTrajectory`, ~10–70ms) |
+| `predictTrajectory(body, duration?, steps?)` | Aim-line prediction for one body (rails only) |
+| `predictAllTrajectories(cueBody, direction, power, duration?, steps?)` | Full prediction incl. ball-ball, `Map<TBodyId, ITrajectoryPoint[]>` |
+| `areBodiesInMotion()` | Any active body moving or being pocketed |
+| `setBoundary(boundary)` / `setPockets(pockets)` | Replace geometry; invalidates lazy computer/predictor |
+| `getConfig()` / `getBoundary()` / `getPockets()` | State queries |
+
+For lower-level control (strategy switching, active body queries), use `Simulation.PhysicsEngine` directly: `setBodies`, `setBoundary`, `setPockets`, `setStrategy(strategy | Enum.PhysicsStepStrategy | string)`, `shootBall(body, shot)`, `update(deltaTime)`, `areBodiesInMotion()`, `getActiveBodies()`. A `reset()` method exists but is currently a no-op reserved for future use.
+
+## Shots
+
+`IShot` describes a cue strike:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `aim` | `IVector3` | Aim direction in world space |
+| `elevation` | `number` | Cue elevation in radians |
+| `english` | `IVector2` | Sidespin (x) and follow/draw (y) |
+| `power` | `number` | Normalized stroke power `0..1` |
+| `jump?` | `number` | Optional vertical velocity for jump shots |
+| `velocity?` | `number` | Optional strike velocity override |
+
+`ShotCalculator.calculateImpulse(shot, body)` and `calculateSpin(shot, body)` convert this into an impulse and angular velocity; `applyShot(body, shot)` does both.
+
+## Boundary
+
+Table geometry is a `TableBoundary` — a continuous manifold of line segments and circular arcs, offset by ball radius (Minkowski sum). Build it with `BoundaryBuilder`:
+
+```typescript
+import { Boundary, Config } from '@chalkysticks/sdk-physics';
+
+const builder = new Boundary.BoundaryBuilder(Config.PhysicsConfig.DEFAULT);
+
+// Preferred: from SVG content (the format the pad editor exports)
+const boundary = builder.buildFromSvg(svgContent);
+
+// Optional scale + bezier tessellation control
+const fine = builder.buildFromSvg(svgContent, 1.085, 8);
+```
+
+Builder methods:
+
+| Method | Purpose |
+|--------|---------|
+| `buildFromSvg(svgContent, boundaryScale?, bezierSegments?)` | Parse SVG path, tessellate beziers, fit to table dimensions |
+| `buildFromPoints(rawPoints, boundaryScale?)` | Legacy pre-sampled 2D point arrays (re-centered + re-scaled) |
+| `buildFromRawPoints(points)` | Faithful pass-through of an XZ point loop — no re-fit/re-center; caller owns winding and inset. Points may carry a `rail` label |
+| `buildRectangle()` | Plain four-rail rectangle from config table dimensions |
+| `buildPolygon(sides)` | Regular N-gon boundary (min 3 sides) |
+| `getPockets()` | Reserved — pocket detection is not implemented, so this always returns an empty `IPocketRegion[]`. Supply pockets explicitly (e.g. `PhysicsSimulation`'s `pockets` option) |
+
+Winding matters: normals must point inward or balls stick to rails. `buildFromSvg`/`buildFromPoints` fix winding automatically (shoelace formula); `buildFromRawPoints` does not. Segments get semantic rail ids (`foot`, `head`, `foot-top`, `head-bottom`, …) so collision events can report real rail locations.
+
+`TableBoundary` itself exposes `sweep(origin, delta)` (raycast → `IBoundaryHit`), `isPointInside(position)`, `clampPointInside(position)`, `getInnerBounds()` / `getOuterBounds()`, `relativeToPoint(relativeX, relativeZ)`, `toPolyline(resolution)`, and `getFeatures()`.
+
+## Trajectory Prediction
+
+`Simulation.TrajectoryPredictor` is a lightweight simulator for aim lines and ghost balls. It takes a config in the constructor; boundary, pockets, and bodies are injected via setters:
+
+```typescript
+import { Simulation } from '@chalkysticks/sdk-physics';
+
+const predictor = new Simulation.TrajectoryPredictor(config);
+predictor.setBoundary(boundary);
+predictor.setPockets(pockets);
+predictor.setBodies(bodies);
+
+// Single body, rail bounces only
+const path = predictor.predictSingleBodyTrajectory(cueBody, 3.0, 100);
+
+// All bodies after a shot, including ball-ball collisions
+const paths = predictor.predictAllBodyTrajectories(cueBody, direction, 0.5, 2, 200);
+
+// Helpers
+const aim = predictor.calculateAimVector(cueBody, targetBody);
+const clear = predictor.isPathClear(cueBody, targetBody, allBodies);
+```
+
+Each `ITrajectoryPoint` carries `position`, `velocity`, `time`, and `railBounce`.
+
+## Precomputed Trajectories
+
+For full shot execution, `TrajectoryComputer` and `TrajectoryPlayer` split physics calculation from visual playback.
+
+`TrajectoryComputer` runs the entire shot simulation up front:
+
+```typescript
+const computer = new Simulation.TrajectoryComputer({ physicsTimestep, pockets, tableBounds }, config);
+const trajectory = computer.compute(bodies, shot); // IPrecomputedTrajectory
+```
+
+It clones the current body state, applies the shot impulse and spin, then advances the private simulation until every active body stops or the safety step cap is reached. The result is an `IPrecomputedTrajectory`: `frames` (per-ball packed tracks), `events`, `stationaryBalls`, `outcome` (`IShotOutcome`: `ballsPocketed`, `ballsFallenOff`, `firstBallContacted`, `totalCushionHits`, `finalBallStates`, …), `physicsTimestep`, `totalSteps`, and the originating `shot`.
+
+`TrajectoryPlayer` (in `Core`) does not solve physics. It is a playback cursor. Each render or fixed update advances the cursor by elapsed time, picks the matching precomputed step, and writes that frame state back onto the live bodies. Collision and pocket events are dispatched at their recorded `stepIndex` so audio, rules, stats, and camera systems can react at playback time without re-running collision detection.
+
+```typescript
+const player = new Core.TrajectoryPlayer();
+player.setBodies(bodies);
+player.play(trajectory);
+
+// Per frame:
+player.advance(deltaTime, speedMultiplier);
+
+// Controls: stop(), skip(), cancel(), getIsPlaying()
+player.on('playback:complete', () => { /* balls at rest */ });
+```
+
+The packed frame format is shared by the computer and player:
+
+| Offset | Field |
+|--------|-------|
+| `0..2` | `position.x`, `position.y`, `position.z` |
+| `3..6` | `quaternion.w`, `quaternion.x`, `quaternion.y`, `quaternion.z` |
+| `7..9` | `velocity.x`, `velocity.y`, `velocity.z` |
+| `10..12` | `angularVelocity.x`, `angularVelocity.y`, `angularVelocity.z` |
+| `13` | `visible` as `1` or `0` |
+| `14` | `isFallingOffTable` as `1` or `0` |
+
+`TrajectoryComputer.FRAME_STRIDE` is `15`. Each moving body gets a `Float32Array` track plus a `startStep`, which lets playback leave a ball still until the simulation step where it first moves. Bodies that never move are stored in `stationaryBalls`, and all final body states are mirrored into the shot outcome.
+
+### Shot Execution Flow
+
+1. Clone live `PhysicsBody` state into reusable simulation bodies.
+2. Find the cue body and apply shot impulse from `ShotCalculator`.
+3. Apply cue spin directly to `angularVelocity`.
+4. Rebuild the active body list for the current step.
+5. Record frame data for moving or pocketing bodies.
+6. Run one physics step through the configured strategy.
+7. Update pocket countdowns, fallen-off-table state, and rest hysteresis.
+8. Stop when all bodies are settled, then record a final frame.
+
+Pocket collisions are special in precomputed mode. The normal resolver only dampens velocity, steers the ball toward the pocket center, and marks `isBeingPocketed` — actual pocket finalization is the consumer's responsibility — so `TrajectoryComputer` wraps the resolver and skips direct pocket resolution. It records pocket entry from collision events and advances deterministic pocket countdowns inside the compute loop instead.
+
+### Playback Flow
+
+1. `TrajectoryPlayer.play()` stores the trajectory, sorts recorded events by `stepIndex`, and applies stationary body states immediately.
+2. `advance(deltaTime, speedMultiplier)` converts elapsed real time to physics steps via `deltaTime / trajectory.physicsTimestep`.
+3. The player floors the cursor to an integer step and applies the matching packed frame for each moving track.
+4. Pending events with `stepIndex <= currentStep` are dispatched in order.
+5. At the end, final body states are applied and `motion:stopped` + `playback:complete` are dispatched.
+
+Playback writes directly into live body properties. It does not interpolate between trajectory frames and it does not derive new rotation from velocity. Hosts that want visual interpolation should interpolate render data after the player has applied the authoritative frame.
+
+## Web Workers
+
+For off-thread computation, `TrajectoryWorkerClient` wraps a single worker and `TrajectorySearchWorkerPool` fans heavy trajectory search (e.g., recommending an angle) across `navigator.hardwareConcurrency - 1` workers, clamped to between 1 and 4 (`MAX_WORKERS`).
+
+```typescript
+const client = new Simulation.TrajectoryWorkerClient();
+
+await client.initialize(
+    new Worker(new URL('./trajectory.worker.ts', import.meta.url)),
+    pockets,
+    tableBounds,        // ITableBoundary | SVG string | Array<{ x, z }> raw point loop
+    physicsTimestep,
+    configOverrides,    // optional Partial<IPhysicsConfig> so worker physics match main thread
+);
+
+const trajectory = await client.compute(bodies, shot);
+```
+
+Re-initializing supersedes the previous worker (the stale one is terminated), so rapid boundary changes cannot leave the client in a "ready but no worker" state. The pool variant takes worker source text and an optional `{ points?, svg? }` boundary descriptor: `initialize(workerSource, pockets, tableBounds, physicsTimestep, boundary?)`, then `simulateBatch(bodies, requests)` and `terminate()`.
+
+## Rotation State
+
+Ball orientation is stored as a quaternion. The integrator converts angular velocity into an incremental quaternion every time a body advances:
+
+```typescript
+const angle = angularSpeed * deltaTime;
+const axis = normalize(body.angularVelocity);
+const delta = quatFromAxisAngle(axis, angle);
+
+body.quaternion = normalize(delta * body.quaternion);
+```
+
+This avoids Euler angle wrap problems such as `359 -> 0` choosing the long path. Renderers should copy the quaternion directly into their 3D object system. For Three.js, remember that SDK quaternions are stored as `{ w, x, y, z }`, while `THREE.Quaternion.set()` expects `(x, y, z, w)`.
+
+Because `TrajectoryComputer` records the quaternion into each frame and `TrajectoryPlayer` copies it back verbatim, rotation bugs usually originate in the simulation step that produced the frame, not in playback. Strategies that rewind, split, or replay a step must keep orientation synchronized with position and velocity.
+
+## Step Strategies
+
+The engine supports multiple substep / CCD strategies. Set via `PhysicsEngine.setStrategy()` using the `Enum.PhysicsStepStrategy` enum (`'discrete'`, `'backtrack'`, `'backtrack-plus'`, `'swept-ccd'`, `'adaptive-substeps'`) or a custom `IPhysicsStepStrategy` instance:
+
+| Strategy | Behavior | Rotation contract |
+|----------|----------|-------------------|
+| `Discrete` | Runs forces, integrate, detect, resolve once per fixed step. | Rotation advances inside `Integrator.integrate()`. |
+| `Backtrack` | Runs a normal step, then temporarily rewinds overlapping ball-ball pairs only to compute a cleaner collision normal. | The rewind is position-only and temporary. Bodies are advanced back before resolution, so no full orientation restore is needed. |
+| `BacktrackPlus` | Runs a tentative full step. If any collision is detected, restores pre-step state and re-runs that step as collision substeps. | The saved state must include position, velocity, angular velocity, and quaternion. Leaving the tentative quaternion in place causes extra visual rotation on collision frames. |
+| `SweptCCD` | Finds exact ball-ball time-of-impact, advances bodies to contact, resolves, then repeats with the remaining time. | Partial advances must use the integrator so quaternion advances with position. Manual `position += velocity * time` leaves rotation behind. |
+| `AdaptiveSubsteps` | Chooses a substep count from max body speed and runs the standard pipeline repeatedly at smaller `dt`. | Rotation advances inside each substep integration. |
+
+### Strategy Selection
+
+`BacktrackPlus` is the preferred strategy for precomputed trainer shots. It keeps collision-free steps cheap while refining only frames that actually contain collisions. This is a good fit for pool because most simulation steps are rolling motion, with a small number of dense collision moments.
+
+`Backtrack` is cheaper and improves normals for overlapping ball-ball collisions, but it does not re-run the full step at higher resolution. It is useful when you want low overhead and can tolerate discrete timing.
+
+`Discrete` is the simplest baseline and the easiest strategy to reason about, but collision normals are computed from post-step overlap and fast bodies can tunnel.
+
+`AdaptiveSubsteps` is useful when you want cost to scale with ball speed, but it applies substeps globally for that frame once selected.
+
+`SweptCCD` is the most exact ball-ball strategy, but it is more expensive and should be treated as a specialist option until its rail and pocket interactions have been validated for the target host.
+
+### Rewind Safety
+
+Any strategy that discards a tentative integration must restore every field that the integrator mutated. At minimum, that means:
+
+| State | Why it matters |
+|-------|----------------|
+| `position` | Collision detection and final placement |
+| `velocity` | Linear motion after the retry |
+| `angularVelocity` | Spin transfer, throw, and future rotation |
+| `quaternion` | Visible ball orientation for the recorded frame |
+
+The common failure mode is a visual-only rotation anomaly: a body keeps the quaternion from a discarded tentative step, then receives the retry step rotation too. Linear velocity can look correct while the ball markings briefly appear to gain or lose spin. When debugging this class of issue, compare frame-to-frame quaternion deltas around collision, pocket, and rail events. This was fixed for `BacktrackPlus` and `SweptCCD` in 0.3.0.
+
+## Configuration
+
+`Config.PhysicsConfig` is a flat, readonly config with regulation billiards defaults (2.25" / 6oz ball, 9-foot table, 240Hz timestep). `PhysicsConfig.DEFAULT` is the shared singleton; pass a `Partial<IPhysicsConfig>` to override:
+
+```typescript
+import { Config } from '@chalkysticks/sdk-physics';
+
+const config = new Config.PhysicsConfig({
+    ballDiameter:     0.05715,  // meters
+    ballMass:         0.17,     // kg
+    ballRestitution:  0.92,
+    railRestitution:  0.7,
+    railTorqueScale:  0.5,      // tune rail-imparted spin without changing linear response
+    rollingFriction:  0.01,
+    slidingFriction:  0.2,
+});
+```
+
+Notable groups (all on `IPhysicsConfig`):
+
+| Group | Fields |
+|-------|--------|
+| Ball | `ballDiameter`, `ballRadius`, `ballMass`, `ballInertia`, `maxJumpHeight` |
+| Table | `tableLength`, `tableWidth`, `tableHeight`, `tableHalfLength`, `tableHalfWidth`, `ballY`, `boundaryScale`, `cornerPocketWidth`, `sidePocketWidth` |
+| Rails | `railRestitution`, `railFriction`, `railSpinRetention`, `railTorqueScale`, `railNoseHeightRatio`, `railNoseOffset`, `railNoseHorizontal`, `railWallHeight`, `railTopWidth` |
+| Collision | `ballRestitution`, `ballFriction`, `throwCoefficient` (declared but not currently read by the simulation) |
+| Forces | `gravity`, `rollingFriction`, `slidingFriction`, `dragCoefficient`, `dragDensity`, `angularDragCoefficient`, `angularDragDensity` |
+| Thresholds | `stoppedVelocity`, `stoppedAngular`, `stopHysteresis`, `slowRollThreshold`, `airborneSurfaceEpsilon` |
+| Strategy | `adaptiveMaxSubsteps`, `adaptiveRadiusFraction`, `ccdTimeEpsilon` |
+| Spin / swerve | `hopRestitution`, `hopMinimumThreshold`; `spinTransferRate` and the `swerve*` fields are declared but not currently read by the simulation |
+| Cue | `cueLength`, `cueMass`, `maxStrikeVelocity`, `minStrikeVelocity`, `maxTipOffset`, `miscueThreshold`, `maxElevation`, `defaultPower` |
+| Simulation | `physicsTimestep` (1/240), `settleTimeMax`, `maxRailBounces`, `pocketCaptureSpeed` |
+
+Rail geometry is modeled with a nose contact above the ball equator (`railNoseHeightRatio`), so cushion impulses produce physically correct torque; `railTorqueScale` scales only that spin contribution (1.0 = full, 0.0 = none). Airborne balls interact with the rail wall (`railWallHeight`) and can land and roll on the rail top (`railTopWidth`) or fall off the table.
+
+## Events
+
+`PhysicsSimulation`, `PhysicsEngine`, and `TrajectoryPlayer` extend `Event.Dispatcher` from sdk-core. Event names are constants on `Enum.PhysicsEvent`:
+
+| Constant | Name | Payload |
+|----------|------|---------|
+| `PhysicsEvent.CollisionBallBall` | `collision:ball-ball` | `{ ball1, ball2, normal, penetration }` |
+| `PhysicsEvent.CollisionBallRail` | `collision:ball-rail` | `{ ball, featureId, normal, rail }` |
+| `PhysicsEvent.CollisionBallPocket` | `collision:ball-pocket` | `{ ball, pocket }` (pocket id string) |
+| `PhysicsEvent.MotionStopped` | `motion:stopped` | — (all bodies at rest; also fired at playback end). Dispatched by `PhysicsEngine` and `TrajectoryPlayer` only — `PhysicsSimulation` does not emit it, it only bubbles the three collision events |
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-physics';
+
+sim.on(Enum.PhysicsEvent.CollisionBallBall, (e) => {
+    console.log(e.data.ball1.id, 'hit', e.data.ball2.id);
+});
+```
+
+`TrajectoryPlayer` additionally dispatches every recorded trajectory event at its `stepIndex`, plus `playback:complete`. `PhysicsEngine` dispatches `strategy:changed` on `setStrategy()`. Spin / English effects (top, back, side) come from the shot's applied angular velocity plus the `Forces` module (table friction, drag, gravity) integrated each step; ball-ball throw comes from Coulomb friction in `CollisionResolver.applyBallBallFriction()`. Swerve is not currently modeled — the `swerve*` config fields are declared but unused.
+
+## Architecture Notes
+
+- Ported from vue2-trainer's `Ball` model; game-specific logic removed.
+- Thresholds are config-driven via `IPhysicsConfig`, with two exceptions hardcoded as private constants in `TrajectoryComputer`: `POCKET_DELAY_STEPS_AT_240HZ` (120, the ~500ms pocket capture countdown) and `MAX_STEPS_AT_240HZ` (3000, the safety step cap).
+- `PhysicsBody` extends `Event.Dispatcher` for per-body lifecycle hooks and exposes state queries (`isRolling()`, `isSliding()`, `isAirborne()`, `isStopped()`), collision math (`getCollisionData()`, `getCollisionNormal()`, `getPenetrationDepth()`), and lifecycle helpers (`clone()`, `copyFrom()`, `pocket()`, `respawn()`, `reset()`).
+- `Core.FrameTimer` provides a fixed-timestep loop (accumulator + interpolation) with `setPhysicsCallback()` / `setRenderCallback()` and a speed multiplier.
+- `Utility.Math` is allocation-free: every vec3/quat operation accepts an optional `out` parameter.
+- The engine itself is host-agnostic — no DOM, canvas, or framework deps (workers excepted).
+
+## Recent Changes
+
+- **0.3.10** — `BoundaryBuilder.buildFromSvg()` exposes a `bezierSegments` tessellation parameter (default 4).
+- **0.3.8–0.3.9** — `TrajectorySearchWorkerPool.initialize()` accepts an optional `{ points?, svg? }` boundary descriptor so search workers rebuild dynamic boundaries; `trajectory-search.worker.ts` source added.
+- **0.3.7** — Custom boundaries beyond SVG: `BoundaryBuilder.buildFromRawPoints()` pass-through point loops; `TrajectoryWorkerClient.initialize()` accepts a raw XZ point loop or SVG string for `tableBounds`, takes `configOverrides`, and supersedes stale in-flight workers.
+- **0.3.5** — Rail jump physics: airborne balls collide with the rail wall (`railWallHeight`), can land and roll on the rail top (`railTopWidth`), or fall off the table.
+- **0.3.1–0.3.4** — `@chalkysticks/sdk-core` moved to a semver peer dependency (`^1.61.5`).
+- **0.3.0** — Fixed rotation anomaly in `BacktrackPlus` and `SweptCCD`: step rewinds now restore full quaternion state instead of backstepping Euler angles.
+- **0.2.16** — Top/bottom spin throw adjustments.
+- **0.2.11** — `railTorqueScale` config to tune angular velocity imparted by cushion contact.

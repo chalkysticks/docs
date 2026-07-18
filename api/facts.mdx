@@ -1,0 +1,63 @@
+---
+title: 'Facts'
+description: 'Pool trivia and historical facts'
+---
+
+Short factoids surfaced throughout the app. Authoring requires permission.
+
+## List Facts
+
+```bash
+GET /v3/facts
+GET /v3/facts?validated=1&source=wikipedia
+```
+
+## Random Fact
+
+```bash
+GET /v3/facts/random
+GET /v3/facts/random?validated=1
+```
+
+## Get Fact
+
+```bash
+GET /v3/facts/{fact}
+```
+
+## Create Fact
+
+```bash
+POST /v3/facts
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "fact": "The first pool table was built in the 15th century.",
+  "context": "Historical billiards",
+  "source": "https://example.com/history",
+  "validated": false
+}
+```
+
+## Update Fact
+
+```bash
+PUT /v3/facts/{fact}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Delete Fact
+
+```bash
+DELETE /v3/facts/{fact}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Comments
+
+```bash
+GET /v3/facts/{fact}/comments
+```

@@ -1,0 +1,169 @@
+---
+title: 'Override SDK factories'
+description: 'Customize how SDK classes are instantiated from a higher-level package'
+---
+
+## Why Override Factories
+
+The `CoreServiceProvider` registers default factories for all SDK Models and Collections. Higher-level packages (your app, a plugin, etc.) can override any of these to customize construction — add default query parameters, inject additional dependencies, or swap in a subclass.
+
+## Override a Model Factory
+
+```typescript
+import ChalkySticks, { Model } from '@chalkysticks/sdk-core';
+
+const container = ChalkySticks.getContainer();
+
+// Override: every resolved Venue model includes related data by default
+container.registerFactory(Model.Venue, (attributes, options) => {
+    const venue = new Model.Venue(
+        attributes,
+        Object.assign({ baseUrl: 'https://api.chalkysticks.com/v3' }, options),
+    );
+
+    venue.setQueryParam('include', 'hours,media,checkins');
+
+    return venue;
+});
+
+// Now when anyone resolves a Venue, it has those defaults
+const venue = ChalkySticks.resolve(Model.Venue, { id: 42 });
+// venue already has ?include=hours,media,checkins
+```
+
+## Override a Collection Factory
+
+```typescript
+import ChalkySticks, { Collection } from '@chalkysticks/sdk-core';
+
+const container = ChalkySticks.getContainer();
+
+// Override: Feed collections default to 20 items per page
+container.registerFactory(Collection.Feed, (options) => {
+    return new Collection.Feed(
+        Object.assign({
+            baseUrl: 'https://api.chalkysticks.com/v3',
+        }, options),
+    );
+});
+```
+
+## Swap In a Subclass
+
+If you have a custom subclass that extends an SDK model, you can make the container return your subclass whenever the base class is resolved:
+
+```typescript
+import { Model } from '@chalkysticks/sdk-core';
+
+// Your custom subclass with extra behavior
+class EnhancedVenue extends Model.Venue {
+    /**
+     * Get a formatted display name with city.
+     *
+     * @return string
+     */
+    public get displayName(): string {
+        return `${this.get('name')} — ${this.get('city')}`;
+    }
+}
+
+// Register the override
+container.registerFactory(Model.Venue, (attributes, options) => {
+    return new EnhancedVenue(
+        attributes,
+        Object.assign({ baseUrl: 'https://api.chalkysticks.com/v3' }, options),
+    );
+});
+
+// Resolving Model.Venue now returns an EnhancedVenue
+const venue = ChalkySticks.resolve(Model.Venue, { id: 42 });
+console.log(venue.displayName); // "Corner Pocket — Brooklyn"
+```
+
+## Override from a Service Provider
+
+The cleanest approach is to put overrides in a dedicated provider so the lifecycle is managed properly:
+
+```typescript
+import { ServiceProvider } from '@chalkysticks/sdk-core/Provider/ServiceProvider';
+import { Model, Collection } from '@chalkysticks/sdk-core';
+import Constants from '@chalkysticks/sdk-core/Common/Constants';
+
+export class AppModelProvider extends ServiceProvider {
+    /**
+     * Override SDK class factories.
+     *
+     * @return void
+     */
+    public register(): void {
+        this.registerModelOverrides();
+        this.registerCollectionOverrides();
+    }
+
+    /**
+     * Override model factories with app-specific defaults.
+     *
+     * @return void
+     */
+    private registerModelOverrides(): void {
+        this.container.registerFactory(Model.Venue, (attributes, options) => {
+            const venue = new Model.Venue(
+                attributes,
+                Object.assign({ baseUrl: Constants.API_URL_V3 }, options),
+            );
+
+            venue.setQueryParam('include', 'hours,media');
+
+            return venue;
+        });
+
+        this.container.registerFactory(Model.User, (attributes, options) => {
+            const user = new Model.User(
+                attributes,
+                Object.assign({ baseUrl: Constants.API_URL_V1 }, options),
+            );
+
+            user.setQueryParam('include', 'wallet,media');
+
+            return user;
+        });
+    }
+
+    /**
+     * Override collection factories with app-specific defaults.
+     *
+     * @return void
+     */
+    private registerCollectionOverrides(): void {
+        this.container.registerFactory(Collection.Venue, (options) => {
+            const venues = new Collection.Venue(
+                Object.assign({ baseUrl: Constants.API_URL_V3 }, options),
+            );
+
+            venues.setQueryParam('limit', '50');
+
+            return venues;
+        });
+    }
+}
+```
+
+Then register it:
+
+```typescript
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com',
+    providers: [AppModelProvider],
+});
+```
+
+Because `AppModelProvider` registers after `CoreServiceProvider`, its `registerFactory()` calls overwrite the defaults.
+
+## Order Matters
+
+Factories are keyed by class name. The **last** `registerFactory()` call for a given class wins. Since `ChalkySticks.configure()` registers `CoreServiceProvider` first and your providers second, your overrides always take precedence.
+
+```
+CoreServiceProvider.register()    ← registers Model.Venue factory
+AppModelProvider.register()       ← overwrites Model.Venue factory ✓
+```

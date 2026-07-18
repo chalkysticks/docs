@@ -1,107 +1,182 @@
 ---
-title: 'Venue Components'
-description: 'Venue display, feeds, and maps'
+title: 'Venue'
+description: 'Venue cards, lists, maps, check-ins, and action buttons'
 ---
 
-## VenueFeed
-
-Scrollable venue list.
-
-```html
-<ChalkyVenueFeed
-    v-bind:collection="venueCollection"
-    v-on:venue-click="handleVenueClick"
-/>
-```
-
-### Props
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `collection` | Collection.Venue | Venue collection |
-| `showDistance` | boolean | Show distance from user |
-| `infinite` | boolean | Enable infinite scroll |
+Eleven components live under the `Venue` namespace: cards and previews, list / map views, hours and details, check-ins, and three contextual action buttons.
 
 ## VenueCard
 
-Single venue display card.
+Full venue card with gallery, reactions, address, hours, details, check-ins, comments, and action buttons.
 
 ```html
 <ChalkyVenueCard
-    v-bind:venue="venue"
-    v-on:click="handleClick"
+    :venue-model="venue"
+    :show-checkins="true"
+    :show-comments="true"
+    :show-hours="true"
+    @checkin:success="onCheckin"
+    @login:request="showLogin"
 />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `venueModel` | `Model.Venue` | empty Venue |
+| `interactiveGallery` | boolean | `true` |
+| `maxGalleryImages` | number | — |
+| `showCheckins` | boolean | — |
+| `showComments` | boolean | — |
+| `showHours` | boolean | — |
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `venue` | Model.Venue | Venue model |
-| `showRating` | boolean | Show star rating |
-| `showTables` | boolean | Show table count |
-| `showDistance` | boolean | Show distance |
+Slots: `before`, `content:before`, `content:after`, `checkin:action`, `after`.
+
+Emits: `click:gallery`, `checkin:success`, `login:request`.
+
+CSS classes added at runtime: `type-{venueType}`, `is-closed`, `is-open`, `is-nearby`, `has-table-image`.
+
+## VenueCardPreview
+
+Compact card preview — gallery, name, address, distance, favorite. Used in list / horizontal layouts.
+
+```html
+<ChalkyVenueCardPreview :venue-model="venue" />
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `venueModel` | `Model.Venue` | empty Venue |
+| `interactiveGallery` | boolean | `true` |
+| `maxGalleryImages` | number | — |
+
+Distance is read from the `location` Vuex module; shows `NEARBY` when within 0.1 miles.
+
+## VenueRow
+
+Horizontal row layout — single thumbnail, name, address, status badge.
+
+```html
+<ChalkyVenueRow :venue-model="venue" @click="open(venue)" />
+```
+
+Slots: `before`, `venue` (scoped), `actions`, `after`.
 
 ## VenueList
 
-Compact venue list.
+Paginated venue list. Switch between `grid`, `horizontal`, and `list` layouts.
 
 ```html
 <ChalkyVenueList
-    v-bind:venues="venues"
-    v-bind:selected="selectedVenueId"
-    v-on:select="handleSelect"
+    :venue-collection="venueCollection"
+    view="grid"
+    :use-location="true"
+    @venue:select="goToVenue"
 />
 ```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `venueCollection` | `Collection.Venue` | factory |
+| `view` | `'grid' \| 'horizontal' \| 'list'` | `'grid'` |
+| `useLocation` | boolean | `false` |
+| `includeActions` | boolean | `true` |
+| `selectedVenueId` | string \| number | — |
+| `maxGalleryImages` | number | — |
+
+Methods: `setPage(page)`, `nextPage()`, `previousPage()`.
 
 ## VenueMap
 
-Google Maps with venue markers.
+Google Maps embed showing venue markers and (optionally) player beacons.
 
 ```html
 <ChalkyVenueMap
-    v-bind:venues="venues"
-    v-bind:center="{ lat: 40.7128, lng: -74.0060 }"
-    v-bind:zoom="12"
-    v-on:marker-click="handleMarkerClick"
+    :venue-collection="venueCollection"
+    :default-zoom="12"
+    @venue:select="onSelect"
 />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `venueCollection` | `Collection.Venue` | — |
+| `centerLatitude` | number | from user location |
+| `centerLongitude` | number | from user location |
+| `defaultZoom` | number | `12` |
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `venues` | Collection.Venue | Venues to display |
-| `center` | object | Map center { lat, lng } |
-| `zoom` | number | Initial zoom level |
-| `showUserLocation` | boolean | Show user's location |
+Emits: `venue:select`, `marker:click`, `zoom:changed`, `bounds:changed`.
 
-### Events
+Google Maps must be configured (via `configureGoogleMaps()` in `vue2-components/src/Utility/GoogleMaps`) for the map to load.
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `marker-click` | Venue | Venue marker clicked |
-| `bounds-changed` | Bounds | Map bounds changed |
+## VenueHours
 
-## VenueDetail
-
-Full venue detail view.
+Weekly hours table with today's row highlighted.
 
 ```html
-<ChalkyVenueDetail
-    v-bind:venue="venue"
-    v-on:checkin="handleCheckin"
-    v-on:call="handleCall"
-/>
+<ChalkyVenueHours :venue-model="venue" />
 ```
 
-## VenueCheckinButton
+## VenueFormattedDetails
 
-Check-in action button.
+Icon-rich list of the venue's amenities — table counts, food, league, tournaments, etc.
 
 ```html
-<ChalkyVenueCheckinButton
-    v-bind:venue="venue"
-    v-on:checkin="handleCheckin"
+<ChalkyVenueFormattedDetails :venue-model="venue" />
+```
+
+Slots: `before:list`, `before`, `after`, `after:list`.
+
+## VenueCheckins
+
+Check-in summary — shows up to three recent users plus a CTA. Renders a "Be first" prompt when empty.
+
+```html
+<ChalkyVenueCheckins
+    :venue-model="venue"
+    :minimal="false"
+    @checkin:success="onCheckin"
+    @login:request="showLogin"
 />
 ```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `venueModel` | `Model.Venue` | empty Venue |
+| `minimal` | boolean | `false` |
+
+Emits: `checkin:success`, `login:request`, `user:select`.
+
+## Action Buttons
+
+All three follow the same prop shape (`size`, `type`, `useIcon`, `venueModel`) and only render when the venue carries the relevant field.
+
+### VenueButtonCall
+
+Opens the system dialer via `tel:` when the venue has a phone number.
+
+```html
+<ChalkyVenueButtonCall :venue-model="venue" size="small" type="secondary" />
+```
+
+### VenueButtonDirections
+
+Opens Google Maps with the venue's address.
+
+```html
+<ChalkyVenueButtonDirections :venue-model="venue" :use-icon="true" />
+```
+
+### VenueButtonWebsite
+
+Opens the venue's website in a new tab.
+
+```html
+<ChalkyVenueButtonWebsite :venue-model="venue" />
+```
+
+| Prop (all three) | Type | Default |
+|------|------|---------|
+| `size` | `'small' \| 'medium' \| 'large'` | `'small'` |
+| `type` | `'primary' \| 'secondary' \| 'tertiary'` | `'secondary'` |
+| `useIcon` | boolean | `false` |
+| `venueModel` | `Model.Venue` | empty Venue |

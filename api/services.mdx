@@ -1,7 +1,9 @@
 ---
-title: 'Services'
-description: 'Ads, beacons, feed, and utility endpoints'
+title: 'Services & Data'
+description: 'Ads, beacons, feed, geocoding, and external data lookups'
 ---
+
+Cross-cutting service endpoints. Many of these proxy or transform third-party data (Google, Yelp, Reddit, YouTube) for use in clients.
 
 ## Advertisements
 
@@ -18,7 +20,7 @@ GET /v3/statistics/{id}
 
 ## Beacons
 
-Location broadcasts from players.
+Short-lived location broadcasts from players looking for a game.
 
 ### List Beacons
 
@@ -27,11 +29,21 @@ GET /v3/beacons
 GET /v3/beacons?lat=40.7128&lon=-74.0060&distance=10
 ```
 
+### Get Beacon
+
+```bash
+GET /v3/beacons/{beacon}
+```
+
 ### Create Beacon
 
 ```bash
 POST /v3/beacons
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "latitude": 40.7128,
   "longitude": -74.0060,
@@ -42,26 +54,46 @@ Authorization: Bearer YOUR_TOKEN
 ### Delete Beacon
 
 ```bash
-DELETE /v3/beacons/{id}
+DELETE /v3/beacons/{beacon}
 Authorization: Bearer YOUR_TOKEN
 ```
 
 ## Feed
 
-User's activity feed:
+Activity feed for the authenticated user.
 
 ```bash
 GET /v3/feed
 Authorization: Bearer YOUR_TOKEN
 ```
 
-## Data Services
+## Data Lookups
 
 ### Geocode
 
 ```bash
 GET /v3/data/geocode?address=123%20Main%20St
 ```
+
+The decoded Google payload is returned directly; `results` and `status` are top-level fields:
+
+```json
+{
+  "results": [
+    {
+      "geometry": {
+        "location": {
+          "lat": 40.7127753,
+          "lng": -74.0059728
+        }
+      }
+    }
+  ],
+  "status": "OK"
+}
+```
+
+Successful lookups are public and cached by the complete normalized query string. Different `address` values cannot collide. SDK clients should read `results` directly rather than parsing a JSON string from an `original` field.
 
 ### Place Info
 
@@ -93,46 +125,53 @@ GET /v3/data/ip-location
 GET /v3/data/reddit/search?q=billiards
 ```
 
-## Facts
+### YouTube Frame
 
-Random pool facts:
+Grab a single frame from a YouTube video.
 
 ```bash
-GET /v3/facts
-GET /v3/facts/random
+POST /v3/data/youtube/frame
 ```
 
-## Check-ins
-
-### List Check-ins
-
-```bash
-GET /v3/checkins
-GET /v3/checkins?user_id=1
-GET /v3/checkins?venue_id=1
-```
-
-### Create Check-in
-
-```bash
-POST /v3/checkins
-Authorization: Bearer YOUR_TOKEN
+**Request:**
+```json
 {
-  "venue_id": 1
+  "url": "https://youtube.com/watch?v=...",
+  "timestamp": 12.5
 }
 ```
 
-## Notifications
+### Image To Diagram
+
+Convert a photo of a real pool table into a structured diagram.
 
 ```bash
-GET /v3/notifications
-Authorization: Bearer YOUR_TOKEN
+POST /v3/data/image-to-diagram
 ```
 
-## Configuration
+### Table Scan
 
-Public app configuration:
+Scan a single frame of a table.
 
 ```bash
-GET /v3/config
+POST /v3/data/table-scan
+```
+
+### Table Scan (Full)
+
+Full multi-frame table analysis.
+
+```bash
+POST /v3/data/table-scan-full
+```
+
+## YouTube (Admin)
+
+These endpoints require admin permission.
+
+```bash
+GET /v3/data/youtube
+GET /v3/data/youtube-channel
+GET /v3/data/youtube-compact
+Authorization: Bearer YOUR_TOKEN
 ```

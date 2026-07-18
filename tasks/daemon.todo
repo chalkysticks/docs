@@ -1,0 +1,44 @@
+Now:
+
+	☐ Define daemon responsibilities versus API queue workers.
+		☐ Scheduled challenge generation.
+		☐ Media processing.
+		☐ TV archival.
+		☐ Cache invalidation.
+		☐ Generated marketing assets.
+
+
+Queues & Schedules:
+
+	☐ Run accomplishments queue worker reliably.
+		☐ Decide whether this stays an API process or moves into a daemon service.
+
+	☐ Automate daily challenge generation.
+		☐ Generate Daily Rack before the app needs it.
+		☐ Alert if generation fails.
+
+	☐ Add cache-bust jobs.
+		☐ TV live endpoint after a new live item is added.
+		☐ Ordered media after media order changes.
+
+
+Media & TV:
+
+	☐ Maintain TV archiver workflow.
+		✔ Created TV archiver with large local drive. @done(25-07-26 14:55)
+		☐ Document `yt-dlp -o "%(id)s.%(ext)s" "https://www.youtube.com/watch?v=ID"`.
+		☐ Decide whether archiving belongs on a server daemon.
+
+	☐ Move `tv.chalkysticks.com` to the new server.
+
+
+Generated Content:
+
+	☐ Generate high-quality venue shareables.
+		☐ Explore Comfy workflow for coin/poster style images.
+		☐ Save outputs where CMS can review and publish them.
+
+	☐ Generate article drafts.
+		☐ "Top 5 Pool Halls in Amsterdam" style posts.
+		☐ Use Gemini, Claude, or GPT as drafting tools.
+		☐ Keep CMS approval before publishing.

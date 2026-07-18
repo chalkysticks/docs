@@ -1,0 +1,221 @@
+---
+title: 'Stickers'
+description: 'Adding, removing, and positioning sticker images on the pad'
+---
+
+## Overview
+
+Stickers are image elements placed on the table diagram. They support positioning, rotation, scaling, and activation (selection).
+
+```typescript
+const stickerManager = table.stickerManager;
+```
+
+---
+
+## Adding Stickers
+
+```typescript
+// Add a sticker at position
+const sticker = stickerManager.addSticker('chalk', 400, 200);
+
+// Add with custom options
+const sticker = stickerManager.addSticker('cue-stick', 300, 150, {
+    height: 60,
+    rotation: 45,
+    scale: 1.5,
+    width: 60,
+});
+
+// Add with a custom image URL
+const sticker = stickerManager.addSticker('custom', 500, 250, {
+    imageUrl: 'https://example.com/image.png',
+});
+```
+
+## Removing Stickers
+
+```typescript
+// Remove by ID
+stickerManager.removeSticker(stickerId);
+
+// Remove all active (selected) stickers
+stickerManager.removeActiveStickers();
+
+// Clear all stickers
+stickerManager.clear();
+```
+
+---
+
+## Selecting Stickers
+
+```typescript
+// Activate (select) a sticker
+stickerManager.activateSticker(stickerId);
+
+// Deactivate all stickers
+stickerManager.deactivateStickers();
+
+// Get the first active sticker
+const active = stickerManager.getActiveSticker();
+
+// Get all active stickers
+const activeStickers = stickerManager.getActiveStickers();
+
+// Check if any sticker is active
+const hasActive = stickerManager.isAnyStickerActive();
+```
+
+---
+
+## Moving Stickers
+
+```typescript
+// Move to absolute position
+stickerManager.moveSticker(stickerId, 500, 300);
+
+// Move by relative offset
+stickerManager.moveStickerRelative(stickerId, 10, -5);
+
+// Move all active stickers to position
+stickerManager.moveActiveStickers(400, 200);
+
+// Move all active stickers by offset
+stickerManager.moveActiveStickersRelative(10, -5);
+```
+
+---
+
+## Rotating & Scaling
+
+```typescript
+// Rotate to angle (degrees)
+stickerManager.rotateSticker(stickerId, 90);
+
+// Scale uniformly
+stickerManager.scaleSticker(stickerId, 1.5);
+
+// Resize to specific dimensions
+stickerManager.resizeSticker(stickerId, 80, 80);
+```
+
+---
+
+## Proximity Detection
+
+```typescript
+// Get stickers near a point (within threshold)
+const nearby = stickerManager.getClosestStickers(x, y, 10);
+```
+
+The proximity check uses bounding box hit detection, accounting for the sticker's scale.
+
+---
+
+## Querying
+
+```typescript
+// Get sticker by ID
+const sticker = stickerManager.getSticker(stickerId);
+
+// Access all stickers
+const allStickers = stickerManager.stickers;
+```
+
+---
+
+## Updating Properties
+
+```typescript
+// Update multiple properties at once
+stickerManager.updateSticker(stickerId, {
+    rotation: 45,
+    scale: 2,
+    x: 300,
+    y: 200,
+});
+```
+
+---
+
+## State Management
+
+```typescript
+// Export current sticker state
+const state = stickerManager.exportState();
+
+// Import sticker state
+stickerManager.importState(state);
+
+// Listen for state changes
+stickerManager.onStateChange((stickers) => {
+    console.log('Stickers changed:', stickers);
+});
+```
+
+---
+
+## Default Properties
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `defaultHeight` | `40` | Height for new stickers |
+| `defaultScale` | `1` | Scale for new stickers |
+| `defaultWidth` | `40` | Width for new stickers |
+
+---
+
+## Sticker Interface
+
+```typescript
+interface IDiagramSticker {
+    active: boolean;
+    height: number;
+    id: string;
+    imageUrl?: string;
+    normalizedHeight?: number;  // populated by Table.exportTableState()
+    normalizedWidth?: number;
+    normalizedX?: number;
+    normalizedY?: number;
+    rotation: number;
+    scale: number;
+    type: string;
+    width: number;
+    x: number;
+    y: number;
+}
+```
+
+The `normalized*` 0-1 fields are only present on exported snapshots — `Table.exportTableState()` fills them so renderers can position stickers without knowing the pad canvas dimensions. In-editor instances do not carry them.
+
+---
+
+## Events
+
+```typescript
+stickerManager.on('sticker:add', (e) => {
+    console.log('Sticker added:', e.data);
+});
+
+stickerManager.on('sticker:move', (e) => {
+    console.log('Sticker moved:', e.data);
+});
+
+stickerManager.on('sticker:rotate', (e) => {
+    console.log('Sticker rotated:', e.data);
+});
+
+stickerManager.on('sticker:resize', (e) => {
+    console.log('Sticker resized:', e.data);
+});
+```
+
+Note: `scaleSticker()` dispatches `sticker:resize` (there is no separate `sticker:scale` event).
+
+See [Events Reference](/sdk/pad/events) for the complete event catalog.
+
+## Recent Changes
+
+- 1.4.4 — Stickers gain `normalized*` fields in exported layouts (`Table.exportTableState()`); `Table.importDiagram()` restores them
+- 1.4.3 — `Table.addSticker(x, y, type)` orchestration added (24×24 placement with activation + history)

@@ -1,103 +1,287 @@
 ---
-title: 'Social Components'
-description: 'Comments, reactions, and chat'
+title: 'Social: Chat, Comments, Reactions'
+description: 'Realtime chat (Ably), polymorphic comments, and reaction widgets'
 ---
+
+This page covers three namespaces:
+
+- **Chat** — real-time rooms backed by Ably
+- **Comment** — polymorphic comments on any entity
+- **Reaction** — generic and specialized reactions
+
+## Chat (Ably)
+
+Chat components use the Ably service registered by `vue2-components/src/Service/Ably`. REST methods on chat models are intentionally disabled — all message I/O flows through Ably.
+
+### ChatRoom
+
+Top-level orchestrator. Composes `ChatRoomBanner`, `ChatMessageList`, `ChatSendForm`, and `ChatLoginPrompt`.
+
+```html
+<ChalkyChatRoom
+    :room-id="`tv:${schedule.id}`"
+    room-type="tv"
+    :context-model="schedule"
+    :room-config="bannerConfigs"
+    @message:send="onSend"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `roomId` | string | **required** |
+| `roomType` | `'general' \| 'tv' \| 'venue' \| 'event'` | `'general'` |
+| `contextModel` | any | `null` |
+| `isReadOnly` | boolean | `false` |
+| `roomConfig` | `IChatBannerConfig[]` | `[]` |
+| `welcomeMessage` | string | `'Welcome to the chat!…'` |
+
+Emits: `login:success`, `message:delete`, `message:error`, `message:send`.
+
+### ChatMessageList
+
+Scrollable list of messages. Subscribes to the Ably channel; tracks unread state and surfaces a "new messages" indicator.
+
+```html
+<ChalkyChatMessageList
+    :room-id="roomId"
+    room-type="venue"
+    :auto-scroll="true"
+    :max-messages="100"
+    :show-avatars="true"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `roomId` | string | **required** |
+| `roomType` | string | `'general'` |
+| `autoScroll` | boolean | `true` |
+| `contextModel` | any | `null` |
+| `maxMessages` | number | `100` |
+| `showAvatars` | boolean | `true` |
+| `welcomeMessage` | string | — |
+
+Methods: `scrollToBottom()`, `addMessage()`, `removeMessage()`, `removeMessageById()`.
+
+### ChatMessage
+
+Individual message row with avatar, body, timestamp, and (own-message) delete control.
+
+```html
+<ChalkyChatMessage
+    :message-model="message"
+    room-type="venue"
+    :show-avatar="true"
+    @delete="onDelete"
+    @edit="onEdit"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `messageModel` | `Model.Message` | **required** |
+| `roomType` | string | `'general'` |
+| `showAvatar` | boolean | `true` |
+
+CSS classes: `is-own-message`, `is-system-message`.
+
+### ChatSendForm
+
+Message composer. Enter submits; Ctrl+Enter for newline in textarea.
+
+```html
+<ChalkyChatSendForm
+    :room-id="roomId"
+    :max-length="500"
+    placeholder="Say hi…"
+    @message:send="onSend"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `roomId` | string | **required** |
+| `roomType` | string | `'general'` |
+| `contextModel` | any | — |
+| `disabled` | boolean | `false` |
+| `maxLength` | number | `500` |
+| `placeholder` | string | — |
+| `showAvatar` | boolean | `true` |
+| `submitText` | string | — |
+
+### ChatRoomBanner
+
+Dismissible announcements / rules banners. Dismissal state is persisted in localStorage per `roomId` + user.
+
+```html
+<ChalkyChatRoomBanner :room-id="roomId" :room-config="bannerConfigs" />
+```
+
+Each banner config: `{ id, type, message, dismissible, icon }`.
+
+### ChatLoginPrompt
+
+Login CTA shown to unauthenticated users. Welcome copy varies by `roomType`.
+
+```html
+<ChalkyChatLoginPrompt
+    :auth-model="authModel"
+    room-type="venue"
+    :show-additional-info="true"
+/>
+```
 
 ## Comments
 
-Display and manage comments.
+Polymorphic comment components work on anything that satisfies the `Commentable` shape (carries `comments: Collection.Comment`). That covers venues, venue media, user media, content, facts, and diagrams.
+
+### CommentList
+
+Scrollable list with loading, empty, and locked states.
 
 ```html
-<ChalkyComments
-    v-bind:contentType="'venue'"
-    v-bind:contentId="venueId"
-    v-on:comment-added="handleNewComment"
+<ChalkyCommentList
+    :model="venue"
+    direction="up"
+    :can-react="true"
+    :show-header="true"
+    @user:click="goToUser"
 />
 ```
 
-### Props
+| Prop | Type | Default |
+|------|------|---------|
+| `model` | `Commentable` | **required** |
+| `direction` | `'up' \| 'down'` | `'up'` |
+| `canReact` | boolean | `false` |
+| `locked` | boolean | `false` |
+| `maxHeight` | string | — |
+| `showHeader` | boolean | `true` |
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `contentType` | string | 'venue', 'media', 'content' |
-| `contentId` | number | ID of the content |
-| `allowReply` | boolean | Enable nested replies |
-| `maxDepth` | number | Max reply depth (default: 2) |
+Emits: `delete`, `reply`, `user:click`, `useravatar:click`, `username:click`. Method: `scrollToBottom()`.
+
+### CommentItem
+
+Single comment row with optional reactions and inline reply.
+
+```html
+<ChalkyCommentItem
+    :comment-model="comment"
+    :can-react="true"
+    :can-reply="true"
+    @reply="startReply"
+/>
+```
+
+State classes: `has-reactions`, `state-recent`, `with-replies`.
+
+### CommentForm
+
+Comment composer / reply form. Works in both single-line and multi-line modes.
+
+```html
+<ChalkyCommentForm
+    :context-model="venue"
+    :multiline="true"
+    :rows="3"
+    placeholder="Add a comment…"
+    @submit="onSubmit"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `contextModel` | any | **required** |
+| `autoGrow` | boolean | `false` |
+| `isReply` | boolean | `false` |
+| `maxLength` | number | `1000` |
+| `multiline` | boolean | `false` |
+| `parentCommentModel` | `Model.Comment` | `null` |
+| `placeholder` | string | `'Add a comment…'` |
+| `rows` | number | `3` |
+| `showAvatar` | boolean | `false` |
+| `submitText` | string | — |
+
+Emits: `submit`, `submit:error`, `cancel`, `input`. Ctrl+Enter submits.
 
 ## Reactions
 
-Love/like reaction buttons.
+All reaction components take any model that exposes `model.reactions` (a `Collection.Reaction`).
+
+### ReactionFavorite
+
+Specialized animated heart. Pair with anything that needs a "love" toggle.
+
+```html
+<ChalkyReactionFavorite
+    :model="venue"
+    align-count="right"
+    size="lg"
+    :fetch-remote="false"
+/>
+```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `model` | any | **required** |
+| `alignCount` | `'left' \| 'right' \| 'top' \| 'bottom'` | `'right'` |
+| `fetchRemote` | boolean | `false` |
+| `showCount` | boolean | `true` |
+| `showLabel` | boolean | `false` |
+| `size` | string | `'lg'` |
+
+Emits: `login:request`. The heart pulses on activation and listens to global login events.
 
 ### ReactionButton
 
-Single reaction toggle.
+Generic toggle for any reaction type (`like`, `dislike`, `wow`, …).
 
 ```html
-<ChalkyReactionButton
-    v-bind:type="'love'"
-    v-bind:contentType="'venue'"
-    v-bind:contentId="venueId"
-    v-bind:active="isLoved"
-    v-on:toggle="handleReaction"
-/>
+<ChalkyReactionButton :model="comment" reaction-type="like" />
 ```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `model` | any | **required** |
+| `reactionType` | string | `'like'` |
+| `showCount` | boolean | `true` |
+| `showLabel` | boolean | `true` |
+| `size` | string | `'md'` |
+
+Emits: `login:request`, `click:start`, `click`, `click:error`, `click:complete`.
 
 ### ReactionList
 
-Display who reacted.
+Renders a row of `ReactionButton`s with optional summary.
 
 ```html
 <ChalkyReactionList
-    v-bind:reactions="reactions"
-    v-bind:limit="5"
+    :model="content"
+    :reactions="['like', 'dislike', 'wow']"
+    layout="horizontal"
+    :show-summary="true"
 />
 ```
+
+| Prop | Type | Default |
+|------|------|---------|
+| `model` | any | **required** |
+| `reactions` | `string[]` | `['like','dislike','wow']` |
+| `layout` | `'horizontal' \| 'vertical'` | `'horizontal'` |
+| `compact` | boolean | `false` |
+| `showCount` | boolean | `true` |
+| `showLabels` | boolean | `true` |
+| `showLoginPrompt` | boolean | `false` |
+| `showSummary` | boolean | `false` |
+| `size` | string | `'md'` |
+
+Emits: `react`, `unreact`, `unauthenticated`, plus `reaction:start`, `reaction:complete`, `reaction:success`, `reaction:error`.
 
 ### ReactionSummary
 
-Compact reaction count display.
+Breakdown with counts, percentages, and the user's own reaction highlighted.
 
 ```html
-<ChalkyReactionSummary
-    v-bind:loveCount="42"
-    v-bind:likeCount="18"
-/>
+<ChalkyReactionSummary :model="content" :horizontal="false" :show-header="true" />
 ```
-
-### FavoriteButton
-
-Heart/favorite button.
-
-```html
-<ChalkyFavoriteButton
-    v-bind:active="isFavorited"
-    v-on:toggle="handleFavorite"
-/>
-```
-
-## Chat
-
-Real-time chat component.
-
-```html
-<ChalkyChat
-    v-bind:channelId="chatChannelId"
-    v-bind:user="currentUser"
-/>
-```
-
-### Props
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `channelId` | string | Ably channel ID |
-| `user` | User | Current user |
-| `showTyping` | boolean | Show typing indicators |
-| `showTimestamps` | boolean | Show message timestamps |
-
-### Events
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `message` | Message | New message received |
-| `typing` | User | User is typing |

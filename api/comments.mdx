@@ -1,113 +1,100 @@
 ---
-title: 'Comments & Reactions'
-description: 'Social interactions on content'
+title: 'Comments'
+description: 'Polymorphic comments across all entity types'
 ---
 
-## Comments
+Comments attach to a number of entity types: venues, user media, venue media, users, content, facts, and diagrams. Listings are exposed under the parent entity, while create/update/delete/flag live under `/v3/comments`.
 
-### List Comments
+## List All Comments
+
+Generic flat index with filters.
 
 ```bash
 GET /v3/comments
-GET /v3/comments?content_type=venue&content_id=1
+GET /v3/comments?entity_type=venue&entity_id=1
 ```
 
-### Create Comment
+The aggregate feed can mix parents with different visibility rules, so it is deliberately restricted and never stored in shared cache. Prefer a parent-scoped listing when the parent is known.
+
+## List By Parent
+
+Per-entity comment listings:
+
+```bash
+GET /v3/users/{user}/comments
+GET /v3/venues/{venue}/comments
+GET /v3/venues/{venue}/media/{media}/comments
+GET /v3/media/{media}/comments
+GET /v3/diagrams/{hash}/comments
+GET /v3/content/{content}/comments
+GET /v3/facts/{fact}/comments
+```
+
+Public parent-scoped listings are cacheable, including their public `include`
+parameters. For example:
+
+```bash
+GET /v3/content/240/comments?include=user,children
+GET /v3/venues/635/comments?include=user,children
+```
+
+## Create Comment
 
 ```bash
 POST /v3/comments
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
-  "content_type": "venue",
-  "content_id": 1,
-  "body": "Great pool hall!"
+  "entity_type": "venue",
+  "entity_id": 1,
+  "body": "Great place to play!"
 }
 ```
 
-### Update Comment
+## Update Comment
 
 ```bash
-PUT /v3/comments/{id}
+PUT /v3/comments/{comment}
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
-  "body": "Updated comment text"
+  "body": "Edited comment text"
 }
 ```
 
-### Delete Comment
+## Delete Comment
 
 ```bash
-DELETE /v3/comments/{id}
+DELETE /v3/comments/{comment}
 Authorization: Bearer YOUR_TOKEN
 ```
 
-### Flag Comment
+## Cache Invalidation
 
-Report inappropriate content:
+Create, update, and delete events enqueue targeted surrogate-key purges. A comment on content `240` invalidates the comment key, `co.240.c` relationship key, and `co.240` parent key. That refreshes both `/content/240/comments` and any cached content response that embeds comments.
+
+Parent invalidation is intentional even for an empty list or deletion of the last item; the newly created or deleted comment may not have existed in the old response's key set.
+
+Purges run through Laravel's queue and invalidate both Varnish trust partitions. A short queue-processing delay is possible after a successful write.
+
+## Flag Comment
+
+Report a comment for moderator review.
 
 ```bash
-POST /v3/comments/{id}/flag
+POST /v3/comments/{comment}/flag
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "reason": "spam"
 }
-```
-
-### Venue Comments
-
-```bash
-GET /v3/venues/{id}/comments
-```
-
-## Reactions
-
-### List Reactions
-
-```bash
-GET /v3/reactions
-GET /v3/reactions?content_type=venue&content_id=1
-```
-
-### Create Reaction
-
-```bash
-POST /v3/reactions
-Authorization: Bearer YOUR_TOKEN
-{
-  "content_type": "venue",
-  "content_id": 1,
-  "type": "love"
-}
-```
-
-Reaction types: `love`, `like`
-
-### Delete My Reaction
-
-```bash
-DELETE /v3/reactions/me
-Authorization: Bearer YOUR_TOKEN
-{
-  "content_type": "venue",
-  "content_id": 1
-}
-```
-
-### Delete Reaction by ID
-
-```bash
-DELETE /v3/reactions/{id}
-Authorization: Bearer YOUR_TOKEN
-```
-
-### Venue Reactions
-
-```bash
-GET /v3/venues/{id}/reactions
-```
-
-### Content Reactions
-
-```bash
-GET /v3/content/{id}/reactions
 ```

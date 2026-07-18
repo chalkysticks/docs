@@ -1,136 +1,153 @@
 ---
 title: 'Media'
-description: 'Image and video uploads, shares, and tags'
+description: 'Uploads, shares, tags, presigned URLs, and webhooks'
 ---
 
-## Presigned Upload
+Upload-related endpoints. Per-owner media (user media, venue media) lives under [Users](/api/users) and [Venues](/api/venues). This page covers cross-cutting media operations.
 
-Get a presigned URL for direct S3 upload:
+## Tagged Media
+
+```bash
+GET /v3/media/tags
+```
+
+## Media By Users
+
+```bash
+GET /v3/media/users
+GET /v3/users/{user}/media
+```
+
+## Media By Venues
+
+```bash
+GET /v3/media/venues
+GET /v3/venues/{venue}/media
+```
+
+## Presigned Uploads
+
+Use these endpoints to obtain signed URLs from S3 / BunnyStream and upload directly from the client.
+
+### Generic Presigned URL
 
 ```bash
 POST /v3/media/presigned-url
 Authorization: Bearer YOUR_TOKEN
+```
+
+### Create Image Upload
+
+```bash
+POST /v3/media/image/create-upload
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "filename": "photo.jpg",
   "content_type": "image/jpeg"
 }
 ```
 
-**Response:**
-```json
-{
-  "data": {
-    "url": "https://s3.amazonaws.com/...",
-    "key": "uploads/abc123.jpg",
-    "expires_at": "2025-01-01T01:00:00Z"
-  }
-}
-```
-
-## Create Image Upload
-
-After uploading to S3:
-
-```bash
-POST /v3/media/image/create-upload
-Authorization: Bearer YOUR_TOKEN
-{
-  "key": "uploads/abc123.jpg",
-  "content_type": "venue",
-  "content_id": 1
-}
-```
-
-## Create Video Upload
+### Create Video Upload
 
 ```bash
 POST /v3/media/video/create-upload
 Authorization: Bearer YOUR_TOKEN
-{
-  "key": "uploads/video123.mp4",
-  "content_type": "user",
-  "content_id": 1
-}
 ```
 
 ## Media Shares
 
+Share or transfer ownership of a piece of user media.
+
 ### List Shares
 
 ```bash
-GET /v3/media/{id}/shares
+GET /v3/media/{userMedia}/shares
 Authorization: Bearer YOUR_TOKEN
 ```
 
-### Share Media
+### Create Share
 
 ```bash
-POST /v3/media/{id}/shares
+POST /v3/media/{userMedia}/shares
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
-  "user_id": 2
+  "shared_with_id": 42,
+  "type": "share",
+  "message": "Check this out"
 }
 ```
+
+`type` is one of `share` or `transfer`.
 
 ### Accept Share
 
 ```bash
-POST /v3/media/{id}/shares/{share_id}/accept
+POST /v3/media/{userMedia}/shares/{share}/accept
 Authorization: Bearer YOUR_TOKEN
 ```
 
 ### Reject Share
 
 ```bash
-POST /v3/media/{id}/shares/{share_id}/reject
+POST /v3/media/{userMedia}/shares/{share}/reject
 Authorization: Bearer YOUR_TOKEN
 ```
 
 ## Media Tags
 
+Tag a piece of user media with a user or venue.
+
 ### List Tags
 
 ```bash
-GET /v3/media/{id}/tags
+GET /v3/media/{userMedia}/tags
 Authorization: Bearer YOUR_TOKEN
 ```
 
-### Add Tag
+### Create Tag
 
 ```bash
-POST /v3/media/{id}/tags
+POST /v3/media/{userMedia}/tags
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
-  "user_id": 2
+  "entity_type": "user",
+  "entity_id": 42
 }
 ```
 
-### Remove Tag
+`entity_type` is one of `user` or `venue`.
+
+### Delete Tag
 
 ```bash
-DELETE /v3/media/{id}/tags/{tag_id}
+DELETE /v3/media/{userMedia}/tags/{tag}
 Authorization: Bearer YOUR_TOKEN
 ```
 
-## Browse Media
-
-### Tagged Media
+## Comments On Media
 
 ```bash
-GET /v3/media/tags
-GET /v3/media/tags?user_id=1
+GET /v3/media/{media}/comments
 ```
 
-### Users with Media
+## Webhooks
+
+### BunnyStream
+
+Inbound webhook used by BunnyStream to notify of video processing events.
 
 ```bash
-GET /v3/media/users
-GET /v3/media/users/{user_id}
-```
-
-### Venues with Media
-
-```bash
-GET /v3/media/venues
-GET /v3/media/venues/{venue_id}
+POST /v3/webhooks/bunny
 ```

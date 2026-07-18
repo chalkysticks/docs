@@ -1,0 +1,133 @@
+---
+title: 'Enums'
+description: 'Canonical enums shared by the TS SDK, API, and database'
+---
+
+Most `Enum.*` values are string literals so they survive serialization across the SDK → API → database boundary unchanged. Three are numeric: `FeedItemType`, `VenueStatus`, and `FeatureState` (ordered thresholds).
+
+## Available Enums
+
+| Enum | Purpose |
+|------|---------|
+| `AccomplishmentCategory` | Achievement category grouping |
+| `AccomplishmentRarity` | Achievement rarity |
+| `ContentMediaType` | Content media type (`document`, `image`, `video`) |
+| `ContentType` | Content kind (`news`, `pool-pad`, `tutorial`) |
+| `Currency` | Wallet currencies (`USD`, `CSX`) |
+| `FeatureState` | Numeric feature-flag rollout thresholds (used by `Service.Feature`) |
+| `FeedItemType` | Numeric activity feed item types |
+| `GamepadButton` | Gamepad button identifiers (`cross`, `l1`, `dpad-up`, …) |
+| `GameType` | Game variant (`EightBall`, `NineBall`, `TenBall`, etc.) |
+| `MediaGroup` | Top-level media grouping (`admin`, `community`, `owner`, `system`) |
+| `MediaShareType` | `share` or `transfer` |
+| `MediaStatus` | Moderation status (`approved`, `flagged`, `pending`, `rejected`) |
+| `MediaSubgroup` | Media sub-grouping (`avatar`, `gallery`, `table`, …) |
+| `MediaType` | `document` / `image` / `video` |
+| `ProductType` | `digital` or `physical` |
+| `ReactionType` | Reaction symbols |
+| `ReportReason` | Moderation report reasons |
+| `ReportResolution` | Moderation resolutions |
+| `Roles` | User roles |
+| `SoundCategory` | Sound playback categories (`master`, `music`, `sfx`, `ui`, `voice`, `ambient`) |
+| `SubscriptionStatus` | Subscription lifecycle (`active`, `billing_issue`, `cancelled`, `expired`, `none`, `paused`) |
+| `SubscriptionTier` | Subscription tier (`free`, `plus`, `pro`, `max`) |
+| `TransactionStatus` | Wallet transaction status (`cancelled`, `payment`, `refund`) |
+| `UserWalletSource` | Wallet credit source (`checkin`, `photo`, `game`, …) |
+| `VenueMediaType` | Venue media type (`exterior`, `interior`, `person`, `table`, `unknown`) |
+| `VenueStatus` | Numeric venue lifecycle status |
+| `VenueType` | Venue category (`bar`, `hall`, `hotel`) |
+
+## GameType
+
+PascalCase enum identifying a game variant.
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-core';
+
+Enum.GameType.EightBall;     // 'EightBall'
+Enum.GameType.NineBall;      // 'NineBall'
+Enum.GameType.TenBall;       // 'TenBall'
+Enum.GameType.PuzzleRack;    // 'PuzzleRack'
+Enum.GameType.TrickShots;    // 'TrickShots'
+Enum.GameType.Empty;         // '' — sentinel for "no filter"
+```
+
+Full set: `ArtisticPool`, `Balkline`, `BankPool`, `Billiards`, `Blackball`, `Carom`, `ChineseEightBall`, `Cutthroat`, `EightBall`, `Empty`, `Killers`, `NineBall`, `OnePocket`, `PuzzleRack`, `Pyramid`, `Rotation`, `Snooker`, `StraightPool`, `TenBall`, `TrickShots`.
+
+> **Breaking change (v1.57.1):** Old hyphenated values (`'8-ball'`, `'9-ball'`) were replaced with PascalCase (`EightBall`, `NineBall`). Callers that hard-coded the legacy strings need to migrate.
+
+The `Empty` sentinel (v1.57.2) lets dropdowns and filter components represent "any" without inventing a synthetic UI state.
+
+## Roles
+
+```typescript
+Enum.Roles.Admin;            // 'admin'
+Enum.Roles.ContentManager;   // 'content_manager'
+Enum.Roles.Moderator;        // 'moderator'
+Enum.Roles.SuperAdmin;       // 'super_admin'
+Enum.Roles.User;             // 'user'
+Enum.Roles.VenueManager;     // 'venue_manager'
+```
+
+## FeatureState
+
+Numeric thresholds consumed by `Service.Feature` for staged rollouts — higher values open a feature to broader audiences.
+
+```typescript
+Enum.FeatureState.Disabled;                      // 0
+Enum.FeatureState.EnabledForAdmins;              // 20
+Enum.FeatureState.EnabledForStaff;               // 30
+Enum.FeatureState.EnabledForSpecialUsers;        // 40
+Enum.FeatureState.EnabledForPremiumUsers;        // 45
+Enum.FeatureState.EnabledForAuthenticatedUsers;  // 50
+Enum.FeatureState.Enabled;                       // 100
+```
+
+## Subscriptions
+
+```typescript
+Enum.SubscriptionTier.Free;            // 'free'
+Enum.SubscriptionTier.Plus;            // 'plus'
+Enum.SubscriptionTier.Pro;             // 'pro'
+Enum.SubscriptionTier.Max;             // 'max'
+
+Enum.SubscriptionStatus.Active;        // 'active'
+Enum.SubscriptionStatus.BillingIssue;  // 'billing_issue'
+Enum.SubscriptionStatus.Cancelled;     // 'cancelled'
+Enum.SubscriptionStatus.Expired;       // 'expired'
+Enum.SubscriptionStatus.None;          // 'none'
+Enum.SubscriptionStatus.Paused;        // 'paused'
+```
+
+## ReactionType
+
+Use these values when calling `POST /v3/reactions`:
+
+```typescript
+Enum.ReactionType.Angry;     // 'angry'
+Enum.ReactionType.Dislike;   // 'dislike'
+Enum.ReactionType.Laugh;     // 'laugh'
+Enum.ReactionType.Like;      // 'like'
+Enum.ReactionType.Love;      // 'love'
+Enum.ReactionType.Sad;       // 'sad'
+Enum.ReactionType.Wow;       // 'wow'
+```
+
+## Accomplishments
+
+```typescript
+Enum.AccomplishmentCategory.Gameplay;   // 'gameplay'
+Enum.AccomplishmentCategory.Game8Ball;  // 'game_8ball'
+Enum.AccomplishmentCategory.Checkin;    // 'checkin'
+Enum.AccomplishmentRarity.Rare;         // 'rare'
+```
+
+`AccomplishmentCategory` covers checkins, collectibles, community, economy, exploration, per-game categories (`game_8ball`, `game_9ball`, `game_break`, `game_runs`, `game_wins`, …), league, lifetime, media, milestone, photos, social, and tools. `AccomplishmentRarity`: `common`, `uncommon`, `rare`, `epic`, `legendary`.
+
+## Recent Changes
+
+- `1.68.0` — Added `SubscriptionStatus` and `SubscriptionTier`; `FeatureState` gained `EnabledForPremiumUsers` (45).
+- `1.61.0` — Added `FeatureState` alongside the `Service.Feature` gating service.
+- `1.57.2` — `GameType.Empty` sentinel added.
+- `1.57.1` — **Breaking:** `GameType` values converted to PascalCase; added `PuzzleRack` and `TrickShots`.
+- `1.56.0` — `Roles.ContentManager` and `Roles.VenueManager` added.

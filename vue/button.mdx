@@ -1,0 +1,29 @@
+---
+title: 'Button'
+description: 'Pre-styled action buttons'
+---
+
+Ten action-specific buttons. None take props beyond what `ViewBase` already provides — they are stylistic wrappers around the underlying SDK / Vuex action.
+
+| Component | Purpose | Notable emit |
+|-----------|---------|--------------|
+| `ChalkyButtonCamera` | Open camera capture | `camera` |
+| `ChalkyButtonCancel` | Cancel current flow | (none — bind `@click`) |
+| `ChalkyButtonContinue` | Advance current flow | (none) |
+| `ChalkyButtonLogin` | Trigger login flow | (none — typically dispatches `login:request`) |
+| `ChalkyButtonMenuBack` | Back inside a panel / menu | `click:back` |
+| `ChalkyButtonMenuClose` | Close a panel / menu | `click:close` |
+| `ChalkyButtonRequestPassword` | Send the forgot-password email | (none) |
+| `ChalkyButtonResetPassword` | Submit the new password | (none) |
+| `ChalkyButtonScanTable` | Launch table scanner | `scan-table`, `login:request` |
+| `ChalkyButtonSignup` | Open signup form | (none) |
+
+```html
+<ChalkyButtonCamera @camera="onCapture" />
+<ChalkyButtonScanTable @scan-table="openScanner" />
+<ChalkyButtonMenuClose @click:close="closePanel" />
+```
+
+### Venue-Scoped Buttons
+
+The `Venue` namespace adds three contextual buttons (call, directions, website). See [Venue → Action Buttons](/vue/venue#action-buttons).

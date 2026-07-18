@@ -1,0 +1,16 @@
+---
+title: 'Billing'
+description: 'RevenueCat webhook integration'
+---
+
+Billing is handled externally via RevenueCat. The API exposes a single webhook for RevenueCat to notify of subscription and purchase events.
+
+## RevenueCat Webhook
+
+```bash
+POST /v3/webhooks/revenuecat
+```
+
+Requests are verified via RevenueCat's signed-header convention; no Bearer token is used. On receipt, the API may dispatch jobs such as `AddToWallet` and `Email\SendReceiptEmail` depending on the event type.
+
+For admin views of aggregate billing data, see [Admin → Billing](/api/admin#billing).

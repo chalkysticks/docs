@@ -1,0 +1,140 @@
+
+Now:
+
+	✔ Ability to save presets @done(26-07-01 14:49)
+
+	✔ New preset styles + Grey preset @done(26-07-01 14:49)
+
+	☐ Try a grey preset on dynamic image unfurl thing
+
+	☐ Add zoom / crop controls for diagrams.
+		☐ Confirm whether this can use `viewBox`.
+		✔ Use pinch on mobile. @done(26-06-03 14:02)
+		☐ Add zoom icon and drag-to-pan on desktop.
+		☐ Export cropped diagrams correctly.
+
+	☐ Add multiple diagrams / sequences.
+		☐ Create, duplicate, reorder, and delete steps.
+		☐ Export sequence as image set or shareable URL.
+
+	☐ Fix saved Pad diagrams that load incorrectly.
+		☐ Confirm whether API is using the old diagram format.
+		☐ Confirm Trainer phone loading issue related to 3D ball errors.
+
+
+Table Scanner & Inference:
+
+	☐ Let users adjust detected pocket identifiers.
+		☐ Six pocket markers should be draggable.
+		☐ Mirror projection-mapping calibration patterns.
+		☐ Save corrected table bounds with confidence.
+
+	☐ Explore multi-frame scanner capture.
+		☐ Record short video or multiple frames.
+		☐ Find the most common table result.
+		☐ Let user choose the correct result when uncertain.
+
+	☐ Explore custom overhead inference model.
+		☐ User manually sets corners.
+		☐ Preview homography.
+		☐ Support fixed cameras.
+
+
+Editor Features:
+
+	☐ Turn Pad into a game editor
+		☐ Add special shapes such as landing pads
+		☐ Give shapes controls that map into Trainer game rules
+		☐ Export levels into Trainer
+
+	☐ Add table trimming
+		☐ Half table
+		☐ Quarter table
+		☐ Custom bounding box
+		☐ Optional API `trim` parameter for SVG output
+
+	☐ Add more table and ball designs
+		☐ Add more telestrator features
+		☐ Keep shared with Trainer where possible
+
+	☐ Turn Pad into a streamable telestrator
+		☐ Allow drawing while live streaming
+		☐ Explore second-screen or broadcast output
+
+
+Tools Built On Pad:
+
+	☐ Randomized Pattern Racker.
+		☐ Support 8-ball, 9-ball, and 10-ball.
+		☐ Follow legal racking requirements.
+		☐ Lock specific balls for house rules or handicaps.
+		☐ One-tap re-rack.
+		☐ Undo to previous rack.
+		☐ Rack history.
+		☐ Export rack as image or SVG.
+		☐ Push rack data to Scorekeeper, Match Log, Trainer, or Pad.
+		☐ Broadcast current rack to a public URL for events or TVs.
+		☐ Add premium ball-set themes and rack reveals.
+
+	☐ Shot clock utility.
+		☐ Presets: 15, 30, 45, and 60 seconds.
+		☐ Custom time.
+		☐ Start, pause, and reset.
+		☐ Background game timer.
+		☐ Haptics, sounds, and visual alerts.
+		☐ Chess-clock mode.
+		☐ Session memory.
+		☐ Watch-face style display themes.
+		☐ Export shot-time data.
+		☐ High-contrast and voice cue modes.
+		☐ Widget / quick launch.
+		☐ Mirror output to second screen.
+
+	☐ Handicap calculator.
+		☐ APA 8-ball and 9-ball.
+		☐ BCA / BCAPL.
+		☐ FargoRate lookup.
+		☐ Custom house formats.
+		☐ Race calculation.
+		☐ Scorecard generator.
+		☐ Team matchup helper.
+		☐ Handicap editor.
+		☐ Share / export matchups.
+		☐ Director mode for events.
+		☐ League API integration.
+		☐ OCR score-sheet import.
+		☐ New-player handicap predictor.
+
+
+Archive: Completed:
+
+	✔ Add ability to quickly rack balls. @started(26-01-17 18:24) @done(26-01-17 18:24) @lasted(55s)
+	✔ Add ability to shuffle balls. @done(25-11-14 12:06)
+	✔ Default to shuffled 9-ball in the web app. @done(25-11-14 12:06)
+	✔ Allow ghost balls to overlap. @done(25-11-19 17:16)
+	✔ Add colored lines from start ball. @done(26-01-21 19:49)
+	✔ Racks for 8, 9, and 10. @done(26-01-17 18:22)
+	✔ Option for fat 20px lines while dragging. @done(26-01-17 18:23)
+	✔ Navigate to diagram, move something, go back, and avoid double balls. @done(26-04-08 15:52)
+	✔ Clear model when saving a second diagram after clear. @done(26-04-09 01:14)
+	✔ Fix PNG arrows and table color. @done(26-04-01 10:04)
+	✔ Add grid lines to SVG surface. @done(26-04-01 10:04)
+	✔ Create desktop version of this app. @done(26-04-01 10:04)
+	✔ Import image / video as overlay for redrawing diagrams. @done(26-04-09 01:15)
+	✔ Icons / FigJam-style arrows, circles, thumbs up, and thumbs down. @done(26-04-09 01:15)
+	✔ Save table color and settings. @done(26-05-08 14:39)
+	✔ Fix deleting ghost ball also deleting object ball. @done(26-05-08 17:59)
+	✔ Table scanner in YouTube showed a different diagram than Create page. @done(26-06-03 14:02)
+	✔ Create billiards table. @done(26-06-03 16:57)
+	✔ Keep 3-cushion tables and double corner diamonds. @done(26-06-03 17:00)
+    ✔ Settings should save automatically @done(26-06-30 13:34)
+	✔ No more grey line errors @done(26-06-30 13:34)
+	✔ You can use "A" on any ball now @done(26-06-30 13:34)
+	✔ Lines better inherit previous line style (dashed or dotted) for multi-rail shots @done(26-06-30 13:34)
+	✔ Multi-rail after contact shots using the AutoFixGhostBall setting should no longer break @done(26-06-30 13:34)
+	✔ "G" to toggle grid mode @done(26-06-30 13:34)
+	✔ Shift to snap lines 10º increments in ball selected @done(26-06-30 13:34)
+	✔ Shift to start marquee if nothing selected @done(26-06-30 13:34)
+	✔ Add shift-to-snap when drawing lines. @done(26-06-30 17:50)
+		✔ Snap to fixed degree increments. @done(26-06-30 17:50)
+		✘ Make the increment configurable if needed. @cancelled(26-06-30 17:51)

@@ -1,0 +1,141 @@
+---
+title: 'Inference Package'
+description: 'Computer vision pipeline for pool table detection, tracking, homography, and stabilization'
+---
+
+`@chalkysticks/sdk-inference` is an end-to-end computer-vision pipeline for pool tables: detecting balls, pockets, and cushions; computing a perspective transform; tracking balls across frames; stabilizing identities and coordinates; and fingerprinting cameras so multi-camera broadcast cuts don't corrupt table state.
+
+Current version: **1.13.7**
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-inference
+```
+
+## Quick Start
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+const analyzer = new Core.ImageAnalyzer({
+    autoTransform: true,
+});
+
+analyzer.on('frame', (e) => {
+    const frame: Inference.IProcessedFrame = e.data;
+
+    console.log('Balls:', frame.balls);
+    console.log('Pockets:', frame.pockets);
+    console.log('Camera:', frame.cameraType);
+    console.log('Table-space:', frame.transformedData?.balls);
+});
+
+// Continuous video (frame-synced via requestVideoFrameCallback)
+await analyzer.process(videoElement, true);
+
+// ...later
+analyzer.stop();
+analyzer.dispose();
+```
+
+## Architecture (v1.13)
+
+```
+ImageAnalyzer (orchestrator, requestVideoFrameCallback)
+    │
+    ├── Camera Identity (1.13.7+)
+    │   ├── CameraFingerprint     — dHash perceptual fingerprint per frame
+    │   ├── CameraIndex           — groups frames into numbered cameras, detects cuts
+    │   └── CameraStateMemory     — per-camera cache of type / homography / pockets
+    │
+    ├── Detection
+    │   ├── BallDetector          — ball extraction, IoU dedupe, bounds filters
+    │   ├── PocketDetector        — pocket extraction + layout analysis
+    │   ├── PocketInference       — infers missing pockets from partial layouts
+    │   ├── CushionDetector       — rail/cushion boundary scan from pixel data
+    │   ├── CameraTypeDetector    — overhead vs freehand classification
+    │   └── OrientationDetector   — landscape vs portrait table orientation
+    │
+    ├── Homography
+    │   ├── TransformationPipeline — layout → orient → solve → transform → stabilize
+    │   ├── HomographySolver       — homography matrix from pocket layout
+    │   ├── CoordinateTransformer  — apply matrix to points / balls / images
+    │   ├── HomographyDecomposer   — decompose matrix for diagnostics
+    │   └── Matrix functions       — computeHomography, applyHomography, invert3x3
+    │
+    ├── Tracking
+    │   ├── BallTracker           — greedy cost assignment + anti-swap + stationary window
+    │   └── KalmanFilter          — 2D position / velocity smoother
+    │
+    └── Stabilization
+        ├── BallIdentityStabilizer  — ledger-based identity resolution (rewritten 1.13.7+)
+        ├── CameraTypeStabilizer    — camera-type temporal lock (seedable)
+        ├── HomographyStabilizer    — EMA smoothing on the homography matrix (seedable)
+        ├── PocketStabilizer        — trusted-layout lock when detections drop
+        └── TransformedBallStabilizer — adaptive EMA after homography
+```
+
+## Namespace Exports
+
+```typescript
+import {
+    Core,
+    Detection,
+    Enum,
+    Homography,
+    Stabilization,
+    Tracking,
+    Utility,
+} from '@chalkysticks/sdk-inference';
+```
+
+| Namespace | Key Exports |
+|-----------|-------------|
+| `Core` | `ImageAnalyzer`, `CameraStateMemory` |
+| `Detection` | `BallDetector`, `PocketDetector`, `PocketInference`, `CushionDetector`, `CameraTypeDetector`, `OrientationDetector`, `CameraFingerprint`, `CameraIndex`, strategy classes |
+| `Homography` | `TransformationPipeline`, `HomographySolver`, `CoordinateTransformer`, `HomographyDecomposer`, `computeHomography`, `applyHomography`, `invert3x3`, `validateHomography` |
+| `Tracking` | `BallTracker`, `BallTrack`, `KalmanFilter` |
+| `Stabilization` | `BallIdentityStabilizer`, `CameraTypeStabilizer`, `HomographyStabilizer`, `PocketStabilizer`, `TransformedBallStabilizer` |
+| Config groups (root) | `Cushion`, `Environment`, `Identity`, `Roboflow`, `Table` — exported individually at the package root; there is no `Config` namespace export, and the `Detection`/`Tracking` config groups are shadowed by the module namespaces of the same names |
+| `Enum` | `CameraType` |
+| `Utility` | `Geometry`, `Image`, `CircularBuffer`, `Debug` |
+
+Main classes are also re-exported at the package root (`import { ImageAnalyzer } from '@chalkysticks/sdk-inference'`). Shared types live on the global `Inference.*` namespace (`Inference.IProcessedFrame`, `Inference.ITransformedData`, etc.).
+
+## Pipeline Flow
+
+Per video frame (driven by `requestVideoFrameCallback`):
+
+1. **Fingerprint** — `CameraIndex` hashes the frame, identifies the camera, and detects cuts. Untrusted transient scenes short-circuit with an empty frame; known cameras get their state restored from `CameraStateMemory`.
+2. **Detect** — local InferenceJS (Roboflow), a remote HTTP endpoint, or the Node table scanner returns raw predictions.
+3. **Filter** — `BallDetector.removeDuplicates` (IoU) and `filterOutsideTableBounds` (pocket bounding box) drop noise.
+4. **Classify** — `CameraTypeDetector` infers camera view (throttled to every 10 frames); `CameraTypeStabilizer` locks it.
+5. **Identify pockets** — `PocketDetector.analyzePocketLayout` + `PocketInference` label the six slots and infer missing ones.
+6. **Track** — `BallTracker` assigns persistent `trackId`s (greedy cost matching + Kalman + anti-swap + stationary window).
+7. **Resolve identities** — `BallIdentityStabilizer.stabilize` runs constrained table-level assignment over evidence ledgers.
+8. **Transform** — with `autoTransform: true`, `TransformationPipeline` stabilizes pockets, detects orientation, solves and stabilizes the homography, projects balls to table space, and applies post-transform EMA.
+9. **Persist** — resolved geometry is saved to `CameraStateMemory` (throttled to every 30 frames per camera).
+10. **Dispatch** — `frame` event fires with the full `Inference.IProcessedFrame`.
+
+## Documentation
+
+- [ImageAnalyzer](/sdk/inference/image-analyzer) — orchestrator, config, events
+- [Detection](/sdk/inference/detection) — balls, pockets, cushions, camera type, orientation
+- [Homography](/sdk/inference/homography) — solver, transformer, transformation pipeline
+- [Tracking & Stabilization](/sdk/inference/tracking) — tracker, Kalman filter, five stabilizers
+- [Camera Fingerprint](/sdk/inference/camera-fingerprint) — multi-camera identity and state memory
+- [Configuration](/sdk/inference/configuration) — every tunable constant
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — Camera fingerprinting (`CameraFingerprint`, `CameraIndex`), per-camera state memory (`CameraStateMemory`), cut-aware stabilizer resets, `cameraChanged` event, seedable stabilizers (`seedLock`, `seedMatrix`, `seedTrustedLayout`, `seedHomography`), ledger-based `BallIdentityStabilizer` rewrite, expanded `Config.Identity`, `ImageAnalyzer.getDebugSnapshot()`.
+- **1.13.3** — `CushionDetector` scan internals rewritten (inward cloth anchor → cushion lip → outer rail); `Config.Cushion` expanded to ~30 constants; missing-pocket handling improved; new ball tracker merged. (`PocketDetector.analyzePocketLayout`'s `trustedLayout` option shipped earlier, in 1.12.x.)
+- **1.13.0** — `TransformationPipeline`, `CushionDetector`, `BallIdentityStabilizer`, `TransformedBallStabilizer` introduced; `requestVideoFrameCallback` frame loop; `Evaluation/` and `Input/VideoProcessor` removed; types moved under the `Inference.*` namespace.
+
+## Dependencies
+
+- `@chalkysticks/sdk-core` (peer, `^1.61.5`) — event dispatcher, environment utilities
+- `@chalkysticks/sdk-extras` — `Model.TableScan` for Node-side inference
+- `inferencejs` — Roboflow browser inference runtime
+- `restmc` — REST model/collection layer (direct dependency)

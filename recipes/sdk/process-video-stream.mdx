@@ -1,0 +1,157 @@
+---
+title: 'Process a video stream'
+description: 'Continuously scan video frames with tracking and stabilization'
+---
+
+## Basic Continuous Processing
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+const analyzer = new Core.ImageAnalyzer();
+const video = document.getElementById('gameVideo') as HTMLVideoElement;
+
+analyzer.setElement(video);
+
+analyzer.on('frame', (frameData) => {
+    // Called after each processed frame
+    const positions = analyzer.getTransformedPositions();
+
+    updateBallOverlay(positions.balls);
+    updateCameraLabel(positions.cameraType);
+});
+
+// Start when video plays
+video.addEventListener('play', async () => {
+    await analyzer.processDetections();
+});
+
+// Stop when video pauses
+video.addEventListener('pause', () => {
+    analyzer.stop();
+});
+```
+
+## Tracking Ball Identity Across Frames
+
+`ImageAnalyzer` uses `BallTracker` internally, so each ball maintains a stable `trackId` between frames:
+
+```typescript
+analyzer.on('frame', (frameData) => {
+    const positions = analyzer.getTransformedPositions();
+
+    positions.balls.forEach((ball) => {
+        // trackId stays consistent as the ball moves
+        console.log(`Track #${ball.trackId}: ${ball.label} at (${ball.x}, ${ball.y})`);
+    });
+});
+```
+
+This is what enables smooth animations — you can interpolate a ball's position between frames using its `trackId` as the join key.
+
+## Reacting to Camera Changes
+
+```typescript
+let lastCameraType = 'unknown';
+
+analyzer.on('frame', (frameData) => {
+    const positions = analyzer.getTransformedPositions();
+
+    if (positions.cameraType !== lastCameraType) {
+        console.log(`Camera changed: ${lastCameraType} → ${positions.cameraType}`);
+        lastCameraType = positions.cameraType;
+
+        // Maybe switch overlays, adjust UI, etc.
+    }
+});
+```
+
+The camera type is already stabilized — it will not flicker between frames on borderline angles.
+
+## Manual Reset
+
+If the physical camera moves to a new angle mid-stream:
+
+```typescript
+// Force re-evaluation of camera type
+analyzer.resetCameraType();
+```
+
+## Full Example: Video Player with Overlay
+
+```typescript
+import { Core } from '@chalkysticks/sdk-inference';
+
+export default class InferencePlayer {
+    private analyzer: Core.ImageAnalyzer;
+    private video: HTMLVideoElement;
+    private canvas: HTMLCanvasElement;
+
+    constructor(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+        this.analyzer = new Core.ImageAnalyzer();
+        this.canvas = canvas;
+        this.video = video;
+
+        this.analyzer.setElement(this.video);
+        this.analyzer.on('frame', () => this.render());
+
+        this.video.addEventListener('play', () => this.start());
+        this.video.addEventListener('pause', () => this.stop());
+        this.video.addEventListener('ended', () => this.stop());
+    }
+
+    async start(): Promise<void> {
+        await this.analyzer.processDetections();
+    }
+
+    stop(): void {
+        this.analyzer.stop();
+    }
+
+    render(): void {
+        const positions = this.analyzer.getTransformedPositions();
+        const ctx = this.canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        positions.balls.forEach((ball) => {
+            const x = ball.x * this.canvas.width;
+            const y = ball.y * this.canvas.height;
+
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = this.getBallColor(ball.number);
+            ctx.fill();
+            ctx.stroke();
+        });
+    }
+
+    getBallColor(ballNumber: number): string {
+        const colors: Record<number, string> = {
+            0: '#ffffff',
+            1: '#ffd700',
+            2: '#0000ff',
+            3: '#ff0000',
+            4: '#800080',
+            5: '#ff8c00',
+            6: '#008000',
+            7: '#800000',
+            8: '#000000',
+        };
+
+        return colors[ballNumber] || '#888888';
+    }
+
+    dispose(): void {
+        this.analyzer.stop();
+        this.analyzer.dispose();
+    }
+}
+```
+
+## Performance Notes
+
+- Each frame runs the full pipeline (detection → homography → tracking → stabilization)
+- Inference runs in Web Workers via inferencejs, so it does not block the main thread
+- The frame rate adapts to the device — faster GPUs process more frames per second
+- If inference takes longer than the frame interval, frames are dropped (not queued)

@@ -1,53 +1,185 @@
 ---
 title: 'Table Manager'
-description: 'Orchestrating pad operations'
+description: 'High-level pad orchestrator: elements, cycling, history, and state'
 ---
 
-The Table Manager is the main entry point for all pad operations.
-
-## Getting the Manager
+`Manager.Table` is the primary entry point for the pad. It owns every sub-manager (ball, line, shape, sticker, text, rail, trajectory), exposes element-level shortcuts, manages undo/redo history, and dispatches `table:*` events. See [Managers](/sdk/pad/managers) for the full per-manager API.
 
 ```typescript
-// In vue2-pad context
-const tableManager = this.$refs.pad.tableManager;
+import { Manager } from '@chalkysticks/sdk-pad';
 
-// Or via SDK
-import { Core } from '@chalkysticks/sdk-pad';
-const tableManager = Core.TableManager.getInstance();
+const table = new Manager.Table({ x: 0, y: 0, width: 800, height: 400 }, 20);
 ```
 
-## Manager Components
+The constructor requires `playableBounds` (ball size defaults to `20`) and calls `setup()` for you. Call `setup(playableBounds, ballSize)` again only to re-initialize with fresh managers.
 
-| Manager | Purpose |
-|---------|---------|
-| `BallManager` | Add/remove/position balls |
-| `LineManager` | Draw coach lines |
-| `RailManager` | Table boundaries |
-| `TrajectoryManager` | Shot path visualization |
-
-## Accessing Sub-Managers
+## Sub-Managers
 
 ```typescript
-const ballManager = tableManager.ballManager;
-const lineManager = tableManager.lineManager;
-const railManager = tableManager.railManager;
-const trajectoryManager = tableManager.trajectoryManager;
+table.ballManager;
+table.lineManager;
+table.shapeManager;
+table.stickerManager;
+table.textManager;
+table.railManager;
+table.trajectoryManager;
+table.history;            // Utility.History<IHistorySnapshot>
 ```
 
-## Common Operations
+`table.isReady` is `true` once `setup()` has run.
+
+## Adding Elements
+
+The Table manager exposes one-call shortcuts that delegate to the matching sub-manager. `addBall` and `addLine` only delegate and notify state change. The element shortcuts (`addShape` / `addSticker` / `addText`) also push a history snapshot, activate the new element, and deselect existing shapes and texts — only `addSticker` deselects stickers as well.
 
 ```typescript
-// Clear everything
-tableManager.clearTable();
-
-// Get current state
-const state = tableManager.exportTableState();
-
-// Load a state
-tableManager.importTableState(state);
-
-// Listen for changes
-tableManager.on('change', (state) => {
-    console.log('Table changed:', state);
-});
+table.addBall({ type: '1', x: 0.5, y: 0.5 });   // normalized coords, returns IDiagramBall
+table.addLine('ball-0', 'ball-1');               // ball IDs, not ball objects
+table.addShape(x, y, 'rect');                    // returns IDiagramShape
+table.addSticker(x, y, 'chalk');                 // 24×24 default, returns IDiagramSticker
+table.addText(x, y, 'Aim here');                 // enters edit mode immediately
 ```
+
+For `addShape` / `addSticker` / `addText`, coordinates below `1` are treated as normalized and converted against `playableBounds`; larger values are used as absolute SVG coordinates.
+
+## Selection & Cycling
+
+```typescript
+table.selectBall(ballId);
+table.deselectAllBalls();
+table.removeSelectedBalls();
+
+// Cycle through balls near a point — useful for tap-to-cycle UIs
+table.cycleGroup(x, y);
+
+// Select all balls near a point; deselects if already matched
+table.toggleBallGroup(x, y);
+```
+
+### Arrow Cycling
+
+`cycleArrow()` walks the active ball through a **three-state cycle**: arrow → ghost → none → arrow.
+
+```typescript
+table.cycleArrow();
+```
+
+### Line Style Cycling
+
+Cycles the style of the first line attached to the active ball.
+
+```typescript
+table.cycleLineStyle();   // solid → dashed → dotted → solid
+```
+
+## Removing Balls
+
+```typescript
+table.removeBall(ballId);                 // removes ball + chained lines, reconnects, notifies
+table.removeBallAndConnections(ballId);   // same, without event/state notification
+table.removeBallAndLines(ballId);         // removes ball and every line touching it
+```
+
+## Nudging & Moving
+
+```typescript
+table.nudgeBall(deltaX, deltaY);   // move active ball, clamped to playable bounds
+table.moveBalls(deltaX, deltaY);   // move all selected balls
+table.shuffleBalls();
+```
+
+## Racking
+
+```typescript
+table.rack8Ball();          // 15 balls, 8 in center
+table.rack9Ball();          // diamond, 9 in center
+table.rack10Ball();         // 10 balls, 10 in center
+table.rackBalls(balls, normalized);   // balls: IDiagramBallOptions[], normalized: boolean = true
+```
+
+The rack methods include a cue ball by default; pass `false` to rack without it: `table.rack8Ball(false)`. Non-fixed balls are shuffled into random rack positions.
+
+## Configuration
+
+```typescript
+table.setup(playableBounds, ballSize);
+table.updateBounds(bounds);   // stored on playableBounds, propagated to ball/line/rail/trajectory managers
+
+table.setBallType('chalkysticks');     // ball set id, read with getBallType()
+table.setTableType('table-horizontal-9');  // read with getTableType()
+table.setIsComplete(true);             // read with getIsComplete()
+```
+
+Each setter dispatches a `table:config` event.
+
+## State Import / Export
+
+```typescript
+const state = table.exportTableState();            // ITableState
+const withMarkup = table.exportTableStateWithMarkup();  // { ...state, markup }
+
+table.importTableState(state);           // clears first, reads metadata + layout
+table.importDiagram(layoutData);         // clears stale state before importing
+await table.importDiagramModel(diagramModel);   // hydrate from a Model.Diagram
+table.clearAll();
+```
+
+`exportTableState()` returns metadata at the root (`ballCount`, `ballType`, `tableType`, `isComplete`) and all visual elements under `layout` with normalized coordinate fields. See [Saving & Loading](/sdk/pad/saving).
+
+### Markup Provider
+
+The Table manager does not touch the DOM. Callers register a view-layer callback so the manager can request the rendered SVG when needed (e.g. for `exportTableStateWithMarkup`).
+
+```typescript
+table.setMarkupProvider(() => svgElement.outerHTML);
+const markup = table.getTableMarkup();   // string | null
+```
+
+## History / Undo / Redo
+
+```typescript
+table.pushHistory();
+
+const snapshot = table.captureSnapshot();   // deep-copied IHistorySnapshot
+table.restoreSnapshot(snapshot);
+
+if (table.canUndo) table.undo();
+if (table.canRedo) table.redo();
+```
+
+## Connections & Collision Helpers
+
+```typescript
+const connected = table.areBallsConnected(ballA, ballB);
+const first = table.getConnectedBall(ball);
+const all = table.getConnectedBalls(ball);
+const next = table.getConnectedBallByStartId(ballId);
+
+// Perpendicular projection of (x, y) onto a line
+const point = table.getLineIntersection(line, x, y);
+
+// Collision unit vectors (ball objects, three arguments)
+const target = table.calculateCollisionWithBall(startingBall, startingGhost, targetBall);
+const railHit = table.calculateCollisionWithRail(startingBall, startingGhost, rail);
+```
+
+## State-Change Callbacks
+
+Two ways to observe changes:
+
+```typescript
+// Lightweight callback
+table.onStateChange((state) => save(state));
+table.offStateChange(handler);
+
+// Or via dispatcher
+table.on('table:state', (e) => save(e.data));
+table.on('table:ball:add', (e) => log('ball added', e.data));
+```
+
+See [Events Reference](/sdk/pad/events) for the full event catalog.
+
+## Recent Changes
+
+- **2.0.0** — No breaking Table manager changes; the 2.0.0 bump was driven by the [Rules module](/sdk/pad/rules)
+- **1.4.4** — `cycleArrow()` cycles three states (arrow → ghost → none); `importDiagram()` clears existing state first; `updateBounds()` stores bounds on `playableBounds` before propagating

@@ -1,0 +1,113 @@
+---
+title: 'Resolve models via the container'
+description: 'Use the Identity Map to reuse model and collection instances'
+---
+
+## Why Resolve Instead of New
+
+When you `new Model.Venue({ id: 42 })` in two different places, you get two separate objects. If one fetches updated data, the other is stale. The Identity Map solves this — `resolve()` returns the **same instance** whenever the class and arguments match.
+
+## Setup
+
+Make sure the SDK is configured so the `CoreServiceProvider` registers all factories:
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com',
+});
+```
+
+## Resolve a Model
+
+```typescript
+import ChalkySticks, { Model } from '@chalkysticks/sdk-core';
+
+// First resolve — creates a new Model.Venue with the correct baseUrl
+const venue = ChalkySticks.resolve(Model.Venue, { id: 42 });
+
+// Somewhere else in the app — returns the SAME instance
+const sameVenue = ChalkySticks.resolve(Model.Venue, { id: 42 });
+
+console.log(venue === sameVenue); // true
+```
+
+## Resolve a Collection
+
+```typescript
+import ChalkySticks, { Collection } from '@chalkysticks/sdk-core';
+
+// Shared collection instance — both references point to the same object
+const feedA = ChalkySticks.resolve(Collection.Feed);
+const feedB = ChalkySticks.resolve(Collection.Feed);
+
+console.log(feedA === feedB); // true
+
+// Fetch once, both references see the data
+await feedA.fetch();
+console.log(feedB.length); // same result
+```
+
+## Compare: Old Way vs Container Way
+
+```typescript
+import { Factory, Model } from '@chalkysticks/sdk-core';
+
+// Old way — always a fresh instance, no caching
+const venueA = Factory.Venue();
+const venueB = Factory.Venue();
+// venueA !== venueB
+
+// Container way — cached by class + args
+const venueC = ChalkySticks.resolve(Model.Venue, { id: 1 });
+const venueD = ChalkySticks.resolve(Model.Venue, { id: 1 });
+// venueC === venueD
+```
+
+Both approaches still work. The Factory files are not replaced — they remain available as stateless helpers when you explicitly want a fresh instance.
+
+## With the app() Helper
+
+```typescript
+import { app } from '@chalkysticks/sdk-core';
+import { Container } from '@chalkysticks/sdk-core/Provider/Container';
+
+const container = app() as Container;
+const venue = container.resolve(Model.Venue, { id: 42 });
+```
+
+## In a Vue Component
+
+```typescript
+import { Component, Vue } from 'vue-property-decorator';
+import ChalkySticks, { Model, Collection } from '@chalkysticks/sdk-core';
+
+@Component
+export default class VenueDetail extends Vue {
+    venue: Model.Venue = ChalkySticks.resolve(Model.Venue, { id: 0 });
+
+    async mounted(): Promise<void> {
+        const venueId = this.$route.params.id;
+
+        // Resolve the venue — if another component already resolved this
+        // ID, we get the same instance with its data already loaded
+        this.venue = ChalkySticks.resolve(Model.Venue, { id: venueId });
+
+        if (!this.venue.get('name')) {
+            await this.venue.fetch();
+        }
+    }
+}
+```
+
+## Flush When Data Goes Stale
+
+```typescript
+// User checked in, venue data might have changed
+ChalkySticks.getContainer().flushResolved(Model.Venue, { id: 42 });
+
+// Next resolve will create a fresh instance
+const fresh = ChalkySticks.resolve(Model.Venue, { id: 42 });
+await fresh.fetch();
+```

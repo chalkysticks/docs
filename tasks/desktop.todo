@@ -1,0 +1,35 @@
+Now:
+
+	☐ Define the desktop app scope.
+		☐ Trainer-first desktop shell.
+		☐ Pad diagramming support.
+		☐ Offline-friendly asset cache.
+		☐ Gamepad and keyboard defaults.
+
+	☐ Choose packaging path.
+		☐ Confirm whether this is Electron, Tauri, or another shell.
+		☐ Define build and release scripts.
+		☐ Decide how native updates work.
+
+
+Trainer Desktop:
+
+	☐ Publish a desktop Trainer build.
+		☐ Bundle table, ball, cue, audio, and environment assets.
+		☐ Confirm performance on common desktop GPUs.
+		☐ Keep fullscreen and windowed modes polished.
+
+	☐ Add desktop-specific idle / attract behavior.
+		☐ Align with "Press anywhere to continue" flow.
+		☐ Support arcade or venue display mode.
+
+
+Pad Desktop:
+
+	✔ Create desktop version of Pad. @done(26-04-01 10:04)
+
+	☐ Re-check desktop Pad after recent mobile and Trainer changes.
+		☐ Zoom.
+		☐ Pan.
+		☐ Selection marquee.
+		☐ Export image / SVG.

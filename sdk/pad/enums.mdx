@@ -1,0 +1,280 @@
+---
+title: 'Enums & Constants'
+description: 'Enumeration types and constant values used by sdk-pad'
+---
+
+## Importing
+
+```typescript
+import { Constant, Enum } from '@chalkysticks/sdk-pad';
+```
+
+---
+
+## DiagramState
+
+Interaction mode states for the pad diagram.
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+Enum.DiagramState.BallMode    // 'ball-mode'
+Enum.DiagramState.BallSelect  // 'ball-select'
+Enum.DiagramState.LineMode    // 'line-mode'
+Enum.DiagramState.None        // ''
+```
+
+| Value | Description |
+|-------|-------------|
+| `BallMode` | User is adding/placing balls |
+| `BallSelect` | User is selecting existing balls |
+| `LineMode` | User is drawing lines between balls |
+| `None` | No active interaction mode |
+
+---
+
+## LineStyle
+
+Style options for lines between balls.
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+Enum.LineStyle.Solid   // 'solid'
+Enum.LineStyle.Dashed  // 'dashed'
+Enum.LineStyle.Dotted  // 'dotted'
+```
+
+| Value | SVG Dash Array | Description |
+|-------|----------------|-------------|
+| `Solid` | `none` | Continuous line |
+| `Dashed` | `8,4` | Long dashes |
+| `Dotted` | `2,4` | Small dots |
+
+### LineStyleDashArray
+
+Mapping of `LineStyle` values to their SVG `stroke-dasharray` strings.
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+const dashArray = Enum.LineStyleDashArray[Enum.LineStyle.Dashed];
+// '8,4'
+```
+
+---
+
+## PocketLocation
+
+The six physical pockets, named by position. The string values double as stable IDs in the custom-rules DSL (`pocket:ht`, `pocket:fb`, ...).
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+Enum.PocketLocation.FootBottom    // 'foot-bottom'
+Enum.PocketLocation.FootTop      // 'foot-top'
+Enum.PocketLocation.HeadBottom   // 'head-bottom'
+Enum.PocketLocation.HeadTop      // 'head-top'
+Enum.PocketLocation.MiddleBottom // 'middle-bottom'
+Enum.PocketLocation.MiddleTop    // 'middle-top'
+```
+
+| Value | Description |
+|-------|-------------|
+| `HeadTop` / `HeadBottom` | Corner pockets at the head of the table |
+| `MiddleTop` / `MiddleBottom` | Side pockets |
+| `FootTop` / `FootBottom` | Corner pockets at the foot of the table |
+
+---
+
+## RailLocation
+
+The six semantic rails. Distinct from `RailDirection` (the four raw edges): a `RailLocation` is the gameplay-facing rail identity used by ball-rail collision events and the custom-rules engine (e.g. `rails-after:ht|h`).
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+Enum.RailLocation.Foot        // 'foot'
+Enum.RailLocation.FootBottom  // 'foot-bottom'
+Enum.RailLocation.FootTop     // 'foot-top'
+Enum.RailLocation.Head        // 'head'
+Enum.RailLocation.HeadBottom  // 'head-bottom'
+Enum.RailLocation.HeadTop     // 'head-top'
+```
+
+`Rules.ADJACENT_RAILS`, `Rules.railsAdjacentToPocket()`, and `Rules.isRailAdjacentToPocket()` map these to `PocketLocation` values. See [Rules Engine](/sdk/pad/rules).
+
+---
+
+## RailDirection
+
+Direction values for the four raw table edges (used by the Rail manager and reflection math).
+
+```typescript
+import { Enum } from '@chalkysticks/sdk-pad';
+
+Enum.RailDirection.Top     // 'top'
+Enum.RailDirection.Right   // 'right'
+Enum.RailDirection.Bottom  // 'bottom'
+Enum.RailDirection.Left    // 'left'
+```
+
+| Value | Description |
+|-------|-------------|
+| `Top` | Top rail of the table |
+| `Right` | Right rail of the table |
+| `Bottom` | Bottom rail of the table |
+| `Left` | Left rail of the table |
+
+---
+
+## BallLineColor
+
+Mapping of ball types to their default line colors. Used to color lines based on which ball they originate from.
+
+```typescript
+import { Constant } from '@chalkysticks/sdk-pad';
+
+const color = Constant.BallLineColor['1'];
+// '#F8E100' (yellow)
+```
+
+| Ball | Color | Hex |
+|------|-------|-----|
+| `1` | Yellow | `#F8E100` |
+| `2` | Blue | `#3A4ABA` |
+| `3` | Red | `#ED2726` |
+| `4` | Purple | `#B4519E` |
+| `5` | Orange | `#E29626` |
+| `6` | Green | `#097C16` |
+| `7` | Maroon | `#8B1E38` |
+| `8` | Black | `#000000` |
+| `9` | Yellow stripe | `#F8E100` |
+| `10` | Blue stripe | `#3A4ABA` |
+| `11` | Red stripe | `#ED2726` |
+| `12` | Purple stripe | `#B4519E` |
+| `13` | Orange stripe | `#E29626` |
+| `14` | Green stripe | `#097C16` |
+| `15` | Maroon stripe | `#8B1E38` |
+| `cue` | Black | `#000000` |
+| `ghost` | Gray | `#888888` |
+
+### DEFAULT_LINE_COLOR
+
+Default color used when no ball-specific color is available.
+
+```typescript
+import { Constant } from '@chalkysticks/sdk-pad';
+
+Constant.DEFAULT_LINE_COLOR  // '#000000'
+```
+
+---
+
+## Ball Size
+
+```typescript
+import { Constant } from '@chalkysticks/sdk-pad';
+
+Constant.BALL_SIZE       // 18 (SVG user units)
+Constant.BALL_SIZE_HALF  // 9
+```
+
+---
+
+## Table Configurations
+
+Registry of table size variants (viewBox, playable bounds, ball size, grid size).
+
+```typescript
+import { Constant } from '@chalkysticks/sdk-pad';
+
+Constant.TABLE_CONFIGS;                              // Record<string, ITableSizeConfig>
+Constant.getTableConfig('nine-foot');                // throws on unknown size
+Constant.getTableConfigByDataType('table-horizontal-9'); // falls back to nine-foot
+```
+
+Available sizes: `six-foot`, `seven-foot`, `eight-foot`, `nine-foot`, `billiards-ten-foot`.
+
+```typescript
+interface ITableSizeConfig {
+    ballSize: number;
+    className: string;
+    dataTableType: string;   // e.g. 'table-horizontal-9'
+    gridSize: number;
+    label: string;
+    playableBounds: IBounds;
+    svgAssetName: string;
+    viewBox: string;
+    viewBoxHeight: number;
+    viewBoxWidth: number;
+}
+```
+
+---
+
+## Diagram Customization Defaults
+
+Per-diagram visual customization (theme, table colors, ball set, grid/diamond/spot visibility). Travels with the diagram so any renderer can apply the author's intent.
+
+```typescript
+import { Constant } from '@chalkysticks/sdk-pad';
+
+Constant.DIAGRAM_CUSTOMIZATION_DEFAULTS; // IDiagramCustomization (full merge base)
+Constant.DIAGRAM_DEFAULT_COLORS;         // table/cushion/rail/pocket/diamond/spot hexes
+```
+
+```typescript
+interface IDiagramCustomization {
+    ballSet: string;                       // 'chalkysticks-pool'
+    colors: Record<string, string>;
+    gridOpacity: number;                   // 0.5
+    pocketReducer: number;                 // 0
+    pocketStyle: 'rounded' | 'straight';   // 'straight'
+    showBranding: boolean;                 // true
+    showDiamonds: boolean;                 // true
+    showFootspot: boolean;                 // true
+    showGrid: boolean;                     // false
+    showHeadspot: boolean;                 // true
+    showHeadstring: boolean;               // true
+    showRackOutline: boolean;              // true
+    snapToGrid: boolean;                   // false
+    subgridDivisions: number;              // 1
+    subgridOpacity: number;                // 0.15
+    theme: string;                         // 'default'
+}
+```
+
+---
+
+## DEFAULT_RULES_PHRASES
+
+The shipped English phrase dictionary for the rules summary formatters. Override per-locale via `Rules.ShorthandSummaryFormatter.setPhrases()`. See [Rules Engine](/sdk/pad/rules).
+
+```typescript
+import { Constant, Rules } from '@chalkysticks/sdk-pad';
+
+Constant.DEFAULT_RULES_PHRASES;                          // IRulesPhrases
+Rules.ShorthandSummaryFormatter.setPhrases({ baseLowest: 'sink lowest' });
+```
+
+---
+
+## DiagramShapeType
+
+Type alias for supported shape types. Not an enum, but a union type used by the Shape manager.
+
+```typescript
+type DiagramShapeType = 'arrow' | 'circle' | 'ellipse' | 'rect';
+```
+
+## Recent Changes
+
+- 2.0.0 — `DEFAULT_RULES_PHRASES` expanded for the rewritten rules summarizer
+- 1.6.4 — `RailLocation` enum added (with rail-adjacency helpers in `Rules`)
+- 1.6.0 — `PocketLocation` enum and `DEFAULT_RULES_PHRASES` added
+- 1.5.19 — `snapToGrid` customization flag added
+- 1.5.15 — `gridSize` and `label` fields added to `ITableSizeConfig`
+- 1.5.14 — `billiards-ten-foot` table config added
+- 1.5.6 — `DIAGRAM_CUSTOMIZATION_DEFAULTS` / `DIAGRAM_DEFAULT_COLORS` / `IDiagramCustomization` added
+- 1.4.x — `TABLE_CONFIGS`, `getTableConfig()`, `getTableConfigByDataType()`, `BALL_SIZE`, `BALL_SIZE_HALF` added

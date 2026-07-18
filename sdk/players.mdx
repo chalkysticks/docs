@@ -1,7 +1,9 @@
 ---
 title: 'Players Package'
-description: 'Player management and beacons'
+description: 'Player profiles and location beacons'
 ---
+
+`@chalkysticks/sdk-players` is a lightweight package covering the player-identity and beacon (location broadcast) domains.
 
 ## Installation
 
@@ -9,72 +11,108 @@ description: 'Player management and beacons'
 npm install @chalkysticks/sdk-players
 ```
 
-## Player Collection
+Requires `@chalkysticks/sdk-core` as a peer dependency (`^1.61.5`).
+
+## Exports
+
+```typescript
+import {
+    Collection,   // Player, Beacon
+    Core,         // re-export of sdk-core
+    Factory,      // Player.model() / .collection(), Beacon.model() / .collection()
+    Model,        // Player, Beacon
+} from '@chalkysticks/sdk-players';
+```
+
+Factories default `baseUrl` to `Core.Constants.API_URL_V1` and accept standard restmc options (`baseUrl`, `endpoint`, `headers`, `params`, ...).
+
+## Player
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-players';
+
+// List players
+const players = Factory.Player.collection();
+players.setQueryParams({ q: 'Matt' });
+await players.fetch();
+
+// Single player
+const player = Factory.Player.model();
+player.set({ id: 123 });
+await player.fetch();
+
+player.getName(); // string
+```
+
+### Player Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Player ID |
+| `name` | Display name (getter: `getName()`) |
+| `created_at` | Created timestamp |
+| `updated_at` | Updated timestamp |
+
+Endpoint: `player`.
+
+## Beacons
+
+Beacons are short-lived location broadcasts from players looking for a game. Endpoint: `beacons`.
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-players';
+
+const beacons = Factory.Beacon.collection();
+await beacons.fetch();
+
+// Broadcast a beacon
+const beacon = Factory.Beacon.model();
+await beacon.save({
+    lat: 40.7128,
+    lon: -74.006,
+});
+
+// Remove it
+await beacon.delete();
+```
+
+### Proximity Search
+
+`Collection.Beacon` exposes a static `search` for proximity queries (sends `lat`, `lon`, `d` as query params):
 
 ```typescript
 import { Collection } from '@chalkysticks/sdk-players';
 
-const players = new Collection.Player();
+const nearby = await Collection.Beacon.search(40.7128, -74.006, 10); // lat, lon, distance (default 9999)
 
-// Search players
-players.setQuery({ q: 'Matt' });
-await players.fetch();
-
-// Players near location
-players.setQuery({
-    lat: 40.7128,
-    lon: -74.0060,
-    distance: 10
+nearby.each((beacon) => {
+    console.log(beacon.getDistance(), beacon.getTimeAgo());
 });
-await players.fetch();
 ```
 
-## Player Model
+### Beacon Fields
+
+| Field | Getter | Description |
+|-------|--------|-------------|
+| `id` | — | Beacon ID |
+| `lat` | `getLatitude()` | Latitude |
+| `lon` | `getLongitude()` | Longitude |
+| `distance` | `getDistance()` | Distance from the search origin |
+| `time_ago` | `getTimeAgo()` | Human-readable age |
+| `status` | `getStatus()` | Beacon status |
+| `keepalive` | `getKeepAlive()` | Keepalive interval |
+| `created_at` | — | Created timestamp |
+| `updated_at` | — | Updated timestamp |
+
+### Relationships
 
 ```typescript
-import { Model } from '@chalkysticks/sdk-players';
-
-const player = new Model.Player({ id: 123 });
-await player.fetch();
-
-// Properties
-console.log(player.name);
-console.log(player.avatar);
-console.log(player.level);
-console.log(player.gamesPlayed);
-console.log(player.winRate);
+beacon.user; // Core Model.User (hasOne)
 ```
 
-## Beacons
+## Recent Changes
 
-Beacons are location broadcasts from players.
-
-```typescript
-import { Collection, Model } from '@chalkysticks/sdk-players';
-
-// Get active beacons
-const beacons = new Collection.Beacon();
-await beacons.fetch();
-
-// Create a beacon (broadcast your location)
-const beacon = new Model.Beacon({
-    latitude: 40.7128,
-    longitude: -74.0060,
-    message: 'Looking for a game!'
-});
-await beacon.save();
-
-// Delete beacon (stop broadcasting)
-await beacon.destroy();
-```
-
-## Beacon Properties
-
-| Property | Description |
-|----------|-------------|
-| `latitude` | Location latitude |
-| `longitude` | Location longitude |
-| `message` | Optional message |
-| `user` | Associated user |
-| `venue` | Associated venue (if at one) |
-| `expiresAt` | When beacon expires |
+- `1.6.5` — `@chalkysticks/sdk-core` peer dependency switched from a git spec to a semver range (`^1.61.5`).
+- `1.6.4` — `@chalkysticks/sdk-core` moved from a bundled git dependency to a peer dependency.
+- `1.6.3` — Registry/auth housekeeping; no API changes.
+- `1.5.1` — Beacon attributes renamed `latitude`/`longitude` to `lat`/`lon` (getters `getLatitude()` / `getLongitude()` unchanged).

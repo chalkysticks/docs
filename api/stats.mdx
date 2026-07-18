@@ -1,0 +1,86 @@
+---
+title: 'Stats & Leaderboards'
+description: 'Per-user statistics and ranked leaderboards'
+---
+
+User stats are arbitrary integer counters keyed by a `stat_key` (e.g. `games.won`, `shots.made`). Leaderboards are computed views ranked by a single metric key.
+
+## User Stats
+
+### List User Stats
+
+```bash
+GET /v3/users/{user}/stats
+GET /v3/users/{user}/stats?prefix=games&scope_type=venue&scope_id=1
+```
+
+Query parameters: `stat_key`, `prefix`, `scope_type`, `scope_id`, `per_page`.
+
+### Get Single Stat
+
+```bash
+GET /v3/users/{user}/stats/{stat_key}
+GET /v3/users/{user}/stats/{stat_key}?scope_type=venue&scope_id=1
+```
+
+`stat_key` matches `[A-Za-z0-9_.-]+`.
+
+### Submit Stats
+
+Submit a batch of stat updates for the user.
+
+```bash
+POST /v3/users/{user}/stats
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "as_of": "2026-05-11",
+  "stats": [
+    { "stat_key": "games.won",  "value": 1, "op": "set" },
+    { "stat_key": "shots.made", "value": 5, "op": "max" }
+  ]
+}
+```
+
+- `stats` is required, 1–200 items.
+- `stat_key` lowercase, max 80 chars, matches `^[a-z0-9._-]+$`, must NOT start with `trainer.`.
+- `op` is one of `max`, `min`, `set` (default behavior depends on the key).
+- `value` is an integer between 0 and 10,000,000,000.
+
+## Leaderboards
+
+### Get Leaderboard
+
+```bash
+GET /v3/leaderboards/{metricKey}
+```
+
+`metricKey` matches `[a-zA-Z0-9._-]+` — e.g. `games.won`, `trainer.shots.made`.
+
+### Stat-Scoped Leaderboard
+
+Same data, mounted under `/stats/` for symmetry with the user stats namespace.
+
+```bash
+GET /v3/stats/{stat_key}/leaderboard
+```
+
+### Query Parameters
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `period` | string | `daily`, `weekly`, `monthly`, `yearly`, `alltime` |
+| `period_date` | date (Y-m-d) | Absolute period anchor, ≤ today, prohibited if `period=alltime` |
+| `period_offset` | integer | Relative period (0 = current, -1 = previous, min -520). Mutually exclusive with `period_date` |
+| `scope_type` | string | e.g. `global`, `venue` |
+| `scope_id` | integer | Required if `scope_type` is not `global` |
+| `order` | string | `asc` or `desc` |
+| `limit` | integer | 1–100 |
+| `offset` | integer | 0–10000 |
+| `include_user_id` | integer | Include a specific user's row regardless of position |
+| `include_ties` | boolean | Include all users tied at the cutoff |
+| `friends_of` | integer | Limit to friends of given user id |
+| `user_ids[]` | int[] | Limit to specific users (max 500) |

@@ -1,0 +1,87 @@
+---
+title: 'Infrastructure Overview'
+description: 'Self-hosted inference, Docker tooling, and cloud deployment for ChalkySticks computer vision'
+---
+
+## What This Section Covers
+
+ChalkySticks uses computer vision (via Roboflow) to detect pool table objects — balls, pockets, rails — and classify ball types from photos and video frames. The main API endpoint that drives this is `Data::tableScanFull`, which calls two Roboflow models back-to-back:
+
+1. **Table detection** (`my-first-project-2-qvkxb/8`) — finds Ball, Pocket, and Rail objects via RF-DETR
+2. **Ball classification** (`ball-detection-feb-2026/11`) — identifies which numbered ball each detection is (cue ball, 1-ball, 9-ball, etc.) via RF-DETR
+
+Originally these calls went directly to `serverless.roboflow.com`. We moved to self-hosted inference for three reasons:
+
+- **Downtime resilience** — Roboflow's hosted API has gone down multiple times, breaking `tableScanFull` entirely
+- **Cost** — per-inference pricing adds up for automated scans
+- **Privacy** — images and responses no longer travel through a third party
+
+This section also documents the production API edge cache. Start with [API Cache Safety](/infrastructure/api-cache-safety) before changing response scope, authentication-dependent representations, surrogate keys, or Varnish.
+
+## Architecture
+
+```
+┌─────────────┐         ┌──────────────────────────────────┐
+│ Laravel API │──POST──▶│ Roboflow Inference Sidecar       │
+│ (PHP)       │         │ (Docker, port 9001)              │
+│             │         │                                  │
+│ Services\   │         │ ┌────────────────────────────┐   │
+│ Roboflow    │         │ │ FastAPI / uvicorn           │   │
+│             │         │ │ RF-DETR model weights       │   │
+│ config/     │         │ │ cached at /tmp/cache        │   │
+│ services.php│         │ └────────────────────────────┘   │
+└─────────────┘         └──────────────────────────────────┘
+```
+
+The Laravel API's `Services\Roboflow` class is already URL-parameterized — it reads `ROBOFLOW_MODEL_URL` and `ROBOFLOW_BALLDETECTION_MODEL_URL` from `.env` and POSTs base64-encoded images to those URLs. **Switching from Roboflow's hosted API to the local sidecar is a two-line `.env` change with zero PHP code modifications.**
+
+## Key Locations
+
+| What | Where |
+|---|---|
+| Docker compose files | `bin/api-v2/docker/inference/compose.cpu.yml` and `compose.gpu.yml` |
+| Standalone Dockerfile | `bin/api-v2/docker/inference/Dockerfile` |
+| Lambda Dockerfile | `bin/api-v2/docker/inference/Dockerfile.lambda` |
+| Warmup script | `bin/api-v2/docker/inference/warmup.sh` |
+| Interactive CLI tool | `bin/api-v2/docker/tool/` (run with `./docker/tool/run`) |
+| SAM template (AWS) | `bin/api-v2/docker/aws/template.yml` |
+| Roboflow service class | `bin/api-v2/app/Services/Roboflow.php` |
+| Model URL config | `bin/api-v2/config/services.php` (lines 58-71) |
+| Env vars | `bin/api-v2/.env` (`ROBOFLOW_MODEL_URL`, `ROBOFLOW_BALLDETECTION_MODEL_URL`) |
+| ECR repository | `172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection` |
+
+## Three Hosting Options
+
+| Option | Monthly cost | Cold start | Setup |
+|---|---|---|---|
+| **Local sidecar** (Docker Compose) | $0 | None | `docker compose up -d` |
+| **AWS EC2** (t4g.medium + Docker) | ~$28 | None — always running | CloudFormation template |
+| **Standalone image** (air-gapped) | Depends on host | None if pre-warmed | `docker run` anywhere |
+
+We also explored AWS Lambda but abandoned it — see [AWS Deployment Decisions](/infrastructure/aws-deployment) for the full story.
+
+## Quick Start
+
+The fastest path to a working local sidecar:
+
+```bash
+cd bin/api-v2
+
+# Start the sidecar (auto-downloads models on first boot)
+docker compose -f docker/inference/compose.cpu.yml up -d
+
+# Update .env to point at the sidecar instead of serverless.roboflow.com
+# ROBOFLOW_MODEL_URL=http://127.0.0.1:9001/my-first-project-2-qvkxb/8
+# ROBOFLOW_BALLDETECTION_MODEL_URL=http://127.0.0.1:9001/ball-detection-feb-2026/11
+
+# Restart PHP-FPM and test
+curl -F image=@/path/to/table.jpg http://localhost:8000/v3/data/table-scan-full | jq
+```
+
+Or use the interactive tool for a guided experience:
+
+```bash
+./docker/tool/run
+```
+
+See [Roboflow Sidecar](/infrastructure/roboflow-sidecar) for the full setup guide, and [Inference Tool](/infrastructure/inference-tool) for the CLI reference.

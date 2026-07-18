@@ -5,93 +5,107 @@ description: 'ChalkySticks TypeScript SDK architecture and packages'
 
 ## Architecture
 
-The SDK is a monorepo with a unified `ChalkySticks` namespace that aggregates all packages.
+The SDK is a monorepo of focused packages built on `sdk-core`.
 
 ```typescript
-import * as ChalkySticks from '@chalkysticks/sdk';
-
-// Access any package via namespace
-ChalkySticks.Core
-ChalkySticks.Pad
-ChalkySticks.Game
-ChalkySticks.Venues
-ChalkySticks.Players
-ChalkySticks.TV
-ChalkySticks.Authentication
-ChalkySticks.Extras
+import * as Core         from '@chalkysticks/sdk-core';
+import * as Pad          from '@chalkysticks/sdk-pad';
+import * as Game         from '@chalkysticks/sdk-game';
+import * as Physics      from '@chalkysticks/sdk-physics';
+import * as Inference    from '@chalkysticks/sdk-inference';
+import * as TableScanner from '@chalkysticks/sdk-table-scanner';
+import * as Players      from '@chalkysticks/sdk-players';
+import * as TV           from '@chalkysticks/sdk-tv';
+import * as Auth         from '@chalkysticks/sdk-authentication';
+import * as Extras       from '@chalkysticks/sdk-extras';
 ```
 
 ## Packages
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@chalkysticks/sdk` | 1.60.9 | Main aggregator package |
-| `@chalkysticks/sdk-core` | 1.49.13 | Foundation: models, collections, events, utilities |
-| `@chalkysticks/sdk-pad` | 1.3.10 | Pad/diagram functionality |
-| `@chalkysticks/sdk-game` | 0.2.0 | Game/trainer physics and logic |
-| `@chalkysticks/sdk-venues` | 1.11.4 | Venue data and search |
-| `@chalkysticks/sdk-players` | 1.6.3 | Player management, beacons |
-| `@chalkysticks/sdk-tv` | 1.9.12 | TV schedules, live streams |
-| `@chalkysticks/sdk-authentication` | 1.7.14 | JWT, OAuth2 |
-| `@chalkysticks/sdk-extras` | 1.10.3 | Facts, rulebooks, statistics |
-| `@chalkysticks/sdk-inference` | 1.10.2 | Computer vision (optional) |
+| [`@chalkysticks/sdk-core`](/sdk/core) | 1.68.x | Foundation — models, collections, container/providers, services (remote config + feature flags), events, input, utilities |
+| [`@chalkysticks/sdk-pad`](/sdk/pad) | 2.0.x | Pad / diagram editor managers, builders, and the custom drill-rules DSL |
+| [`@chalkysticks/sdk-game`](/sdk/game) | 0.6.x | Gameplay data: matches, games, shots, innings, challenges, leaderboards, matchmaking |
+| [`@chalkysticks/sdk-physics`](/sdk/physics) | 0.3.x | Billiards physics: discrete + CCD collision simulation, SVG boundary parsing, trajectory prediction |
+| [`@chalkysticks/sdk-inference`](/sdk/inference) | 1.13.x | Pool table CV: detection, homography, tracking, stabilization, camera fingerprinting |
+| [`@chalkysticks/sdk-table-scanner`](/sdk/table-scanner) | 1.1.x | Pluggable image classifier (ONNX Runtime Web / TF Teachable Machine) |
+| [`@chalkysticks/sdk-players`](/sdk/players) | 1.6.x | Player profiles and location beacons |
+| [`@chalkysticks/sdk-tv`](/sdk/tv) | 1.10.x | Channels, schedules, live broadcasts |
+| [`@chalkysticks/sdk-authentication`](/sdk/authentication) | 1.8.x | Login, registration, JWT, social OAuth (web redirect + Capacitor native) |
+| [`@chalkysticks/sdk-extras`](/sdk/extras) | 1.13.x | Facts, rulebooks, AI Q&A, statistics, venue candidates, realtime (Ably) |
 
 ## Installation
 
 ```bash
-# Full SDK (recommended)
-npm install @chalkysticks/sdk
-
-# Or individual packages
+# Install individual packages as needed
 npm install @chalkysticks/sdk-core @chalkysticks/sdk-pad
 ```
 
+Every domain package declares `@chalkysticks/sdk-core` as a peer dependency — install it alongside whichever packages you use.
+
 ## Standard Exports
 
-Each package follows this pattern:
+Each package follows the same export shape:
 
 ```typescript
 export * as Collection from './Collection'
-export * as Model from './Model'
-export * as Factory from './Factory'
-export * as Enum from './Enum'
-export * as Utility from './Utility'
+export * as Model      from './Model'
+export * as Factory    from './Factory'
+export * as Enum       from './Enum'
+export * as Utility    from './Utility'
 ```
 
-## Namespace Structure
+Domain-specific namespaces (`Provider`, `Manager`, `Service`, `Geometry`, `Strategy`, etc.) are added where they make sense.
+
+## Configuration
+
+There is no default export — the main class is the named export `ChalkySticks`:
 
 ```typescript
-ChalkySticks.Collection.*      // All collections
-ChalkySticks.Model.*           // All models
-ChalkySticks.Factory.*         // All factories
-ChalkySticks.Enum.*            // All enumerations
-ChalkySticks.Constants         // Global constants
-ChalkySticks.Environment       // Environment config
-ChalkySticks.Exception         // Exception classes
-ChalkySticks.Utility           // Core utilities
+import { ChalkySticks } from '@chalkysticks/sdk-core';
+
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com/v3',
+});
 ```
+
+See [Core Package](/sdk/core) for all `configure()` options, [Service Container](/sdk/core/container) and [Service Providers](/sdk/core/providers) for the full bootstrap surface, and [Services](/sdk/core/services) for remote config + feature flags.
 
 ## Build Outputs
 
-Each package provides:
-- **ESM:** `build/esm/index.js`
-- **CJS:** `build/cjs/index.cjs`
-- **Web Bundle:** `build/web/chalkysticks-*.js`
+Each package ships:
+
+- **ESM:** `build/esm/index.js` (`main`, `module`, and `exports` all point here)
+- **Web bundle:** `build/web/chalkysticks-*.js`
+
+There is no CJS build. `package.json` exposes the root entry only — subpath imports like `@chalkysticks/sdk-core/Provider/Container` are not supported.
 
 ## Dependency Graph
 
 ```
-sdk (root)
-├── sdk-core (FOUNDATION)
-│   ├── restmc (HTTP client)
-│   └── tus-js-client (uploads)
-│
-├── sdk-authentication → sdk-core
-├── sdk-pad → sdk-core
-├── sdk-players → sdk-core
-├── sdk-game → sdk-core + luxon
-├── sdk-tv → sdk-core
-├── sdk-venues → sdk-core + luxon
-├── sdk-extras → sdk-core + luxon
-└── sdk-inference → sdk-core + sdk-extras + inferencejs
+sdk-core (foundation)
+ ├── restmc             HTTP client (Model/Collection/ActiveRecord base)
+ ├── dayjs              date/time (replaced luxon in v1.54.0)
+ ├── howler             audio playback (Sound module)
+ ├── tus-js-client      resumable uploads
+ └── peers: @capacitor/* (geolocation, share, speech), @revenuecat/purchases-capacitor
+
+sdk-authentication  → sdk-core (+ Capacitor OAuth2 / Browser peers)
+sdk-pad             → sdk-core
+sdk-players         → sdk-core
+sdk-tv              → sdk-core
+sdk-game            → sdk-core + sdk-pad (Diagram relationship on GameChallenge)
+sdk-physics         → sdk-core
+sdk-extras          → sdk-core (+ ably for realtime)
+sdk-inference       → sdk-core + sdk-extras + inferencejs
+sdk-table-scanner   → sdk-core (+ onnxruntime-web / @teachablemachine/image peers)
 ```
+
+## Recent Highlights
+
+- `sdk-pad 2.0.0` — major release; includes the [Rules Engine](/sdk/pad/rules) (shorthand DSL compiler for custom drills).
+- `sdk-core 1.68.0` — [Services](/sdk/core/services) module (`AppConfig` remote config, `Feature` flags), subscription tiers, `Model.Product` / wallet actions.
+- `sdk-game 0.6.x` — [Challenges & Leaderboards](/sdk/game/challenges), matchmaking.
+- `sdk-inference 1.13.x` — [Camera Fingerprint](/sdk/inference/camera-fingerprint): perceptual camera identification and cut detection.
+- `sdk-physics 0.3.x` — continuous collision detection (CCD) and trajectory precomputation.

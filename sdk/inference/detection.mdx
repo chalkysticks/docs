@@ -1,0 +1,189 @@
+---
+title: 'Detection'
+description: 'Ball, pocket, cushion, camera type, and orientation detection utilities'
+---
+
+The `Detection` namespace provides static utility classes for post-processing raw model predictions into clean, usable detections.
+
+## Import
+
+```typescript
+import { Detection } from '@chalkysticks/sdk-inference';
+```
+
+## BallDetector
+
+Filters and deduplicates raw ball predictions from the Roboflow model. All methods are static.
+
+### Extract Balls
+
+```typescript
+const balls = Detection.BallDetector.extractBalls(predictions);
+```
+
+Pulls ball-class items out of a mixed prediction array (which may also include pockets, table edges, etc.).
+
+### Filter by Confidence
+
+```typescript
+const confident = Detection.BallDetector.filterByConfidence(balls, 0.5);
+// default threshold: Config.Roboflow.Confidence (0.4)
+```
+
+### Bounds Filters
+
+```typescript
+// Table space: drop transformed balls outside the canonical rectangle
+// (defaults: Config.Table dimensions + Config.Detection.BoundsMarginTableSpace)
+const inBounds = Detection.BallDetector.filterOutOfBounds(transformedBalls);
+
+// Image space: drop balls outside the pocket bounding box, expanded by
+// Config.Detection.BoundsMarginImageSpace. No-op with fewer than 3 pockets.
+const onTable = Detection.BallDetector.filterOutsideTableBounds(balls, pocketPoints);
+```
+
+### Remove Duplicates
+
+```typescript
+const unique = Detection.BallDetector.removeDuplicates(balls);
+// optional second arg: IoU threshold (default Config.Detection.DuplicateIoUThreshold = 0.25)
+```
+
+Uses IoU with a spatial grid (O(n) average) to merge overlapping detections that represent the same ball.
+
+### Sorting and Clustering
+
+```typescript
+const sorted = Detection.BallDetector.sortBalls(balls, 'distance'); // 'x' | 'y' | 'distance'
+const clusters = Detection.BallDetector.clusterBalls(balls);        // radius: Config.Detection.ClusterRadius
+```
+
+## PocketDetector
+
+Identifies table pocket positions and assigns them to the six canonical slots: `topLeft`, `topRight`, `middleLeft`, `middleRight`, `bottomLeft`, `bottomRight`.
+
+### Extract and Filter
+
+```typescript
+const pockets = Detection.PocketDetector.extractPockets(predictions);
+const tablePockets = Detection.PocketDetector.filterTablePockets(pockets);
+// keeps at most Config.Detection.MaxPockets (6), dropping outliers
+```
+
+### Analyze Layout
+
+```typescript
+const analysis = Detection.PocketDetector.analyzePocketLayout(pockets, cameraType, {
+    trustedLayout: previousLayout, // optional temporal prior
+});
+// analysis: Inference.IPocketLayoutAnalysis
+// {
+//     identifiedPockets: IPocketPositions,       // labeled slots (nullable per slot)
+//     completePockets:   IPocketPositions | null, // full 6-slot layout incl. inferred pockets
+//     diagnostics: { ambiguous, confidence, mode, strategy, usedTemporalPrior, visibleCount },
+// }
+```
+
+Requires at least 3 detections. Tries every candidate template (`overhead-portrait`, `overhead-landscape`, `perspective-portrait`) against every slot assignment and keeps the best-scoring analysis.
+
+### Identify Positions
+
+```typescript
+const identified = Detection.PocketDetector.identifyPocketPositions(pockets, cameraType);
+// shorthand for analyzePocketLayout(...).identifiedPockets
+```
+
+## PocketInference
+
+Infers missing pockets when only 3–5 of 6 are visible — critical because `HomographySolver` needs the four corner slots.
+
+```typescript
+const result = Detection.PocketInference.analyzeLayout(identifiedPockets, {
+    cameraType: cameraType,        // optional
+    trustedLayout: trustedLayout,  // optional temporal prior for occlusions
+});
+// result: Inference.IPocketInferenceResult (same shape as IPocketLayoutAnalysis)
+
+const complete = Detection.PocketInference.inferMissingPockets(identifiedPockets);
+// returns IPocketPositions with inferred slots filled (source: 'inferred')
+```
+
+Each pocket carries provenance: `source: 'detected' | 'inferred' | 'temporal'` plus `inferenceMethod` and `inferenceConfidence` for inferred slots.
+
+## CameraTypeDetector
+
+Classifies whether the camera view is overhead (top-down) or freehand (angled) from **pocket geometry** — no ML model needed.
+
+```typescript
+const result = Detection.CameraTypeDetector.detect(pockets);
+// {
+//     cameraType: CameraType,   // Overhead | Freehand | Unknown
+//     confidence: number,       // 0-1
+//     scores: {
+//         aspectRatio: number,  // width > height ⇒ overhead
+//         gridPattern: number,  // 3x2 rows ⇒ overhead, 2x3 ⇒ freehand
+//         rowSpacing:  number,  // uniform ⇒ overhead
+//         rowWidth:    number,  // near row wider than far ⇒ freehand
+//     },
+// }
+```
+
+Requires at least 4 pocket detections; returns `Unknown` with confidence 0 otherwise. For temporal stability across video frames, wrap the result with `CameraTypeStabilizer` (see [Tracking & Stabilization](/sdk/inference/tracking)) — its `processFrame()` takes this whole result object.
+
+## OrientationDetector
+
+Determines whether the table appears landscape or portrait in the image, independent of camera type. Used by `TransformationPipeline` to pick homography target dimensions.
+
+```typescript
+const orientation = Detection.OrientationDetector.detect(completePockets, cameraType);
+// { isLandscape: boolean, confidence: number,
+//   method: 'cameraType' | 'convergence' | 'middlePockets' | 'geometric' }
+```
+
+Takes a **complete pocket layout** (`IPocketPositions`), not raw predictions.
+
+## CushionDetector
+
+Detects the inner cushion boundary (cushion lip / rail shadow) and outer rail line by scanning pixel rays outward from known-cloth anchors between pockets. Introduced in 1.13.0; the scan internals were reworked around inward cloth anchors in 1.13.3.
+
+```typescript
+// From raw pixels
+const result = Detection.CushionDetector.detect(pockets, imageData, imageWidth, imageHeight);
+
+// Convenience: samples pixels from an <img> or <video> element
+const result = Detection.CushionDetector.detectFromElement(pockets, videoElement);
+
+// Pocket-to-pocket rail segments (topLeft → topRight, etc.)
+const segments = Detection.CushionDetector.defineRailSegments(pockets);
+```
+
+Both `detect` variants take a classified `IPocketPositions` layout (not predictions) and an optional color threshold (default `Config.Cushion.ColorThreshold`). Result:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `cushionCorners` | `IPoint[]` | Cushion-lip corner intersections — suitable homography source points |
+| `outerCorners` | `IPoint[]` | Outer rail boundary corners |
+| `clothColor` | `TRGB \| null` | Sampled cloth color |
+| `pockets` | `IPocketPositions` | Pass-through of the input layout |
+| `scanData` | `IRailScanData[]` | Per-rail scan lines, transition points, shadow dips, rejects |
+| `diagnostics` | `IRailDiagnostic[]` | Per-rail counts and fallback flags |
+| `boundaryFallback` / `usedShadowDip` | `boolean` | Which detection path won |
+
+Tuning lives in `Config.Cushion` (~30 constants — scan insets, gradient windows, separation ratios; see [Configuration](/sdk/inference/configuration)).
+
+## CameraFingerprint / CameraIndex
+
+Perceptual frame hashing and camera identification also live in the `Detection` namespace. They are documented on their own page: [Camera Fingerprint](/sdk/inference/camera-fingerprint).
+
+## Pocket Layout Helpers
+
+The layout-model helpers (`POCKET_SLOT_KEYS`, `POCKET_TEMPLATES`, `clonePocketPositions`, `createEmptyPocketPositions`, `getVisiblePocketEntries`) live in `src/Detection/PocketLayoutModel.ts` and are used internally by `PocketDetector`, `PocketInference`, and `PocketStabilizer`. They are **not** re-exported from the package — work with the `IPocketPositions` slots (`topLeft` … `bottomRight`) directly.
+
+Strategy classes (`OriginalStrategy`, `OverheadStrategy`, `PerspectiveStrategy`, `SanityCheckStrategy`) implement `Inference.IDetectionStrategy` and are selected internally by the layout analysis.
+
+## Recent Changes
+
+- **1.13.7+ (unreleased)** — `CameraFingerprint` and `CameraIndex` added (own page).
+- **1.13.3** — `CushionDetector` scan internals rewritten (inward cloth anchor → outward walk, `ScanInwardAnchorRatio` and related `Config.Cushion` constants); the `detect(pockets, imageData, …)` / `detectFromElement` / `defineRailSegments` API is unchanged since the class's introduction in 1.13.0; missing-pocket inference hardened.
+- **1.13.0** — `CushionDetector` introduced (pixel-scan rail detection); `Evaluation` namespace (`BallColorExtractor`, `ColorEvaluator`) and `Input/VideoProcessor` removed. Ball classification happens in the model; frame intake is internal to `ImageAnalyzer`.
+- **1.12.x** — `analyzePocketLayout` / `PocketInference` gained the `trustedLayout` temporal prior.

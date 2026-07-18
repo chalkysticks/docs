@@ -1,0 +1,221 @@
+---
+title: 'Presentation Layer'
+description: 'Match callouts, intros, and the post-game takeover'
+---
+
+## Overview
+
+The presentation layer narrates the match: the banner callouts that announce fouls and ball-in-hand, the pre-match VS intro, the drill introduction, and the post-game takeover with its stats recap and awards board.
+
+It lives in `System/Presentation/`. The Director subscribes to gameplay events, translates them into presentation cues, and writes visible state into the `presentation` Vuex module. The components under `View/Presentation/` render that state.
+
+```
+Gameplay events → Director → presentation store → View/Presentation components
+```
+
+The data flow is one-directional, with two deliberate exceptions: a view clears its own slot when the player dismisses it (`DrillIntro.vue` on Play, `MatchTakeover.vue` on close), and the takeover's Retry action calls `presentationDirector.suppressDrillIntroOnce()` before restarting.
+
+### Components
+
+| File | Responsibility |
+|------|----------------|
+| `Director.ts` | The only event-bus subscriber. Routes events, owns mode gating, delegates everything else. |
+| `BannerQueue.ts` | Priority banner queue plus its show/gap timers. |
+| `IntroSequencer.ts` | The VS intro and the drill introduction takeover. |
+| `PostGameCoordinator.ts` | Correlates the terminal result with the stats recap, commits the takeover, dispatches `Match.PostGameSettled`. |
+| `PostGame.ts` | Pure builders (`buildSeatedResult`, `buildSeatlessResult`, `buildDiagramClearedResult`) and `screensFor()`. |
+| `Objectives.ts` | Normalizes a finished run and evaluates the awards board. |
+| `Accolades.ts` | Derives the celebratory interstitials from a match result. |
+| `DebugConsole.ts` | Installs the `window.__presentation` debug handle. |
+
+The Director is created and attached by `Game.ts` alongside the other system controllers:
+
+```typescript
+GameService.presentationDirector.attachEvents();
+GameService.presentationDirector.detachEvents();
+```
+
+Banner callouts and the VS intro are **inert during solo Practice** — only head-to-head modes (`VersusCpu`, `VersusPlayer`) are narrated. Seatless terminal outcomes (SpeedRun, drills) are *not* gated this way, so their takeover still plays in Practice.
+
+## Store Module (`store.state.presentation`)
+
+Four independent slots, each `null` when nothing is showing.
+
+| State | Type | Description |
+|-------|------|-------------|
+| `banner` | `IPresentationBanner \| null` | The callout currently on screen |
+| `drillIntro` | `IPresentationDrillIntro \| null` | Drill objective card (click to dismiss) |
+| `intro` | `IPresentationIntro \| null` | Pre-match VS card (timed) |
+| `takeover` | `IPresentationTakeover \| null` | The post-game screen sequence |
+
+Each slot has a matching getter (`presentation/banner`, `presentation/takeover`, …) and `set*` / `clear*` mutations. The system layer owns every `set*`; the `clear*` mutations are also called by the debug console and by the two dismissable views.
+
+## Banners
+
+Cues are ordered by descending priority. A higher-priority cue jumps ahead of anything still waiting in the queue, but **never preempts the banner already on screen**, and equal priorities stay FIFO. That is what keeps a foul callout in front of the ball-in-hand callout it grants, even though the gameplay layer may dispatch ball-in-hand first.
+
+| Priority | Value | Used by |
+|----------|-------|---------|
+| `Enum.BannerPriority.Normal` | `0` | Ball in hand, group assignment, debug banners |
+| `Enum.BannerPriority.Foul` | `10` | Foul / scratch callouts |
+
+Variants (`TPresentationBannerVariant`) are `foul`, `info`, and `neutral` — the view maps them to `state-*` classes.
+
+## Pre-Match Intro
+
+The VS card holds the screen for `INTRO_DURATION_MS`. At its midpoint the `IntroSequencer` dispatches `Event.Camera.SetFirstPerson` with an animation duration that runs past the card's dismissal by `INTRO_CAMERA_SETTLE_MS`, so the camera move finishes over the live table rather than under the overlay.
+
+A drill start shows the drill introduction takeover instead — untimed, dismissed by the player. The takeover's Retry action calls `suppressDrillIntroOnce()` so a retry drops the player straight back onto the table.
+
+## Post-Game Takeover
+
+`screensFor()` flattens a `IPostGameResult` into an ordered screen sequence. Each screen carries its own per-kind payload, and the view is a pure per-kind branch renderer.
+
+```
+accolade* → hero → awards? → summary
+```
+
+| Kind | Shown when | Contents |
+|------|-----------|----------|
+| `accolade` | Seated win that earned one | Celebratory interstitial (tap to advance) |
+| `hero` | Always | Outcome verb, mode subtitle, seated scoreline |
+| `awards` | Objectives or crests exist | The objective board |
+| `summary` | Always (terminal) | Tabbed stats recap + action buttons |
+
+The ceremony beats are tap-to-advance; `summary` is terminal and hosts the action buttons.
+
+### Actions
+
+`TPostGameAction` is `retry | rematch | rerack | continue | exit`. The builders emit `['rematch', 'exit']` for seated matches, `['retry', 'exit']` for seatless runs, and `['rerack']` for a cleared diagram table. Online rematch is opt-in on both sides: clicking it marks the seat ready and waits for the opponent rather than restarting locally.
+
+### Result / recap correlation
+
+The terminal outcome (`Match.Won`, `Rules.GameEnded`) and the stats recap (`Stats.GameComplete`) arrive in **either order** depending on the session shape — seated matches fold the recap first, seatless runs hit the terminal event first. `PostGameCoordinator` caches both sides and presents once it holds the pair, so the correlation is order-independent. If no recap ever lands (stats disabled, nothing to fold) the takeover still shows, without the recap.
+
+Clearing the last object ball on a rules-free custom layout fires `Rules.GameComplete` with no terminal event behind it. That case arms a **cleared-table fallback** after `TABLE_CLEARED_FALLBACK_MS`; any real terminal result that lands first cancels it.
+
+## Objectives
+
+The awards board is authored in `Config/Objectives.ts` (the `Config/Goals.ts` convention: content in Config, evaluation in System). Every objective reads a statistic the stats pipeline already computes.
+
+The board always renders in full, earned and unearned alike — it is a goal board, not a trophy shelf.
+
+| ID | Label | Tier | Earned when |
+|----|-------|------|-------------|
+| `scratch-free` | Scratch Free | 1 | No scratches |
+| `clean-hands` | Clean Hands | 1 | No fouls |
+| `combo-artist` | Combo Artist | 2 | At least one combo |
+| `off-the-rail` | Off the Rail | 2 | At least one bank made |
+| `sharpshooter` | Sharpshooter | 3 | Accuracy ≥ `SHARPSHOOTER_PERCENTAGE` (70%) |
+| `run-of-five` | Five in a Row | 3 | Longest run ≥ `RUN_OF_FIVE_TARGET` (5) |
+| `pocket-tour` | Pocket Tour | 4 | Used all `POCKET_TOUR_TARGET` (6) pockets |
+| `rack-boost` | Rack Boost | 4 | Trick points ≥ `RACK_BOOST_TARGET` (500) |
+| `break-and-run` | Break and Run | 5 | Broke and ran the rack |
+
+A run with no shots is not judged, and the awards screen is suppressed entirely.
+
+The unit judged depends on the session: a seatless solo run *is* one game, so its recap is the run. A seated race-to-N match is judged on the whole-match fold read from `store.getters['stats/lastCompletedMatch']` — grading a 4–1 comeback by its final rack alone would be dishonest.
+
+## Accolades
+
+Derived from the match score in `Accolades.ts` and played ahead of the hero banner on a seated win.
+
+| Accolade | Earned when |
+|----------|-------------|
+| Flawless Victory | The opponent never won a rack |
+| Down to the Wire | Decided by a single rack |
+
+## Timing Configuration
+
+All pacing lives in `Config/Presentation.ts`.
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `BANNER_DEFAULT_DURATION_MS` | `4000` | How long a banner holds the screen |
+| `BANNER_QUEUE_GAP_MS` | `250` | Beat between one banner leaving and the next entering |
+| `INTRO_DURATION_MS` | `3200` | VS intro dwell |
+| `INTRO_CAMERA_DELAY_MS` | `1600` | When the first-person camera move begins |
+| `INTRO_CAMERA_SETTLE_MS` | `500` | How far the camera move outlasts the intro card |
+| `TABLE_CLEARED_FALLBACK_MS` | `400` | Cleared-table takeover's wait for a richer terminal result |
+
+Game-mode display labels resolve through `Config/GameMode.labelForGameType()`, the single source of truth shared by the menu cards, the multiplayer listings, and the takeover's hero subtitle.
+
+## Embedding: `Match.PostGameSettled`
+
+The semantic end-of-post-game signal. Unlike `Match.End`, it is emitted **after** the trainer has decided whether presentation owns the result flow — so an embedder can tell "the game ended and the player closed the result screen" apart from "the game ended and nothing was shown."
+
+```typescript
+ChalkySticks.Core.Event.Bus.on(Event.Match.PostGameSettled, (e) => {
+    const { presentation, winnerIndex, winnerName } = e.data;
+
+    if (!presentation.shown) {
+        // No takeover was shown — the host owns any follow-up flow.
+        return;
+    }
+
+    if (presentation.action === 'exit') {
+        returnToLobby();
+    }
+});
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gameType` | `Enum.GameType` | Game type that just settled |
+| `mode` | `Enum.MatchMode` | Match mode that just settled |
+| `presentation.action` | `TPostGameSettledAction` | What settled the flow |
+| `presentation.shown` | `boolean` | Whether a takeover was shown |
+| `presentation.takeoverId` | `number \| undefined` | Takeover id when one was shown |
+| `reason` | `string` | Match-end reason, when available |
+| `winner` | `object \| null` | Winning player payload, when available |
+| `winnerIndex` | `number \| null` | Winning seat, `null` for seatless endings |
+| `winnerName` | `string` | Winning display name |
+
+`TPostGameSettledAction` is `none | exit | retry | rematch | rerack`. `none` means no takeover was shown. (`auto-rematch` is retained for backward compatibility and is no longer emitted.)
+
+## Debug Console
+
+The Director installs a `window.__presentation` handle while attached. Every method drives the **real** event bus, so previews match production timing and animation exactly.
+
+```javascript
+// Force presentation on, even in solo Practice
+__presentation.on()
+
+// Fire callouts
+__presentation.banner('Nice shot', 'info')
+__presentation.foul('Scratch')
+__presentation.ballInHand()
+__presentation.group(0, 'stripes')
+
+// Play the full sequences
+__presentation.intro('Alice', 'Bob')
+__presentation.takeover({ scores: { playerOne: 5, playerTwo: 3 } })
+__presentation.awards({ totalMade: 21, totalShots: 30 })
+
+// Clear everything, then revert to honoring the real match mode
+__presentation.clear()
+__presentation.off()
+```
+
+| Method | Description |
+|--------|-------------|
+| `achievement(ruleId?)` | Fire an achievement unlock |
+| `awards(overrides?)` | Seed a synthetic match fold and play the awards board |
+| `ballInHand()` | Ball-in-hand banner |
+| `banner(message, variant?, durationMs?)` | Arbitrary banner through the real queue |
+| `bus(name, data?)` | Dispatch any bus event by string, to watch correlation |
+| `clear()` | Clear every visible callout |
+| `foul(reason?)` | Foul banner (jumps the queue) |
+| `group(playerIndex?, group?)` | Group-assigned banner |
+| `intro(playerOne?, playerTwo?)` | Play the VS intro |
+| `off()` / `on()` | Toggle the force flag that ignores match mode |
+| `spy(eventName)` / `unspy(eventName)` | Log every dispatch of an event |
+| `takeover(options?)` | Play the end-of-match takeover |
+
+Because `bus()` dispatches raw events, the trickiest paths are reproducible by hand:
+
+```javascript
+// Watch the cleared-table fallback lose the race to a real terminal result
+__presentation.bus('rules:game:complete', {})
+__presentation.bus('rules:game:ended', { outcome: 'win' })
+```

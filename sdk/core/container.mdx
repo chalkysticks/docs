@@ -1,0 +1,227 @@
+---
+title: 'Service Container'
+description: 'IoC container with service bindings and an Identity Map for instance caching'
+---
+
+The `Provider/Container` is a Laravel-inspired Inversion of Control (IoC) container that ships as a module-level singleton in `@chalkysticks/sdk-core`. It unifies two patterns under one roof:
+
+- **Service Container** — string-key bindings resolved by name (`bind`, `singleton`, `instance`, `make`)
+- **Identity Map** — class-reference bindings resolved by class + constructor arguments (`resolve`, `registerFactory`)
+
+## Quick Access
+
+There are two equivalent ways to reach the container singleton (the package exposes no subpath imports — everything comes from the root):
+
+```typescript
+import { ChalkySticks, app, Provider } from '@chalkysticks/sdk-core';
+
+// Both refer to the same singleton
+const c1 = ChalkySticks.getContainer();
+const c2 = app();
+
+// Provider.Container is the class (for typing / extending)
+const typed = app() as Provider.Container;
+```
+
+The `app()` helper doubles as a resolver when you pass a string key:
+
+```typescript
+// Resolve a binding by key
+const logger = app<ILogger>('logger');
+```
+
+## Service Container
+
+The Service Container maps **string keys** to **factory functions**. Use it for named services, configuration objects, or anything you want to resolve by a logical name.
+
+### bind (transient)
+
+Every call to `make()` invokes the factory and returns a **fresh instance**.
+
+```typescript
+import { app, Provider } from '@chalkysticks/sdk-core';
+
+const container = app() as Provider.Container;
+
+container.bind('http', (c) => {
+    return new HttpClient({
+        baseUrl: c.make('config.apiUrl'),
+    });
+});
+
+const clientA = container.make<HttpClient>('http');
+const clientB = container.make<HttpClient>('http');
+// clientA !== clientB — two distinct instances
+```
+
+### singleton
+
+The factory is invoked **once**. Every subsequent `make()` call returns the same cached instance.
+
+```typescript
+container.singleton('analytics', (c) => {
+    return new AnalyticsService({
+        apiKey: 'abc123',
+    });
+});
+
+const a = container.make<AnalyticsService>('analytics');
+const b = container.make<AnalyticsService>('analytics');
+// a === b — same instance
+```
+
+### instance
+
+Bind an **already-constructed value** directly. Behaves like a singleton whose factory has already been called.
+
+```typescript
+const config = { apiUrl: 'https://api.chalkysticks.com/v3' };
+
+container.instance('config', config);
+
+container.make('config') === config; // true
+```
+
+### make
+
+Resolve a binding by its string key. Throws if the key has not been registered.
+
+```typescript
+const logger = container.make<ILogger>('logger');
+```
+
+### bound
+
+Check whether a binding exists for a given key without resolving it.
+
+```typescript
+if (container.bound('logger')) {
+    container.make<ILogger>('logger').info('Ready');
+}
+```
+
+## Identity Map
+
+The Identity Map stores **class instances** keyed by their **class reference + constructor arguments**. When you ask for the same class with the same arguments twice, you get back the exact same object. This is especially useful for Models and Collections that represent the same API resource.
+
+### resolve
+
+Returns a cached instance when the same class + arguments combination has been seen before. Otherwise creates one (using a registered factory or the default constructor) and caches it.
+
+```typescript
+import { ChalkySticks, Model } from '@chalkysticks/sdk-core';
+
+// First call: creates and caches a new Model.Venue
+const venueA = ChalkySticks.resolve(Model.Venue, { id: 42 });
+
+// Second call: same class + same args → returns the cached instance
+const venueB = ChalkySticks.resolve(Model.Venue, { id: 42 });
+
+// venueA === venueB — true, same object in memory
+
+// Different args → different instance
+const venueC = ChalkySticks.resolve(Model.Venue, { id: 99 });
+// venueC !== venueA
+```
+
+### registerFactory
+
+Override how a class gets constructed when resolved through the Identity Map. The `CoreServiceProvider` uses this to inject the correct `baseUrl` for every SDK Model and Collection automatically.
+
+```typescript
+import { ChalkySticks, Model } from '@chalkysticks/sdk-core';
+
+const container = ChalkySticks.getContainer();
+
+// Custom factory: every resolved Model.Venue gets the v3 baseUrl
+container.registerFactory(Model.Venue, (attributes, options) => {
+    return new Model.Venue(
+        attributes,
+        Object.assign({ baseUrl: 'https://api.chalkysticks.com/v3' }, options),
+    );
+});
+```
+
+Higher-level packages can call `registerFactory()` to override any class's construction without modifying the SDK source.
+
+### hasResolved
+
+Check whether a cached instance exists for a given class + arguments combination.
+
+```typescript
+if (ChalkySticks.getContainer().hasResolved(Model.Venue, { id: 42 })) {
+    // Already in the Identity Map
+}
+```
+
+## Cache Invalidation
+
+### forget
+
+Remove a single string-key binding.
+
+```typescript
+container.forget('logger');
+container.bound('logger'); // false
+```
+
+### flushResolved
+
+Remove a specific Identity Map entry (one class + one args combination).
+
+```typescript
+container.flushResolved(Model.Venue, { id: 42 });
+```
+
+### flushClass
+
+Remove **all** Identity Map entries for a class, regardless of what arguments they were resolved with.
+
+```typescript
+const count = container.flushClass(Model.Venue);
+// count = number of entries removed
+```
+
+### flushIdentityMap
+
+Clear the entire Identity Map while leaving string-key bindings intact.
+
+```typescript
+container.flushIdentityMap();
+```
+
+### flush
+
+Nuclear option — clears everything: all string-key bindings, all class factories, and the entire Identity Map.
+
+```typescript
+container.flush();
+```
+
+## How the Cache Key Works
+
+Identity Map keys are built from `ClassName::stableSerialize(args)`. Object keys are **sorted** for deterministic output, so `{ id: 1, name: 'Matt' }` and `{ name: 'Matt', id: 1 }` produce the same cache key. Functions are converted to `[Function:name]` type markers. Symbols get no marker — they fall through to `JSON.stringify`, which returns `undefined` for them, so two different symbol arguments produce identical cache keys.
+
+```typescript
+// These two calls resolve to the SAME cached instance
+ChalkySticks.resolve(Model.Venue, { id: 1, name: 'Corner Pocket' });
+ChalkySticks.resolve(Model.Venue, { name: 'Corner Pocket', id: 1 });
+```
+
+## API Reference
+
+| Method | Pattern | Description |
+|--------|---------|-------------|
+| `bind(key, factory)` | Service Container | Transient binding — fresh instance each `make()` |
+| `singleton(key, factory)` | Service Container | Singleton binding — cached after first `make()` |
+| `instance(key, value)` | Service Container | Bind an already-constructed value |
+| `make(key)` | Service Container | Resolve a string-key binding |
+| `bound(key)` | Service Container | Check if a binding exists |
+| `resolve(ClassRef, ...args)` | Identity Map | Resolve or create a cached class instance |
+| `registerFactory(ClassRef, factory)` | Identity Map | Override class construction |
+| `hasResolved(ClassRef, ...args)` | Identity Map | Check if instance is cached |
+| `forget(key)` | Invalidation | Remove one string-key binding |
+| `flushResolved(ClassRef, ...args)` | Invalidation | Remove one Identity Map entry |
+| `flushClass(ClassRef)` | Invalidation | Remove all entries for a class |
+| `flushIdentityMap()` | Invalidation | Clear entire Identity Map |
+| `flush()` | Invalidation | Reset everything |

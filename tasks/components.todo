@@ -1,0 +1,58 @@
+Now:
+
+	✔ Figure out the ChalkySticks configuration in `.install`. @done(26-06-19 09:47)
+
+	✔ Share the Core library across packages. @done(26-06-19 09:47)
+		✔ Confirm which packages should depend on `@chalkysticks/sdk-core`. @done(26-06-19 09:47)
+		✔ Avoid duplicate configuration and model definitions. @done(26-06-19 09:47)
+
+	☐ Use a provider to share settings across Vue packages.
+		☐ Define ownership between app, web, Pad, Trainer, and component defaults.
+
+	☐ Create shared factories.
+		☐ Venue Collection factory.
+		☐ User Collection factory.
+		☐ Media Collection factory.
+		☐ Factories for common test fixtures.
+
+
+Components:
+
+	☐ Create circular image-selection component.
+		☐ Support Friendly Faces uploads.
+		☐ Support avatars and user galleries.
+		☐ Add loading, error, empty, and selected states.
+
+	☐ Add shared uploader validation UI.
+		☐ Success badge.
+		☐ Failure badge.
+		☐ File type, size, and moderation feedback.
+
+	☐ Break out reusable UI controls.
+		☐ Controls should own active state.
+		☐ Controls should support sound effects.
+		☐ Controls should expose input hints for keyboard, gamepad, and touch.
+
+
+Interaction Ideas:
+
+	☐ Animated tab bars.
+		https://www.designspells.com/spells/tab-bar-icon-micro-animations-in-phantom
+
+	☐ Better map transitions.
+		https://www.designspells.com/spells/smooth-transitions-when-viewing-alternative-routes-in-waze
+
+	☐ Curved carousel inspiration.
+		https://www.designspells.com/spells/curved-carousel-in-the-apple-invites-onboarding
+
+
+Effects:
+
+	✔ Rotating border glow. @done(26-06-19 09:52)
+		https://codepen.io/liyrofx/pen/poVZeEG
+
+	✔ Glowing backdrop. @done(26-06-19 09:52)
+		https://codepen.io/StarKnightt/pen/qBvXKwx
+
+	☐ VHS effect for old video or TV surfaces.
+		https://codepen.io/halvves/full/XePwOp/

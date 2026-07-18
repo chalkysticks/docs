@@ -1,0 +1,26 @@
+---
+title: 'Check-ins'
+description: 'Global check-in feed'
+---
+
+Global check-in feed. For venue-scoped create/delete see [Venues → Check-ins](/api/venues#check-ins).
+
+## List Check-ins
+
+```bash
+GET /v3/checkins
+GET /v3/checkins?user_id=1
+GET /v3/checkins?venue_id=1
+```
+
+## Search Check-ins
+
+```bash
+GET /v3/checkins/search?q=corner+pocket
+```
+
+## Get Check-in
+
+```bash
+GET /v3/checkins/{checkin}
+```

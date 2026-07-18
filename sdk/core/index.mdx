@@ -1,9 +1,9 @@
 ---
 title: 'Core Package'
-description: 'Foundation package with models, collections, events, and utilities'
+description: 'Foundation package with models, collections, services, events, and utilities'
 ---
 
-The `sdk-core` package is the foundation of the ChalkySticks SDK. All other packages depend on it.
+The `sdk-core` package is the foundation of the ChalkySticks SDK. All other packages depend on it. Current version: **1.68.0**.
 
 ## Installation
 
@@ -15,36 +15,92 @@ npm install @chalkysticks/sdk-core
 
 | Module | Purpose |
 |--------|---------|
-| Collection | Data collection classes (User, Venue, Media, etc.) |
-| Model | Data model representations |
-| Factory | Object factory methods |
-| Enum | Enumerations (MediaType, VenueStatus, etc.) |
-| Event | Event dispatching system |
-| Exception | Error/exception classes |
-| Input | Sensor, pointer, keyboard handling |
-| Provider | Data providers and services |
-| Strategy | Subscription and media strategies |
-| Utility | Geolocation, intervals, hysteresis, etc. |
-| Data | Data access layer |
-| Sound | Audio management |
-| Common | ChalkySticks main class, Environment, Constants |
+| [Collection](/sdk/core/collections) | Data collection classes (User, Venue, Media, etc.) |
+| [Model](/sdk/core/models) | Data model representations |
+| Factory | `Factory.X.model()` / `Factory.X.collection()` helpers with `baseUrl` pre-applied |
+| [Enum](/sdk/core/enums) | Enumerations (GameType, MediaType, VenueStatus, SubscriptionTier, etc.) |
+| [Event](/sdk/core/events) | Dispatcher pattern with priority + preventDefault |
+| Exception | Error / exception classes |
+| [Input](/sdk/core/input) | Keyboard, pointer, gamepad, sensor, video, XR controllers |
+| [Provider](/sdk/core/providers) | IoC container, service providers, Store + Subscription bridges |
+| [Service](/sdk/core/services) | `Service.AppConfig` remote config orchestrator, `Service.Feature` flag resolver |
+| Strategy | Subscription (RevenueCat) and media upload strategies |
+| [Utility](/sdk/core/utilities) | Time, geolocation, intervals, hysteresis, color, capability, etc. |
+| Data | Static reference data (Taglines, etc.) |
+| Sound | Audio playback, capture, and speech recognition (howler-based) |
+| Common | `ChalkySticks` main class, `Environment`, `Constants` |
 
 ## Quick Import
 
-```typescript
-import * as ChalkySticks from '@chalkysticks/sdk-core';
+The package has **no default export** — the main class is the named export `ChalkySticks`:
 
-// Or specific modules
-import { Model, Collection, Enum } from '@chalkysticks/sdk-core';
+```typescript
+import { ChalkySticks, Model, Collection, Enum } from '@chalkysticks/sdk-core';
+
+// Or namespace everything
+import * as ChalkySticksSDK from '@chalkysticks/sdk-core';
 ```
 
+`Request` from `restmc` is re-exported at the package root.
+
+## Configuration
+
+The recommended way to initialize the SDK is through `ChalkySticks.configure()`, which sets the API URL, registers the default service providers, and boots the container:
+
+```typescript
+import { ChalkySticks } from '@chalkysticks/sdk-core';
+
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com/v3',
+});
+```
+
+All `configure()` options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `apiUrl` | `string` | Base API URL (`Environment.setApiUrl`) |
+| `localUrl` | `string` | Development override that wins over every other URL source |
+| `constants` | `object` | Values merged onto `Constants` (e.g. `API_URL_V3`) |
+| `providers` | `Class[] \| false` | Extra providers to register; `false` skips `CoreServiceProvider` |
+| `boot` | `boolean` | Pass `false` to defer `ChalkySticks.boot()` |
+
+See [Service Container](/sdk/core/container) and [Service Providers](/sdk/core/providers) for details.
+
 ## Environment Setup
+
+`Environment` is a singleton that merges `window.env` / `window.chalky` globals with programmatic overrides (overrides win):
 
 ```typescript
 import { Environment } from '@chalkysticks/sdk-core';
 
-Environment.set({
-    apiUrl: 'https://api.chalkysticks.com',
-    environment: 'production'
-});
+Environment.setApiUrl('https://api.chalkysticks.com/v3');
+Environment.setLocalUrl('http://localhost:8000/v3'); // dev override
+Environment.getBaseUrl(); // localUrl > apiUrl > Constants.API_URL
 ```
+
+Or configure via a global before the SDK loads:
+
+```html
+<script>
+    window.chalky = {
+        env: 'production',
+        app: {
+            apiUrl: 'https://api.chalkysticks.com/v3',
+            limit: 24, // default collection page size (SDK default: 32)
+        },
+    };
+</script>
+```
+
+Helpers: `Environment.isLocal()`, `Environment.isStaging()`, `Environment.isProduction()`, `Environment.headers` (global request headers), `Environment.debug`.
+
+## Recent Changes
+
+- Unreleased — the runtime `Version` constant is now auto-generated from `package.json` at build time (`scripts/sync-version.mjs`, wired to `prebuild`); it had been stuck at `1.31.9`.
+- `1.68.0` — `Enum.SubscriptionTier` / `Enum.SubscriptionStatus`; `Model.User` subscription helpers (`isPremium()`, `getSubscriptionTier()`, `getSubscriptionStatus()`).
+- `1.67.1` — `Service.AppConfig` remote-config orchestrator.
+- `1.67.0` — `Utility.Capability` added.
+- `~1.63.0` — `Model.Product` / `Collection.Product`; `UserWallet.collect()` / `spend()`.
+- `~1.61.x` — `Service` module introduced (`Service.Feature` flag resolver); `Model.LibraryMedia` / `Collection.LibraryMedia`; `Provider.Store` became a `globalThis`-shared singleton.
+- `1.59.0` — All model/collection factories now inject `Constants.API_URL_V3` (formerly some used `API_URL_V1`).

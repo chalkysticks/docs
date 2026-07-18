@@ -1,90 +1,262 @@
 ---
 title: 'Utilities'
-description: 'Helper utilities for geolocation, intervals, and more'
+description: 'Helpers for time, geo, color, formatting, device capability, and more'
 ---
 
-## Available Utilities
+The `Utility` namespace bundles small focused helpers. Some are sub-namespaces of functions (`Utility.Time.*`); others are classes exported directly (`Utility.Cache`). The functions from the General module are flattened directly onto `Utility` (`Utility.sleep()`, `Utility.getQueryParameter()`, …).
 
-| Utility | Purpose |
-|---------|---------|
-| Geolocation | GPS and location services |
-| Hysteresis | Value smoothing/debouncing |
-| Interval | Timed intervals |
-| Latch | State latching |
-| Shortcut | Keyboard shortcuts |
+## At a Glance
+
+### Namespaces
+
+| Namespace | Purpose |
+|-----------|---------|
+| `Analytics` | Provider-based analytics (`init`, `track`, `page`, `identify`, middleware) plus GA / Reddit / Meta pixel embeds |
+| `Capability` | Device capability grading — GPU tier, memory, frame-rate sampling (v1.67.0) |
+| `Capacitor` | Native platform detection (`isNativePlatform()`, `getCapacitor()`) |
+| `Color` | Hex / RGB / HSL conversion, lighten/darken/mix, contrast + readability, average image color |
+| `Device` | Browser / OS / orientation detection, pull-to-refresh toggle |
+| `Format` | Number / currency / date / relative-time formatting |
+| `Geolocation` | GPS + Capacitor + IP-based fallback, watch sharing, distance math |
+| `Haptic` | Vibration / haptic feedback via Capacitor with web fallback |
+| `Math` | Numeric, angle, and vec3 helpers; lerp/clamp/remap; pool-specific physics helpers |
+| `Network` | `uploadWithProgress()` XHR upload with progress events |
+| `Object` | `difference`, `union`, `merge`, `intersect`, `fingerprint` |
+| `Phone` | Phone number formatting |
+| `Presentation` | Fullscreen + Presentation (cast) APIs |
+| `Share` | Native share sheet (`native()`, `remoteFile()`, `canShare()`) |
+| `String` | Hashing, casing, slugs, JWT parsing, similarity, truncation |
+| `Subscription` | RevenueCat subscription lifecycle (strategy-based) |
+| `Time` | Timezone conversion helpers (dayjs-backed) |
+| `Url` | Presigned upload URLs |
+| `YouTube` | URL detection, ID parsing, thumbnail / embed URLs |
+
+### Direct Exports
+
+| Export | Purpose |
+|--------|---------|
+| `Cache` | Key/value store with TTL and immutable entries |
+| `Debounce` | Debounce class with static `Debounce.exec()` shorthand |
+| `Easing` (default), `EasingFunction`, `getEasingMethod()` | Animation easing curves |
+| `History` | Undo/redo snapshot stack (`push`, `undo`, `redo`) |
+| `Hysteresis` | Temporal condition smoothing (`set` / `unset` / `change` events) |
+| `Interval` | Central rAF-based interval manager (static registry) |
+| `Latch` | Fire-once condition monitor (`trigger` event) |
+| `Log` | Namespaced logger with levels, colors, transports, history export |
+| `documentHeight()`, `getQueryParameter()`, `setQueryParameter()`, `sleep()`, `authFetch()`, `buildUrl()`, … | General helpers flattened onto `Utility` |
 
 ## Geolocation
 
 ```typescript
 import { Utility } from '@chalkysticks/sdk-core';
 
-// Get current position
-const position = await Utility.Geolocation.getCurrentPosition();
-console.log(position.latitude, position.longitude);
+// Prompt for permission (browser + Capacitor aware, with timeout safeguards)
+const state = await Utility.Geolocation.requestLocation(); // 'granted' | 'denied' | 'prompt'
 
-// Watch position changes
-Utility.Geolocation.watchPosition((position) => {
-    console.log('Position updated:', position);
+// One-shot lookup: cache → native → IP fallback
+const payload = await Utility.Geolocation.getLocation();
+console.log(payload.position.coords.latitude, payload.position.coords.longitude);
+
+// Shared watch — returns an unsubscribe function
+const unsubscribe = Utility.Geolocation.watchLocation((payload) => {
+    console.log('Position updated:', payload.position.coords);
 });
+unsubscribe();
 
-// Calculate distance between two points
-const distance = Utility.Geolocation.distance(
-    { lat: 40.7128, lon: -74.0060 },
-    { lat: 34.0522, lon: -118.2437 }
-);
+// Tear down all watching
+Utility.Geolocation.clearWatch();
+
+// Distance in km between two points (haversine)
+const km = Utility.Geolocation.distanceBetween(40.7128, -74.006, 34.0522, -118.2437);
+
+// Bounds helpers
+const bounds = Utility.Geolocation.getBounds(40.7128, -74.006, 10);
+Utility.Geolocation.isPointInBounds(40.72, -74.0, bounds);
+```
+
+Location changes also broadcast on the global bus as `location:change` / `location:error`. Lookups fall back to an IP-based provider (`ipapi.co`) when native geolocation is unavailable, and successful payloads are cached for 2 minutes.
+
+## Time
+
+`Utility.Time` is backed by **dayjs** (migrated from luxon in v1.54.0) with the `customParseFormat`, `duration`, `timezone`, and `utc` plugins. Inputs accept `Date | Dayjs | string | number`.
+
+```typescript
+Utility.Time.toLocal('2026-05-11T12:00:00Z');                       // Date in local tz
+Utility.Time.toUTC(new Date());                                     // Date | null
+Utility.Time.toTimezone('2026-05-11T12:00:00Z', 'America/New_York');
+Utility.Time.toTimezoneISO(Date.now(), 'America/Los_Angeles');
+Utility.Time.getTimezoneOffset(new Date(), 'Asia/Tokyo');           // minutes
+Utility.Time.getTimezoneAbbreviation(new Date(), 'America/Chicago');// 'CDT'
+Utility.Time.getLocalTimezone();                                    // IANA name
+Utility.Time.isValidTimezone('America/New_York');                   // true
+```
+
+Relative time and duration formatting live in `Utility.Format` (`timeAgo`, `timeUntil`, `timeToHuman`, `secondsToTime`).
+
+## Format
+
+```typescript
+Utility.Format.formatCurrency(1234.5, 'USD');    // '$1,234.50'
+Utility.Format.formatNumber(1234567);            // '1,234,567'
+Utility.Format.formatShortNumber(1234567);       // '1.2M'
+Utility.Format.formatPercent(0.42);              // '42%'
+Utility.Format.bytesToSize(1048576);             // '1 MB'
+Utility.Format.secondsToTime(125, '00:00');      // '02:05'
+Utility.Format.timeToHuman(125);                 // '0h 2m 5s'
+Utility.Format.timeToHuman(125, true);           // '2m 5s' — hideEmptyUnits
+Utility.Format.timeAgo('2026-05-11T12:00:00Z');  // '2 months ago'
+Utility.Format.timeUntil(someDate);              // '3 days left'
+Utility.Format.formatTime(new Date(), 'YYYY-MM-DD');
+Utility.Format.phoneNumber('2125551234');        // '(212) 555-1234'
+Utility.Format.creditCard('4242424242424242');   // '4242 4242 4242 4242'
+```
+
+## Color
+
+Added in v1.58.0. Functions take hex strings or channel values — check signatures.
+
+```typescript
+const rgb = Utility.Color.hexToRgb('#FF8800');          // { r, g, b }
+const hsl = Utility.Color.rgbToHsl(rgb.r, rgb.g, rgb.b); // { h, s, l }
+const back = Utility.Color.hslToRgb(hsl.h, hsl.s, hsl.l);
+
+Utility.Color.lighten('#336699', 0.2);
+Utility.Color.darken('#336699', 0.2);
+Utility.Color.mix('#FF0000', '#0000FF', 0.5);
+Utility.Color.withAlpha('#336699', 0.5);                 // rgba() string
+Utility.Color.contrastRatio('#000000', '#FFFFFF');       // 21
+Utility.Color.readableTextColor('#336699');              // '#ffffff' or '#000000'
+Utility.Color.isLight('#FFEEAA');                        // boolean
+
+const avg = await Utility.Color.averageColorFromImage(imageBitmapSource);
+```
+
+## Capability
+
+Grade the device for feature gating and rendering budgets (v1.67.0).
+
+```typescript
+const snapshot = Utility.Capability.getSnapshot();  // full ICapabilitySnapshot
+const grade = Utility.Capability.getGrade();        // 'lowest' | 'low' | 'medium' | 'high' | 'very-high'
+const gpu = Utility.Capability.getGpuInfo();        // { tier: 'dedicated' | 'integrated' | ... }
+const device = Utility.Capability.getDeviceClass(); // 'desktop' | 'phone' | 'tablet' | 'xr'
+
+const perf = await Utility.Capability.measureFramePerformance(120); // sampled FPS
 ```
 
 ## Interval
 
+Central manager for all recurring callbacks — one rAF loop instead of scattered `setInterval`s. Static API operates on a shared instance. The second argument (historically named `fps`) is the **milliseconds between ticks**.
+
 ```typescript
-import { Utility } from '@chalkysticks/sdk-core';
+const name = Utility.Interval.add(() => console.log('Tick'), 1000 / 30); // ~30fps
+Utility.Interval.add(myMethod, 1000, 'my:interval');                      // named, 1/sec
 
-// Create an interval
-const interval = new Utility.Interval(() => {
-    console.log('Tick');
-}, 1000);
-
-// Start
-interval.start();
-
-// Stop
-interval.stop();
-
-// Pause/Resume
-interval.pause();
-interval.resume();
+Utility.Interval.remove('my:interval');
+Utility.Interval.stop();    // pause the whole loop
+Utility.Interval.start();   // resume
 ```
 
 ## Hysteresis
 
-Smooth rapid value changes:
+Requires a condition to hold across repeated checks before flipping state — prevents rapid toggling from transient changes. Dispatches `set`, `unset`, and `change`.
+
+```typescript
+const control = Utility.Hysteresis.add({
+    condition: () => getTemperature() > 70,
+    duration: 500,   // total ms the checks are spread across
+    threshold: 5,    // consecutive passing checks required
+});
+
+control.on('set', () => turnHeaterOn());
+control.on('unset', () => turnHeaterOff());
+
+// wait() resolves on the first `change` tick — and `change` fires on EVERY
+// check, met or not — so this does NOT block until the condition holds.
+// Inspect the resolved payload's `set` flag, or listen for `set` instead.
+await Utility.Hysteresis.wait({ condition: () => isReady() });
+```
+
+## Latch
+
+Monitors a condition and fires `trigger` once, then stops itself. Named latches are deduplicated.
+
+```typescript
+Utility.Latch.add({
+    condition: () => video.currentTime >= 2,
+    name: 'video:two-seconds',
+}).on('trigger', () => console.log('Passed 2 seconds'));
+
+// Promise form
+await Utility.Latch.wait({ condition: () => video.duration - video.currentTime <= 5 });
+
+Utility.Latch.remove('video:two-seconds');
+Utility.Latch.clear();
+```
+
+## Cache
+
+```typescript
+const cache = new Utility.Cache();          // constructor ttl arg is stored but unused — pass a TTL per set()
+
+cache.set('user:1', user, 60_000);          // TTL in ms
+cache.set('config', data, 60_000, true);    // immutable — set() refuses overwrites
+cache.get('user:1');
+cache.has('user:1');                        // respects TTL
+cache.exists('user:1');                     // ignores TTL
+cache.delete('user:1');
+```
+
+> `set()` without a TTL (`ttl = 0`) creates a read-once entry: the first `get()` returns the value and deletes it.
+
+## Debounce
+
+```typescript
+// Instance form
+const debounced = new Utility.Debounce(save, 1000, false, true);
+debounced.run();
+
+// Static shorthand — instances are pooled by reference key
+Utility.Debounce.exec('search:input', () => search(query), 300);
+```
+
+## Log
+
+Namespaced logger with levels, per-namespace colors, throttling, transports, and history export (rewritten in v1.59.2).
+
+```typescript
+Utility.Log.enable('app:*');
+Utility.Log.setLevel(Utility.Log.LEVEL.DEBUG);
+
+Utility.Log.debug('app:api', 'Fetching user', userId);
+Utility.Log.warn('app:api', 'Slow response');
+Utility.Log.once('app:boot', 'Only logs one time');
+Utility.Log.throttle('app:poll', 1000, 'At most once per second');
+
+Utility.Log.time('render', 'mount');
+Utility.Log.timeEnd('render', 'mount');
+
+Utility.Log.enableHistory(true);
+const json = Utility.Log.exportToJson({ level: Utility.Log.LEVEL.ERROR });
+```
+
+## Easing
+
+`Easing.*` maps a value from `[min, max]` to an eased `0..1`; `EasingFunction.*` are the raw `t → t'` curves.
 
 ```typescript
 import { Utility } from '@chalkysticks/sdk-core';
 
-const hysteresis = new Utility.Hysteresis({
-    threshold: 0.1,
-    callback: (value) => {
-        console.log('Stabilized value:', value);
-    }
-});
+Utility.Easing.easeInOutCubic(50, 0, 100);   // eased progress for value 50 of 0..100
+Utility.EasingFunction.easeOutQuad(0.5);     // raw curve
 
-hysteresis.push(0.5);
-hysteresis.push(0.52);
-hysteresis.push(0.51);
-// Only triggers callback when value changes significantly
+const method = Utility.getEasingMethod('easeInOutCubic'); // falls back to easeInOutQuad
 ```
 
-## Shortcuts
+## Recent Changes
 
-```typescript
-import { Utility } from '@chalkysticks/sdk-core';
-
-// Register keyboard shortcut
-Utility.Shortcut.register('ctrl+s', () => {
-    console.log('Save triggered');
-});
-
-// Unregister
-Utility.Shortcut.unregister('ctrl+s');
-```
+- `1.67.0` — `Utility.Capability` added: device grading, GPU tier detection, memory info, frame-performance sampling.
+- `1.61.7` — Geolocation permission safeguards: request timeouts, Capacitor permission-state normalization, no browser prompt fallback on native iOS.
+- `1.59.2` — `Log` rewritten: namespaces with wildcards, levels, transports, redaction, history + JSON/CSV export, `createLogger()`.
+- `1.58.0` — `Utility.Color` added (conversions, contrast, mixing, average image color); better YouTube URL parser.
+- `1.54.x` — luxon → dayjs migration (`Utility.Time`); Mixpanel removed from `Analytics` in favor of pluggable providers.

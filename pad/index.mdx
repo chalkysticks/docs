@@ -58,12 +58,20 @@ The pad uses a manager-based architecture:
 
 ## Events
 
+All events are emitted both locally (via `$emit`) and globally on the Event Bus (prefixed with `pad.`). See the [Events Reference](/pad/events) for the complete catalog.
+
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `change` | State | Diagram state changed |
-| `ball:added` | Ball | Ball added |
-| `ball:removed` | Ball | Ball removed |
-| `line:added` | Line | Line added |
+| `change` | `{ tableState }` | Any table mutation (auto-enriched with full state) |
+| `ball:add` | `{ x, y, type? }` | Ball added to table |
+| `ball:select` | `{ x, y }` | Ball selected |
+| `ball:deselect` | `{ x, y }?` | Balls deselected |
+| `ball:remove` | — | Active balls removed |
+| `line:add` | `{ x, y }` | Line added from active ball |
+| `shape:select` | Shape | Shape selected |
+| `text:select` | Text | Text selected |
+| `table:loading` | — | Diagram import starting |
+| `table:loaded` | — | Diagram import complete |
 
 ## Accessing Managers
 

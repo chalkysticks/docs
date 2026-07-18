@@ -1,0 +1,145 @@
+---
+title: 'TV'
+description: 'Schedule grid, channel badges, attribution, and the video theater'
+---
+
+Twelve components covering the ChalkySticks TV experience: schedule grid, live list, attribution banners, channel badges, and the multi-source video theater.
+
+## TvVideoTheater
+
+Top-level video player that dispatches to the right backend (YouTube, YouTube iOS proxy, Facebook, native HLS) based on the URL.
+
+```html
+<ChalkyTvVideoTheater
+    :url="schedule.embed_url"
+    :channel="schedule.channel"
+    :start-time="0"
+    :play="true"
+    :mute="false"
+    :allow-bumper="true"
+    :allow-control="true"
+    @player:ready="onReady"
+    @player:ended="onEnded"
+/>
+```
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `url` | string | YouTube / Facebook / mp4 / m3u8 |
+| `channel` | `Model.Channel` | for casting + attribution |
+| `play`, `mute` | boolean | |
+| `startTime` | number | seconds |
+| `allowBumper` | boolean | enables pre-roll bumper |
+| `allowControl` | boolean | shows playback controls |
+
+Emits: `error`, `player:ready`, `player:ended`, `player:error`, `bumper:start`, `video:playing`, `video:ending`, `video:notplaying`, `video:starting`.
+
+## TvSchedule
+
+Grid view of multiple channels with a time axis. Use `direction="horizontal"` for a TV-guide layout or `"vertical"` for a feed-style timeline.
+
+```html
+<ChalkyTvSchedule
+    :channels="channels"
+    :live-schedule-collections="liveCollectionsByChannel"
+    :active-schedule-model="active"
+    direction="horizontal"
+    :game-type="gameType"
+    time-format="12h"
+/>
+```
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `channels` | `Model.Channel[]` | |
+| `liveScheduleCollections` | record of `Collection.Schedule` per channel | |
+| `activeScheduleModel` | `Model.Schedule` | highlighted item |
+| `direction` | `'horizontal' \| 'vertical'` | |
+| `gameType` | `Enum.GameType` | filter |
+| `timeFormat` | string | `12h` / `24h` |
+
+## TvScheduleList
+
+Axis-aligned schedule list for a single channel.
+
+```html
+<ChalkyTvScheduleList
+    :channel="channel"
+    :schedule-collection="scheduleCollection"
+    :active="true"
+    direction="vertical"
+    :now-position="nowOffset"
+/>
+```
+
+## TvScheduleItem
+
+Individual schedule entry with thumbnail, live / game-type tags, title, and "time-ago" label.
+
+```html
+<ChalkyTvScheduleItem :schedule-model="entry" :channel="channel" />
+```
+
+## TvTimeline
+
+Time labels along an axis. Pair with `TvSchedule` for the time gutter.
+
+```html
+<ChalkyTvTimeline direction="vertical" format="12h" />
+```
+
+## TvLiveList
+
+Horizontal preview list of live videos. Auto-refreshes via interval.
+
+```html
+<ChalkyTvLiveList :schedule-collection="liveCollection" />
+```
+
+## TvNowPlaying
+
+Convenience component — picks the current schedule item for a `gameType` and displays it, or a "Nothing Playing" fallback.
+
+```html
+<ChalkyTvNowPlaying
+    :game-type="gameType"
+    :schedule-collection="liveCollection"
+/>
+```
+
+## TvVideoPreview
+
+Tappable thumbnail card with a title caption.
+
+```html
+<ChalkyTvVideoPreview :schedule-model="entry" />
+```
+
+## TvLowerThird
+
+Lower-third graphic — title + subtitle and an optional channel badge overlay.
+
+```html
+<ChalkyTvLowerThird
+    :schedule-model="entry"
+    title="Mosconi Cup 2026"
+    subtitle="Day 1, Match 3"
+    :use-channel-badge="true"
+/>
+```
+
+## TvAttributionBanner / TvAttributionBannerMissing
+
+Channel thumbnail + title + YouTube attribution link. The "Missing" variant is a fallback when the thumbnail can't be loaded.
+
+```html
+<ChalkyTvAttributionBanner :schedule-model="entry" />
+```
+
+## TvChannelBadge
+
+Small clickable channel thumbnail. Use inline next to schedule items.
+
+```html
+<ChalkyTvChannelBadge :schedule-model="entry" />
+```

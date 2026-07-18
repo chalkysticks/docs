@@ -1,0 +1,473 @@
+---
+title: 'Embed postMessage API'
+description: 'Drive an embedded trainer from the host page — send commands, listen for shots, fouls, and pocketed balls, all over window.postMessage'
+---
+
+## Overview
+
+An [embedded trainer](/trainer/embedding) is a cross-origin `<iframe>`, so the
+host page cannot reach into it directly. Instead it talks to the table over
+`window.postMessage`, using a small, stable message vocabulary.
+
+That gives a partner site two things:
+
+- **Commands in** — buttons on your page that change the cloth, swap the camera,
+  set the power, rerack, or take the shot.
+- **Events out** — your page reacts when a ball drops, a foul is called, or the
+  rack is cleared.
+
+The command names are deliberately *not* the trainer's internal event names.
+They are a public contract, so the engine stays free to refactor underneath you.
+
+```javascript
+const frame = document.querySelector('iframe');
+
+// Wait until the table announces itself, then drive it.
+window.addEventListener('message', (event) => {
+	if (event.data?.type === 'chalky:ready') {
+		frame.contentWindow.postMessage({
+			command: 'camera.set',
+			payload: { preset: 'first-person' },
+			type: 'chalky:command',
+		}, '*');
+	}
+});
+```
+
+<Note>
+	The bridge attaches as soon as the embed page mounts — including while a
+	`start=click` poster is still up. Listen for `chalky:ready` rather than
+	guessing at a timeout, and you can even start the table yourself with the
+	`game.start` command.
+</Note>
+
+## Message shapes
+
+Four message types cross the boundary. Every one carries a `type` discriminator,
+so a shared `message` listener can route on it without ambiguity.
+
+| Direction | `type` | Shape |
+|-----------|--------|-------|
+| Trainer → host | `chalky:ready` | `{ type, commands: string[], events: string[] }` |
+| Host → trainer | `chalky:command` | `{ type, command: string, payload?: object, requestId?: string }` |
+| Trainer → host | `chalky:result` | `{ type, command, ok: boolean, requestId?, result?, error? }` |
+| Trainer → host | `chalky:event` | `{ type, event: string, data: object }` |
+
+`chalky:ready` advertises exactly which commands and events the running build
+supports, so you can feature-detect instead of hardcoding a version.
+
+Every command produces exactly one `chalky:result`, whether it succeeded or not.
+Attach a `requestId` to correlate a result with the command that caused it.
+
+## Sending commands
+
+```javascript
+function send(frame, command, payload) {
+	frame.contentWindow.postMessage({
+		command: command,
+		payload: payload || {},
+		type: 'chalky:command',
+	}, '*');
+}
+
+send(frame, 'cloth.set', { id: 'tournament-blue' });
+send(frame, 'power.set', { power: 0.8 });
+send(frame, 'shot.take');
+```
+
+### Command reference
+
+| Command | Payload | Effect |
+|---------|---------|--------|
+| `aids.set` | `{ ghostBall?: boolean, trajectories?: boolean }` | Toggle the aim aids. Omitted keys are left alone. |
+| `aim.set` | `{ angle: number }` | Set the cue angle, in radians. |
+| `ballset.set` | `{ id: string }` | Swap the ball skin. |
+| `camera.set` | `{ preset: string, animate?: boolean }` | Change the view. See [camera presets](/trainer/embedding#camera-presets). |
+| `cloth.set` | `{ id: string }` | Swap the cloth. |
+| `cue.set` | `{ id: string }` | Swap the cue. |
+| `diamond.set` | `{ id: string }` | Swap the rail diamonds. |
+| `english.set` | `{ x: number, y: number }` | Set english / spin, each `-1..1`. |
+| `env.set` | `{ preset: string, animate?: boolean }` | Change the room. |
+| `game.rack` | `{ balls?, diagram?, flow?, game?, with?, win?, lose? }` | Rack a **different** layout live — see below. |
+| `game.rerack` | — | Replay the embed's configured layout from the top. |
+| `game.start` | — | Mount the table when it is behind a `start=click` poster. Returns `false` if it was already running. |
+| `power.set` | `{ power: number }` | Set shot power, `0..1`. Clamped. |
+| `rail.set` | `{ id: string }` | Swap the rails. |
+| `shot.take` | — | Shoot with the current aim, power, and english. |
+| `shot.undo` | — | Undo the last shot. |
+| `state.get` | — | Return a snapshot (see below). |
+| `table.set` | `{ preset: string }` | Apply a whole-table appearance preset. |
+
+All equipment ids are the same loadout catalog ids the query string takes —
+see the [equipment id tables](/trainer/embedding#equipment-ids). As with the
+query string, they are applied as transient overrides: locked items render, and
+the viewer's saved loadout is never touched.
+
+### Changing the layout live
+
+`game.rack` takes the same layout keys the URL takes, merges them over the
+embed's own query, and reruns the result through the query parser. So a value
+arriving over `postMessage` gets exactly the validation a value in the URL gets:
+an unknown game type or a malformed `balls` segment is rejected, not trusted.
+
+```javascript
+send(frame, 'game.rack', { diagram: 'EKQ6ubq' });                     // load a saved diagram
+send(frame, 'game.rack', { game: 'EightBall' });                      // standard 8-ball rack
+send(frame, 'game.rack', { balls: '1:0.75,0.5;cue:0.22,0.7', flow: '1.pocket:corner' });
+```
+
+<Warning>
+	Rack precedence is `diagram` → `balls` → standard `game` rack, and the merge
+	is against the embed's **existing** query. If the iframe was loaded with
+	`diagram=`, sending only `{ balls: ... }` leaves that diagram in place and it
+	still wins. Pass a key as an **empty string** to remove it:
+
+	```javascript
+	send(frame, 'game.rack', { balls: '1:0.5,0.5;cue:0.7,0.4', diagram: '', flow: 'free' });
+	```
+</Warning>
+
+`game.rerack` is the no-argument form: it always replays the layout the embed was
+originally configured with, whatever `game.rack` calls came before it.
+
+### Reading state
+
+`state.get` resolves with the fields the store actually holds:
+
+```javascript
+{
+	aimAngle: 1.5707,
+	ballInHand: false,
+	elevation: 0,
+	english: { x: 0, y: 0 },
+	gamePhase: 'aiming',
+	gameType: 'NineBall',
+	power: 0.5
+}
+```
+
+<Note>
+	Ball positions are **not** available. They live on the physics manager as
+	`THREE.Vector3` instances rather than in the store, and those cannot cross a
+	`postMessage` boundary. Rather than half-serve them, `state.get` omits them.
+	Track pocketed balls with the `ball:pocketed` event instead.
+</Note>
+
+### Correlating a result
+
+```javascript
+function request(frame, command, payload) {
+	return new Promise((resolve, reject) => {
+		const requestId = String(Math.random());
+
+		function onMessage(event) {
+			const message = event.data;
+
+			if (message?.type !== 'chalky:result' || message.requestId !== requestId) {
+				return;
+			}
+
+			window.removeEventListener('message', onMessage);
+
+			message.ok ? resolve(message.result) : reject(new Error(message.error));
+		}
+
+		window.addEventListener('message', onMessage);
+
+		frame.contentWindow.postMessage({
+			command: command,
+			payload: payload || {},
+			requestId: requestId,
+			type: 'chalky:command',
+		}, '*');
+	});
+}
+
+const state = await request(frame, 'state.get');
+```
+
+An unknown command, a missing required field, or an unsupported enum value all
+come back as `{ ok: false, error: '...' }` rather than failing silently.
+
+## Receiving events
+
+```javascript
+window.addEventListener('message', (event) => {
+	if (event.data?.type !== 'chalky:event') {
+		return;
+	}
+
+	switch (event.data.event) {
+		case 'ball:pocketed':
+			scoreboard.increment();
+			break;
+
+		case 'rack':
+			scoreboard.reset();
+			break;
+	}
+});
+```
+
+### Event reference
+
+| Event | Fires when |
+|-------|-----------|
+| `ball:pocketed` | A ball drops into a pocket. |
+| `foul` | Any foul is called — scratch, no rail, wrong ball, and so on. |
+| `game:end` | The game is over. |
+| `motion:stopped` | Every ball has come to rest. |
+| `rack` | The balls are racked or reset. |
+| `shot:start` | The cue strikes and the shot begins. |
+| `shot:complete` | The shot has fully resolved. |
+| `trick` | A named trick shot was performed (bank, kick, combo, carom, massé). |
+| `turn:start` | A turn begins. |
+| `turn:end` | A turn ends. |
+
+<Warning>
+	Event payloads are sanitized before they cross the boundary. Bus payloads
+	routinely carry `THREE.js` vectors, meshes, and circular scene references,
+	none of which survive structured clone. Primitives, plain objects, and arrays
+	pass through; class instances are dropped, arrays are capped at 128 entries,
+	and nesting is capped at 5 levels. Treat `data` as best-effort, and never
+	assume a particular field is present.
+</Warning>
+
+## Security & origins
+
+By default the bridge accepts commands from any origin and posts events with a
+`'*'` target — the same posture as a public YouTube or Vimeo embed, and
+consistent with the embed route already being served `frame-ancestors *`.
+
+To lock it down, pass your exact origin on the iframe URL:
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/trainer/embed?game=NineBall&origin=https://partner.example.com"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+```
+
+With `origin=` set, inbound messages from any other origin are ignored, and
+outbound messages target only that origin.
+
+<Tip>
+	Whether or not you set `origin=`, always check `event.origin` in your own
+	`message` listener. Your page receives messages from every frame it hosts, not
+	just this one.
+</Tip>
+
+## Worked example
+
+A page with a live table and three buttons: change the cloth, drop into first
+person, and rerack. The score updates itself from `ball:pocketed`.
+
+<CodeGroup>
+
+```html Plain JavaScript
+<iframe
+	id="table"
+	src="https://www.chalkysticks.com/trainer/embed?game=NineBall&start=click"
+	width="700" height="350" style="border:0;border-radius:10px;"
+	title="ChalkySticks Trainer"
+></iframe>
+
+<button id="blue">Blue cloth</button>
+<button id="fp">First person</button>
+<button id="rerack">Rerack</button>
+<p>Potted: <span id="score">0</span></p>
+
+<script>
+	const frame = document.getElementById('table');
+	const origin = 'https://www.chalkysticks.com';
+	let potted = 0;
+
+	function send(command, payload) {
+		frame.contentWindow.postMessage({
+			command: command,
+			payload: payload || {},
+			type: 'chalky:command',
+		}, origin);
+	}
+
+	document.getElementById('blue').onclick = () => send('cloth.set', { id: 'tournament-blue' });
+	document.getElementById('fp').onclick = () => send('camera.set', { preset: 'first-person' });
+	document.getElementById('rerack').onclick = () => send('game.rerack');
+
+	window.addEventListener('message', (event) => {
+		if (event.origin !== origin) {
+			return;
+		}
+
+		const message = event.data;
+
+		if (message?.type === 'chalky:event' && message.event === 'ball:pocketed') {
+			document.getElementById('score').textContent = ++potted;
+		}
+
+		if (message?.type === 'chalky:event' && message.event === 'rack') {
+			potted = 0;
+			document.getElementById('score').textContent = potted;
+		}
+	});
+</script>
+```
+
+```typescript Vue 2.7
+<template>
+	<section class="trainer-panel">
+		<iframe ref="frame" v-bind:src="embedSrc" height="350" width="700" title="ChalkySticks Trainer"></iframe>
+
+		<button type="button" v-on:click="Handle_OnClothClick">Blue cloth</button>
+		<button type="button" v-on:click="Handle_OnCameraClick">First person</button>
+		<button type="button" v-on:click="Handle_OnRerackClick">Rerack</button>
+
+		<p>Potted: {{ potted }}</p>
+	</section>
+</template>
+
+<script lang="ts">
+	import { Component, Vue } from 'vue-property-decorator';
+
+	/**
+	 * Host panel wrapping an embedded ChalkySticks trainer, wired to it over the
+	 * postMessage bridge.
+	 *
+	 * @author Matt Kenefick <matt@chalkysticks.com>
+	 * @package View/Trainer
+	 * @project Partner Site
+	 */
+	@Component
+	export default class ViewTrainerPanel extends Vue {
+		/**
+		 * Origin the embed is served from. Used both as the postMessage target and
+		 * as the allowlist for inbound messages.
+		 *
+		 * @type string
+		 */
+		protected origin: string = 'https://www.chalkysticks.com';
+
+		/**
+		 * Running count of balls pocketed in the current rack.
+		 *
+		 * @type number
+		 */
+		protected potted: number = 0;
+
+		/**
+		 * Embed URL, locked to this page's origin so the bridge ignores anyone else.
+		 *
+		 * @return string
+		 */
+		protected get embedSrc(): string {
+			return `${this.origin}/trainer/embed?game=NineBall&origin=${encodeURIComponent(window.location.origin)}`;
+		}
+
+		/**
+		 * @return void
+		 */
+		public mounted(): void {
+			window.addEventListener('message', this.Handle_OnMessage);
+		}
+
+		/**
+		 * @return void
+		 */
+		public beforeDestroy(): void {
+			window.removeEventListener('message', this.Handle_OnMessage);
+		}
+
+		/**
+		 * Post a command into the embedded trainer.
+		 *
+		 * @param string command
+		 * @param Record<string, unknown> payload
+		 * @return void
+		 */
+		protected send(command: string, payload: Record<string, unknown> = {}): void {
+			const frame = this.$refs.frame as HTMLIFrameElement;
+
+			frame.contentWindow?.postMessage({
+				command: command,
+				payload: payload,
+				type: 'chalky:command',
+			}, this.origin);
+		}
+
+		// region: Event Handlers
+		// ---------------------------------------------------------------------------
+
+		/**
+		 * @param MouseEvent e
+		 * @return Promise<void>
+		 */
+		protected async Handle_OnCameraClick(e: MouseEvent): Promise<void> {
+			e.preventDefault();
+
+			this.send('camera.set', { preset: 'first-person' });
+		}
+
+		/**
+		 * @param MouseEvent e
+		 * @return Promise<void>
+		 */
+		protected async Handle_OnClothClick(e: MouseEvent): Promise<void> {
+			e.preventDefault();
+
+			this.send('cloth.set', { id: 'tournament-blue' });
+		}
+
+		/**
+		 * @param MessageEvent e
+		 * @return Promise<void>
+		 */
+		protected async Handle_OnMessage(e: MessageEvent): Promise<void> {
+			if (e.origin !== this.origin || e.data?.type !== 'chalky:event') {
+				return;
+			}
+
+			if (e.data.event === 'ball:pocketed') {
+				this.potted++;
+			}
+
+			if (e.data.event === 'rack') {
+				this.potted = 0;
+			}
+		}
+
+		/**
+		 * @param MouseEvent e
+		 * @return Promise<void>
+		 */
+		protected async Handle_OnRerackClick(e: MouseEvent): Promise<void> {
+			e.preventDefault();
+
+			this.send('game.rerack');
+		}
+
+		// endregion: Event Handlers
+	}
+</script>
+```
+
+</CodeGroup>
+
+## Notes
+
+- **Racking before start:** with `start=click`, the table does not exist until the
+  viewer taps the poster. `game.rack` or `game.rerack` sent before then returns
+  `{ ok: false, error: 'Table has not started yet; send "game.start" first' }`.
+- **Not framed, no messages:** when `/trainer/embed` is opened directly in a tab
+  rather than inside an `<iframe>`, the bridge has no host to post to and stays
+  quiet. Commands are still accepted.
+- **One result per command:** including for unknown commands, so a host can
+  always `await` a response rather than racing a timeout.
+- **Solo only:** embeds have no AI or online opponent, so there are no
+  opponent-turn events to listen for.
+
+## Related
+
+- [Embedding](/trainer/embedding) — the `<iframe>` and its query parameters
+- [Events](/trainer/events) — the trainer's full internal event bus
+- [Console API](/trainer/console) — the equivalent `window.game` surface for same-origin pages

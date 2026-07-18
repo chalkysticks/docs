@@ -1,67 +1,196 @@
 ---
 title: 'Models'
-description: 'Data models for users, venues, media, and more'
+description: 'Data models for users, venues, media, products, and more'
 ---
+
+Models are domain objects backed by REST resources. They extend `Model.Base` (which extends `restmc`'s Model) and gain ChalkySticks-specific helpers: timestamp formatting, age/calendar checks, auth token wiring, and relationship registries.
 
 ## Available Models
 
 | Model | Description |
 |-------|-------------|
-| `User` | User account data |
-| `Venue` | Pool hall/venue data |
-| `Media` | Photos and videos |
-| `UserMedia` | User-specific media |
-| `VenueMedia` | Venue-specific media |
-| `Comment` | Comments on content |
-| `Reaction` | Love/like reactions |
-| `Content` | Rulebooks, articles |
-| `Message` | Chat messages |
-| `Meta` | Metadata key-value pairs |
+| `Accomplishment` | Achievement definitions |
+| `Advertisement` | In-app ads |
+| `AppConfig` | Server-driven runtime configuration (`/config/app`) |
+| `Comment` | Polymorphic comments |
+| `Content` | Articles, videos, channels |
+| `ContentTag` | Content tags |
+| `EmbeddingSearch` | Vector-search result row (media images) |
+| `Feed` | Activity feed entry |
+| `Geocode` | Geocoded address result |
+| `LibraryMedia` | CMS shared media library item (image or PDF) |
+| `Media` | Image/video metadata |
+| `MediaShare` | Media share/transfer record |
+| `MediaTag` | Tag attached to media |
+| `Message` | Chat message |
+| `Meta` | Generic key/value metadata |
+| `Product` | Purchasable catalog item (CSX or USD) |
+| `Reaction` | Polymorphic reaction |
+| `User` | User profile |
+| `UserAccomplishment` | Accomplishment earned by a user |
+| `UserMedia` | A user's media |
+| `UserStat` | Per-user counter |
+| `UserWallet` | Wallet transaction (`collect` / `spend`) |
+| `Venue` | Pool hall / venue |
+| `VenueCheckin` | Venue check-in |
+| `VenueDetail` | Extended venue details |
+| `VenueHour` | Venue operating hour |
+| `VenueMedia` | Venue media |
+| `VenueRevision` | Pending venue edit |
+| `VenueSearch` | Embedding-search result (extends `Venue` with a similarity score) |
 
 ## Basic Usage
 
 ```typescript
 import { Model } from '@chalkysticks/sdk-core';
 
-// Create a model instance
 const user = new Model.User({
     id: 1,
     name: 'Matt Kenefick',
-    email: 'matt@chalkysticks.com'
 });
 
-// Access properties
-console.log(user.name);
-console.log(user.email);
+console.log(user.getName());
+console.log(user.attr('email'));
+```
+
+Prefer resolving through the container so factories inject the correct `baseUrl`:
+
+```typescript
+import { ChalkySticks, Model } from '@chalkysticks/sdk-core';
+
+const venue = ChalkySticks.resolve(Model.Venue, { id: 1 });
+await venue.fetch();
 ```
 
 ## Model Methods
 
+From `restmc` plus `Model.Base` additions:
+
 ```typescript
-// Get attribute
-user.get('name');
+user.attr('name');                  // read one attribute
+user.set({ name: 'New Name' });     // set attributes
+user.attributes;                    // raw attribute bag
+user.toJSON();                      // plain object
+await user.fetch();                 // GET
+await user.save();                  // POST/PUT
+await user.delete();                // DELETE
 
-// Set attribute
-user.set('name', 'New Name');
+user.auth();                        // chainable: applies token from Provider.Store
+await user.auth().save();           // e.g. authenticated write
 
-// Check if attribute exists
-user.has('avatar');
-
-// Get all attributes
-user.getAttributes();
-
-// Convert to JSON
-user.toJSON();
+user.getBaseUrl();                  // localUrl override > baseUrl
+user.isV1(); user.isV2(); user.isV3();
 ```
+
+## Timestamps and Age
+
+`Model.Base` exposes formatted timestamp getters for `created_at`, `updated_at`, and `deleted_at`:
+
+```typescript
+venue.getCreatedAt('YYYY-MM-DD');   // formatted string (dayjs-style tokens)
+venue.getCreatedAtDate();           // Date | null
+venue.getCreatedAtTimeAgo();        // '2 days ago' (pass true for '2d')
+
+// Same trio exists for updated_at and deleted_at
+venue.getUpdatedAtTimeAgo(true);
+venue.isDeleted();                  // !!deleted_at
+```
+
+Numeric age getters and threshold checks accept an optional timestamp field (default `'created_at'`):
+
+```typescript
+venue.getAgeInSeconds();            // also: getAgeInMinutes / getAgeInHours / getAgeInDays
+venue.getAgeInDays('updated_at');   // custom field
+
+venue.isHourOld();                  // >= 1 hour
+venue.isDayOld();                   // >= 24 hours
+venue.isWeekOld();                  // >= 7 days
+venue.isMonthOld();                 // >= 30 days
+venue.isYearOld();                  // >= 365 days
+
+venue.isOlderThan(14);              // >= N days
+venue.isNewerThan(3);               // < N days
+
+venue.isToday();                    // calendar-relative
+venue.isThisWeek();                 // Monday–Sunday
+venue.isThisMonth();
+venue.isThisYear();
+```
+
+Timestamps without timezone info (Carbon `toDateTimeString` output) are interpreted as UTC via `Utility.Time.toLocal`, so age math is not shifted by the local offset.
+
+## Request Events
+
+Every model dispatches request lifecycle events locally **and** on the global `Event.Bus`: `request:loading`, `request:loaded`, `request:error`, plus status-specific `request:unauthorized` (401), `request:forbidden` (403), `request:not_allowed` (405), `request:not_acceptable` (406), `request:conflict` (409), and `request:service_unavailable` (503).
 
 ## Relationships
 
-Models can have relationships to other models:
+Built-in relationships are `restmc` `hasOne` / `hasMany` getters declared on each model:
 
 ```typescript
-// User's media collection
-const media = user.media;
-
-// Venue's check-ins
-const checkins = venue.checkins;
+const media = user.media;           // Collection.Media
+const checkins = venue.checkins;    // Collection.VenueCheckin
+const hours = venue.hours;          // Collection.VenueHour
 ```
+
+### Registering Custom Relationships
+
+Plugins extend models at runtime through `Model.RelationshipRegistry` (exported from the `Model` namespace). The descriptor takes a `getter` name and a `factory` that receives the model instance:
+
+```typescript
+import { Model } from '@chalkysticks/sdk-core';
+import { Collection as PadCollection } from '@chalkysticks/sdk-pad';
+
+Model.RelationshipRegistry.register(Model.User, 'diagrams', {
+    getter: 'diagrams',
+    factory: (self) => self.hasMany('diagrams', PadCollection.Diagram),
+});
+```
+
+This is how `@chalkysticks/sdk-pad` adds `User → diagrams` without modifying the core package.
+
+### RelationshipProperties Decorator
+
+The top-level `RelationshipProperties` export is a class decorator that maps virtual properties onto related meta/detail collections. `Model.User` and `Model.Venue` use it — e.g. `user.plays8Ball = true` writes a `{ key: '8ball', value: '8 Ball' }` row into the user's `games` collection.
+
+## Domain Highlights
+
+### User
+
+- Games flags via decorator: `plays8Ball`, `plays9Ball`, `plays10Ball`, `playsSnooker`, `playsStraight`, etc.; profile props `biography`, `hometown`, `talentLevel`, `autoCheckin`.
+- Roles/permissions: `getRoles()`, `hasRole(Enum.Roles)`, `getPermissions()`, `hasPermission()`, `isAdmin()`, `isStaff()`, `isModerator()`, `isSpecial()`, `isSuperAdmin()`, `isChalkyMember()`.
+- Subscription (1.68.0): `getSubscriptionTier()` (`'free' | 'plus' | 'pro' | 'max'`), `getSubscriptionStatus()`, `isPremium()` (paid tier AND active AND not expired).
+- Stats: `getCheckinsByDay()`, `getTotalCheckins()`, `getUniquePlacesVisited()`, `stats` relationship (`Collection.UserStat`).
+
+### Venue
+
+- Details-backed flags via decorator: `hasFood`, `hasLeague`, `cashOnly`, `table7`, `table8`, `table9`, `snooker`, `billiards`, `freeTable`, `pingPong`, `shuffleboard`, `darts`, `foosball`, `skeeball`, `livemusic`, `smoking`, `tournaments`, `gambling`; hours props `hoursMonday`–`hoursSunday`.
+- Getters: `getName()`, `getAddress()`, `getShortAddress()`, `getLatitude()`, `getLongitude()`, `getDistance(lat, lon, 'km' | 'mi')`, `getFormattedPhone()`, `isOpenNow()`.
+- Action: `await venue.checkin()` posts a check-in and adds it to `venue.checkins`.
+
+### Product
+
+Catalog items priced in CSX or USD (`Enum.ProductType`, `Enum.Currency`): `getSku()`, `getProductName()`, `getBrandName()`, `getAmount()`, `getCurrency()`, `getType()`, `isForSale()`, `isOwned()`.
+
+### UserWallet
+
+Wallet transactions plus actions: `await wallet.collect(userModel)` (POST `wallet/collect`), `await wallet.spend(userModel, productId)` (POST `wallet/spend`), `canCollect()` honoring `Constants.WALLET_COLLECTION_TIME`.
+
+### LibraryMedia
+
+CMS-level shared media (`/v3/library-media`): `getTitle()`-style getters for `alt_text`, `media_type`, `mime`, dimensions, and an `uploader` (`Model.User`) relationship.
+
+### AppConfig
+
+Mirrors `/v3/config/app` (the model presets its id to `'app'`): `hasFeature(key)`, `getFeatures()`, `getFeedStructure()`, `getEnabledFeedItems()`, `getVersion()`, `getApiVersion()`. Prefer driving it through [`Service.AppConfig`](/sdk/core/services) rather than fetching manually.
+
+### VenueSearch / EmbeddingSearch
+
+`Model.VenueSearch` **extends `Model.Venue`** — all venue getters work — and adds `getSimilarity()` (0.0–1.0), `getSimilarityPercentage()` (`'87.3%'`), and `getMatchedMediaUrl()`. `Model.EmbeddingSearch` is the per-image row from `/v3/media/search`.
+
+## Recent Changes
+
+- `1.68.0` — `Model.User` subscription helpers: `getSubscriptionTier()`, `getSubscriptionStatus()`, `isPremium()`.
+- `~1.63.0` — `Model.Product` added; `UserWallet.collect()` / `spend()` actions.
+- `~1.61.x` — `Model.LibraryMedia` added; `Model.AppConfig.hasFeature()` now resolves through `Service.Feature` (audience-scoped states, not just booleans).
+- `~1.59.1` — Age helpers parse no-timezone timestamps as UTC (fixes off-by-offset age math).

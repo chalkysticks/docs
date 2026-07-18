@@ -1,0 +1,86 @@
+---
+title: 'Settings'
+description: 'Server-driven app configuration (admin)'
+---
+
+Settings are key-value pairs grouped by namespace, used to drive runtime app configuration (feed layout, feature flags, etc.). All endpoints require an admin token.
+
+## List Settings
+
+```bash
+GET /v3/settings
+GET /v3/settings?group=feed&sort=key&direction=asc
+Authorization: Bearer YOUR_TOKEN
+```
+
+Query parameters: `group`, `key`, `sort`, `direction`.
+
+## Create Setting
+
+```bash
+POST /v3/settings
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "group": "feature_flags",
+  "key": "trainer_v2",
+  "type": "boolean",
+  "value": true
+}
+```
+
+## Update Setting
+
+```bash
+PUT /v3/settings/{group}/{key}
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "type": "boolean",
+  "value": false
+}
+```
+
+## Delete Setting
+
+```bash
+DELETE /v3/settings/{group}/{key}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Replace Feed Structure
+
+Bulk-replace the feed layout configuration.
+
+```bash
+PUT /v3/settings/feed
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
+{
+  "feedStructure": [
+    {
+      "component": "VenueCarousel",
+      "enabled": true,
+      "order": 1,
+      "props": { "limit": 10 },
+      "authRequired": false
+    },
+    {
+      "component": "ContentList",
+      "enabled": true,
+      "order": 2,
+      "props": {},
+      "authRequired": false
+    }
+  ]
+}
+```

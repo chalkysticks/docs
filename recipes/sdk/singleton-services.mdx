@@ -1,0 +1,188 @@
+---
+title: 'Share singleton services'
+description: 'Register shared services like analytics, logging, and feature flags'
+---
+
+## When to Use Singletons
+
+Use a singleton binding when a service should have **one shared instance** across the entire application. Common examples: analytics, logging, configuration, feature flags, WebSocket connections.
+
+## Analytics Service
+
+```typescript
+import ChalkySticks from '@chalkysticks/sdk-core';
+
+const container = ChalkySticks.getContainer();
+
+container.singleton('analytics', () => {
+    return new AnalyticsService({
+        apiKey: 'abc123',
+        enabled: true,
+    });
+});
+
+// Anywhere in the app — always the same instance
+const analytics = ChalkySticks.make<AnalyticsService>('analytics');
+analytics.trackEvent('venue:viewed', { venueId: 42 });
+```
+
+## Logger
+
+```typescript
+container.singleton('logger', () => {
+    return new ConsoleLogger({
+        level: 'info',
+        prefix: '[ChalkySticks]',
+    });
+});
+
+// Use from anywhere
+ChalkySticks.make<ConsoleLogger>('logger').info('App started');
+ChalkySticks.make<ConsoleLogger>('logger').error('Something went wrong');
+```
+
+## Feature Flags
+
+```typescript
+container.singleton('features', () => {
+    return new FeatureFlagService({
+        darkMode: true,
+        newDashboard: false,
+        socialFeed: true,
+    });
+});
+
+// Check a flag
+const features = ChalkySticks.make<FeatureFlagService>('features');
+
+if (features.isEnabled('socialFeed')) {
+    // Show the social feed
+}
+```
+
+## Configuration Object
+
+Use `instance()` for values that are already constructed:
+
+```typescript
+container.instance('config', {
+    apiUrl: 'https://api.chalkysticks.com/v3',
+    environment: 'production',
+    maxUploadSize: 10 * 1024 * 1024,
+    supportedLocales: ['en', 'es', 'fr'],
+});
+
+const config = ChalkySticks.make<any>('config');
+console.log(config.apiUrl);
+```
+
+## Current User
+
+Store the authenticated user so any part of the app can access it:
+
+```typescript
+// After successful login
+container.instance('user.current', authenticatedUser);
+
+// Anywhere else
+const currentUser = ChalkySticks.make<Model.User>('user.current');
+console.log(currentUser.get('name'));
+```
+
+Update it when the user changes:
+
+```typescript
+// After profile update
+container.instance('user.current', updatedUser);
+```
+
+## Chaining Singletons Together
+
+Singletons can depend on other singletons via the container argument:
+
+```typescript
+container.singleton('config', () => ({
+    apiKey: 'abc123',
+    logLevel: 'info',
+}));
+
+container.singleton('logger', (c) => {
+    const config = c.make<any>('config');
+
+    return new ConsoleLogger({
+        level: config.logLevel,
+    });
+});
+
+container.singleton('analytics', (c) => {
+    const config = c.make<any>('config');
+    const logger = c.make<ConsoleLogger>('logger');
+
+    const analytics = new AnalyticsService({
+        apiKey: config.apiKey,
+    });
+
+    logger.info('Analytics initialized');
+
+    return analytics;
+});
+```
+
+## Full Provider Example
+
+```typescript
+import { ServiceProvider } from '@chalkysticks/sdk-core/Provider/ServiceProvider';
+
+export class SharedServicesProvider extends ServiceProvider {
+    /**
+     * Register all shared singleton services.
+     *
+     * @return void
+     */
+    public register(): void {
+        this.container.instance('config', {
+            analyticsKey: 'abc123',
+            environment: 'production',
+            logLevel: 'warn',
+        });
+
+        this.container.singleton('logger', (c) => {
+            const config = c.make<any>('config');
+
+            return new ConsoleLogger({ level: config.logLevel });
+        });
+
+        this.container.singleton('analytics', (c) => {
+            const config = c.make<any>('config');
+
+            return new AnalyticsService({ apiKey: config.analyticsKey });
+        });
+
+        this.container.singleton('features', () => {
+            return new FeatureFlagService({
+                darkMode: true,
+                newDashboard: false,
+            });
+        });
+    }
+
+    /**
+     * Wire up cross-service dependencies during boot.
+     *
+     * @return void
+     */
+    public boot(): void {
+        const logger = this.container.make<ConsoleLogger>('logger');
+        logger.info('SharedServicesProvider booted');
+    }
+}
+```
+
+Register it:
+
+```typescript
+ChalkySticks.configure({
+    apiUrl: 'https://api.chalkysticks.com',
+    providers: [SharedServicesProvider],
+});
+```

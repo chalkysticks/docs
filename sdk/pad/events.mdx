@@ -1,0 +1,354 @@
+---
+title: 'Events Reference'
+description: 'Complete catalog of SDK Pad manager events'
+---
+
+All managers in sdk-pad extend `Event.Dispatcher` and emit granular events when state changes occur. You can listen using `on()`, `once()`, or `off()` on any manager instance.
+
+## Listening to Events
+
+```typescript
+import { Manager } from '@chalkysticks/sdk-pad';
+
+const table = new Manager.Table(bounds, ballSize);
+
+// Listen on Table manager
+table.on('table:ready', (e) => {
+    console.log('Table ready');
+});
+
+// Listen on sub-managers
+table.ballManager.on('ball:add', (e) => {
+    console.log('Ball added:', e.data);
+});
+
+// Listen once
+table.lineManager.once('line:add', (e) => {
+    console.log('First line added:', e.data);
+});
+
+// Remove listener
+const handler = (e) => console.log(e.data);
+table.ballManager.on('ball:move', handler);
+table.ballManager.off('ball:move', handler);
+```
+
+## Event Envelope
+
+Every event callback receives an envelope object:
+
+```typescript
+{
+    data: T,           // The event payload (varies per event)
+    event: {
+        name: string,  // Event name (e.g., 'ball:add')
+        time: number   // Timestamp
+    },
+    target: object     // The manager that dispatched the event
+}
+```
+
+---
+
+## Table Manager Events
+
+Events dispatched by `Manager.Table`, the main orchestrator.
+
+### Lifecycle
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `table:ready` | `null` | `setup()` completes |
+| `table:clear` | `null` | `clearAll()` |
+| `table:import` | `null` | `importTableState()`, `importDiagram()` |
+| `table:state` | `ITableState` | Any table mutation (fires after all sub-manager events) |
+
+### Ball Orchestration
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `table:ball:add` | `IDiagramBall` | `addBall()` |
+| `table:ball:remove` | `{ id: string }` | `removeBall()` (calling `removeBallAndConnections()` / `removeBallAndLines()` directly does not fire it) |
+| `table:ball:remove:selected` | `IDiagramBall[]` | `removeSelectedBalls()` |
+| `table:ball:select` | `{ id: string }` | `selectBall()` |
+| `table:ball:deselect` | `null` | `deselectAllBalls()` |
+| `table:ball:move` | `IDiagramBall[]` | `moveBalls()` |
+| `table:ball:shuffle` | `null` | `shuffleBalls()` |
+
+### Line Orchestration
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `table:line:add` | `{ endBallId, startBallId }` | `addLine()` |
+
+### Racking
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `table:rack` | `null` | `rackBalls()`, `rack8Ball()`, `rack9Ball()`, `rack10Ball()` |
+
+### History
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `table:undo` | `null` | `undo()` |
+| `table:redo` | `null` | `redo()` |
+
+### Configuration
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `table:bounds` | `IBounds` | `updateBounds()` |
+| `table:config` | `{ ballType }` or `{ tableType }` or `{ isComplete }` | `setBallType()`, `setTableType()`, `setIsComplete()` |
+
+```typescript
+const table = new Manager.Table(bounds, ballSize);
+
+table.on('table:ready', (e) => {
+    console.log('Table is set up');
+});
+
+table.on('table:ball:add', (e) => {
+    console.log('Ball added via table:', e.data);
+});
+
+table.on('table:state', (e) => {
+    autoSave(e.data);
+});
+```
+
+---
+
+## Base Manager Events
+
+These events are inherited by **all** element managers (Ball, Shape, Sticker, Text, Line, Trajectory, Rail). The `${element}` prefix is replaced by the manager's element name (e.g., `ball`, `shape`, `sticker`, `text`, `line`).
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `${element}:clear` | `null` | `clear()` |
+| `${element}:import` | `null` | `importState()` |
+| `${element}:activate` | the item | `activateItem()` |
+| `${element}:deactivate` | `null` | `deactivateAll()` |
+| `${element}:remove` | `{ id: string }` | `removeById()` |
+| `${element}:remove:active` | removed items array | `removeActiveItems()` |
+| `${element}:update` | the updated item | `updateItem()` |
+| `${element}:state` | the manager | `notifyStateChange()` |
+
+`${element}:state` fires whenever `notifyStateChange()` runs: always for the Base CRUD methods above (`clear`, `importState`, `removeById`, `removeActiveItems`, `updateItem`). The Shape, Sticker, and Text managers also call it after every one of their own mutations (add/move/rotate/resize/scale/edit). The Ball and Line managers do **not** — their granular operations (`addBall`, `moveBall`, `addLine`, `setLineStyle`, ...) dispatch only their specific event.
+
+---
+
+## Ball Manager Events
+
+Events dispatched by `Manager.Ball`.
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `ball:add` | `IDiagramBall` | `addBall()`, `addBallNormalized()` |
+| `ball:move` | `IDiagramBall` | `moveBall()`, `moveBallRelative()` |
+| `ball:remove` | `{ id: string }` | `removeBall()` |
+| `ball:toggle` | `IDiagramBall` | `toggleBall()` |
+| `ball:shuffle` | `null` | `shuffle()` |
+| `ball:reset` | `null` | `resetBallPositions()` |
+| `ball:activate` | `IDiagramBall` | `activateBall()` (inherited from Base) |
+| `ball:deactivate` | `null` | `deactivateBalls()` (inherited from Base) |
+| `ball:state` | the manager | Base-level mutations only (`clear()`, `importState()`, `updateItem()`, ...) |
+
+```typescript
+const ballManager = table.ballManager;
+
+ballManager.on('ball:add', (e) => {
+    const ball = e.data;
+    console.log(`Added ${ball.type} ball at (${ball.x}, ${ball.y})`);
+});
+
+ballManager.on('ball:move', (e) => {
+    const ball = e.data;
+    console.log(`Ball ${ball.id} moved to (${ball.x}, ${ball.y})`);
+});
+
+ballManager.on('ball:toggle', (e) => {
+    const ball = e.data;
+    console.log(`Ball ${ball.id} toggled, active: ${ball.active}`);
+});
+```
+
+---
+
+## Shape Manager Events
+
+Events dispatched by `Manager.Shape`.
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `shape:add` | `IDiagramShape` | `addShape()` |
+| `shape:move` | `IDiagramShape` or `IDiagramShape[]` | `moveShape()`, `moveShapeRelative()`, `moveActiveShapes()`, `moveActiveShapesRelative()` |
+| `shape:resize` | `IDiagramShape` | `resizeShape()` |
+| `shape:rotate` | `IDiagramShape` | `rotateShape()` |
+| `shape:scale` | `IDiagramShape` | `scaleShape()` |
+| `shape:activate` | `IDiagramShape` | `activateShape()` (inherited from Base) |
+| `shape:deactivate` | `null` | `deactivateShapes()` (inherited from Base) |
+| `shape:remove` | `{ id: string }` | `removeShape()` (inherited from Base) |
+| `shape:remove:active` | `IDiagramShape[]` | `removeActiveShapes()` (inherited from Base) |
+| `shape:state` | the manager | Any mutation (inherited from Base) |
+
+```typescript
+const shapeManager = table.shapeManager;
+
+shapeManager.on('shape:add', (e) => {
+    const shape = e.data;
+    console.log(`Added ${shape.type} shape at (${shape.x}, ${shape.y})`);
+});
+
+shapeManager.on('shape:rotate', (e) => {
+    console.log(`Shape rotated to ${e.data.rotation} degrees`);
+});
+```
+
+---
+
+## Sticker Manager Events
+
+Events dispatched by `Manager.Sticker`.
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `sticker:add` | `IDiagramSticker` | `addSticker()` |
+| `sticker:move` | `IDiagramSticker` or `IDiagramSticker[]` | `moveSticker()`, `moveStickerRelative()`, `moveActiveStickers()`, `moveActiveStickersRelative()` |
+| `sticker:resize` | `IDiagramSticker` | `resizeSticker()`, `scaleSticker()` |
+| `sticker:rotate` | `IDiagramSticker` | `rotateSticker()` |
+| `sticker:activate` | `IDiagramSticker` | `activateSticker()` (inherited from Base) |
+| `sticker:deactivate` | `null` | `deactivateStickers()` (inherited from Base) |
+| `sticker:remove` | `{ id: string }` | `removeSticker()` (inherited from Base) |
+| `sticker:remove:active` | `IDiagramSticker[]` | `removeActiveStickers()` (inherited from Base) |
+| `sticker:state` | the manager | Any mutation (inherited from Base) |
+
+```typescript
+const stickerManager = table.stickerManager;
+
+stickerManager.on('sticker:add', (e) => {
+    console.log(`Added sticker: ${e.data.type}`);
+});
+
+stickerManager.on('sticker:resize', (e) => {
+    console.log(`Sticker scaled to ${e.data.scale}`);
+});
+```
+
+---
+
+## Text Manager Events
+
+Events dispatched by `Manager.Text`.
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `text:add` | `IDiagramText` | `addText()` |
+| `text:move` | `IDiagramText` or `IDiagramText[]` | `moveText()`, `moveTextRelative()`, `moveActiveTexts()`, `moveActiveTextsRelative()` |
+| `text:rotate` | `IDiagramText` | `rotateText()` |
+| `text:content` | `IDiagramText` | `updateTextContent()` |
+| `text:edit:start` | `IDiagramText` | `startEditing()` |
+| `text:edit:stop` | `IDiagramText` or `null` | `stopEditing()`, `stopAllEditing()` |
+| `text:activate` | `IDiagramText` | `activateText()` (inherited from Base) |
+| `text:deactivate` | `null` | `deactivateTexts()` (inherited from Base) |
+| `text:remove` | `{ id: string }` | `removeText()` (inherited from Base) |
+| `text:remove:active` | `IDiagramText[]` | `removeActiveTexts()` (inherited from Base) |
+| `text:state` | the manager | Any mutation (inherited from Base) |
+
+```typescript
+const textManager = table.textManager;
+
+textManager.on('text:add', (e) => {
+    console.log(`Added text: "${e.data.text}"`);
+});
+
+textManager.on('text:edit:start', (e) => {
+    showTextEditor(e.data);
+});
+
+textManager.on('text:content', (e) => {
+    console.log(`Text updated to: "${e.data.text}"`);
+});
+```
+
+---
+
+## Line Manager Events
+
+Events dispatched by `Manager.Line`.
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `line:add` | `IDiagramLine` | `addLine()` |
+| `line:remove` | `{ id: string }` | `removeLineById()` |
+| `line:remove:batch` | `{ startBallId }`, `{ endBallId }`, or `{ ballId }` | `removeLineByStartId()`, `removeLineByEndId()`, `removeLinesByBallId()` |
+| `line:move` | `IDiagramLine` | `moveLine()` |
+| `line:curve` | `IDiagramLine` | `setControlPoint()`, `clearControlPoint()` |
+| `line:color` | `IDiagramLine` | `setLineColor()` |
+| `line:style` | `IDiagramLine` | `setLineStyle()` |
+| `line:reconnect` | `{ removedBallId: string }` | `reconnectLineDueToRemovedBall()` |
+| `line:activate` | `IDiagramLine` | `activateLine()` (inherited from Base) |
+| `line:deactivate` | `null` | `deactivateLines()` (inherited from Base) |
+| `line:state` | the manager | Base-level mutations only (`clear()`, `importState()`, `updateItem()`, ...) |
+
+```typescript
+const lineManager = table.lineManager;
+
+lineManager.on('line:add', (e) => {
+    const line = e.data;
+    console.log(`Line from ${line.startBallId} to ${line.endBallId}`);
+});
+
+lineManager.on('line:curve', (e) => {
+    const line = e.data;
+    if (line.controlPoint) {
+        console.log(`Curve set at (${line.controlPoint.x}, ${line.controlPoint.y})`);
+    } else {
+        console.log('Curve cleared, line is straight');
+    }
+});
+
+lineManager.on('line:color', (e) => {
+    console.log(`Line color changed to ${e.data.color}`);
+});
+```
+
+---
+
+## Event Ordering
+
+Where a mutation dispatches both, the granular event (e.g., `shape:move`) fires **before** the generic `${element}:state` event. This means specific-action listeners execute before general state-change listeners.
+
+```typescript
+shapeManager.on('shape:add', (e) => {
+    // Fires first
+    console.log('Specific: shape added');
+});
+
+shapeManager.on('shape:state', (e) => {
+    // Fires second
+    console.log('General: shape state changed');
+});
+```
+
+## Table vs Sub-Manager Events
+
+Table dispatches its own `table:*` events independently from sub-manager events. There is no automatic event bubbling. Listen on the appropriate manager for your use case.
+
+```typescript
+// Sub-manager level (granular, fires for all ball operations)
+table.ballManager.on('ball:add', (e) => {
+    console.log('Ball manager: ball added');
+});
+
+// Table level (fires only for table-orchestrated operations)
+table.on('table:ball:add', (e) => {
+    console.log('Table: ball added');
+});
+```
+
+## Recent Changes
+
+- 2.0.0 — No event surface changes; rules compilation (`Rules.*`) is synchronous and does not dispatch events
+- 1.4.4 — `table:import` also fires from `importDiagram()`, which now clears all state (`clearAll()`) before importing
+- Docs correction vs. 1.5.x pages: `${element}:state` does not fire for Ball/Line granular mutations, and `table:ball:remove` only fires via `removeBall()`

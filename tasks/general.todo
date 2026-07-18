@@ -1,0 +1,285 @@
+Product Themes:
+
+	☐ Keep the core positioning broad
+		Note: You do not have to be a serious player to want to play pool.
+		Note: Some people want a nearby cafe or bar where they can casually hit balls.
+
+	☐ Tighten the ChalkySticks story.
+		☐ The table finder gets you to the bar.
+		☐ The table scanner gets you in the bar.
+		☐ Add the loop that keeps people there.
+		☐ Add the loop that brings people back.
+
+	☐ Explore taglines.
+		☐ "Find your felt."
+		☐ "Your game is bigger than the table."
+		☐ "Unleash your inner pool shark."
+
+	☐ Keep writing about why pool matters.
+		Note: Pool expands your network in the way golf often does for business.
+		Note: Include the Sierra Nevada / Toad Hall story.
+
+
+Image Rights & Investor Readiness:
+
+	☐ Audit venue image sources.
+		☐ Google Places API photos.
+		☐ User submissions with proper terms.
+		☐ Direct venue partnerships / permissions.
+		☐ Scraped or unclear legacy sources.
+
+	☐ Add clear upload terms.
+		☐ Require users to confirm ownership or rights.
+		☐ Keep the confirmation in the upload flow.
+
+	☐ Shift new venue media to clean sources.
+		☐ User submissions.
+		☐ Venue partnerships.
+		☐ First-party photography.
+		☐ Claimed venue listings.
+
+	☐ Prepare investor explanation.
+		Note: Treat legacy scraped photos as known technical debt with a remediation path.
+		Note: Frame venue data as the durable asset; photos are supplementary and replaceable.
+		Note: New content should be clean going forward.
+
+	☐ Document Google Places usage and attribution.
+
+
+Funding & Partnerships:
+
+	☐ Custom advertising/brands on balls
+		☐ PoolDawg ballset
+		☐ Seyberts ballset
+		☐ Anyone can have a ballset
+			When negotiating something like this, we'd have to consider things
+			like how long will they be available, will people be forced to use
+			them, lifetime? month long run? where do they exist in the feed?
+			etc
+		☐ CrazyGames
+			https://developer.crazygames.com/games
+		☐ Poki
+
+	☐ Remember to theme / run events based on the calendar year
+		☐ 4th of july is coming up, so maybe we have a USA cue and some
+		  special cloth or something, or a special chalkysticks logo?
+		  ☐ We could schedule this as well
+
+	☐ Look into funding options
+		☐ FundersClub
+		☐ SeedInvest
+		☐ Republic
+		☐ Wefunder
+		☐ NY Angels
+		☐ ODF: https://www.joinodf.com/
+		☐ Techstars NYC
+		☐ Y Combinator
+
+	☐ Follow up on investor / advisor possibilities
+		☐ Kevin
+		☐ Aaron Edwards
+		☐ Dan Mall
+		☐ Tony Robles / Predator
+
+	☐ Explore billiards partnerships
+		☐ Predator Pro Billiards Series / Tony Robles
+		☐ Matchroom Pool / WNT
+		☐ Ultimate Pool League
+		☐ Sharks
+		☐ Billiards Digest
+		☐ CueScore / Digital Pool
+		☐ Venue POS systems
+		☐ Table manufacturers such as Valley
+		☐ Camera / tracking hardware partners
+
+	☐ Create a deck, video, and image package for outreach.
+		☐ Instructors
+			☐ Dr. Dave
+				DrDave@DrDaveBilliards.com
+			☐ Tanner
+			☐ Yednak?
+		☐ Players
+			☐ Darren Appleton
+			☐ Fedor Gorst
+			☐ Savannah Easton
+			☐ Tony Robles
+		☐ Instructors and creators
+		☐ Potential venue partners
+			☐ Ozone billiards
+			☐ PoolDawg
+			☐ Seyberts
+
+	☐ Create drills on behalf of others
+		☐ Jeanette Lee
+		☐ Darren Appleton
+		☐ Attacking 8Ball
+		☐ play_with_mami
+		☐ thekristinatkach
+		☐ Margarita Sepolova?
+		☐ pocketbilliardshots
+		☐ ralph_g._eckert
+		☐ poolstriker_trickshots
+		☐ professionalbilliardinstructor
+		☐ poolwithevan
+		☐ willoncueau
+		☐ sensei nate (yt)
+			natejmt@gmail.com
+
+
+
+Marketing & Media:
+
+	☐ Create tutorial on how Chalky Players and Chalky Creators can use pad / trainer
+
+	☐ Re-invite old users in chunks of about 100.
+
+	☐ Send a welcome-back email explaining what is new.
+
+	☐ Teach people how to submit a revision in the app.
+		☐ Publish tutorial as a news item.
+		☐ Post clips on YouTube, Instagram, Facebook, and TikTok.
+		☐ Add contributor marker near comments or profile.
+		☐ Add "Last updated by @PoolShark92 - 2 days ago" style attribution.
+		☐ Add "Most Helpful Editors" leaderboard.
+
+	☐ Make more video ads.
+
+	☐ Start PlayPoolNYC Instagram ads.
+		☐ Review Envato template: https://elements.envato.com/osfrae-urban-instagram-post-portrait-template-WKGAEBE
+		☐ Consider a NYC-specific `playpool.nyc` site powered by ChalkySticks.
+
+	☐ Do more publications
+		☐ TimeOutNY
+		☐ Gothamist
+		☐ Thrillist
+		☐ Hell Gate NYC
+		☐ NYMag
+		☐ Patch.com
+		☐ NY1
+		☐ New York Times
+		☐ The New Yorker
+		☐ The Atlantic
+		☐ Monocle
+		☐ Quartz
+
+	☐ Record product videos
+
+	☐ Write Medium articles about the work
+
+	☐ Get Raymond to write more articles
+
+	☐ Email Dr Dave
+
+	☐ Create Mosconi Cup drills
+
+
+Physical Marketing:
+
+	☐ Design flyer system.
+		☐ Daily challenge flyers.
+		☐ Local location flyers.
+		☐ Merch flyers.
+		☐ Sign-up / wait-list flyers.
+
+	☐ Build a reusable asset repo.
+		☐ Backgrounds.
+		☐ Flyers.
+		☐ Stock images.
+		☐ Social templates.
+
+	☐ Create venue handouts.
+		☐ Stickers or QR codes for app / website downloads
+		☐ ChalkySticks pool sheet for places like Tap a Keg
+		☐ Deck of ChalkySticks playing cards with diagrams
+		☐ Coasters
+		☐ Stickers
+		☐ Matches
+
+
+Business Ideas:
+
+	☐ Explore Chalky Pro profiles
+		☐ Turn `chalky.pro` into a billiards-forward linktree
+		☐ Example: `chalky.pro/venomtrickshots`
+		☐ Include images, videos, links, Fargo rating, profile, and business-card content
+		☐ Use verified profiles to promote ChalkySticks
+
+	☐ Offer users their own pool-player link tree.
+
+	☐ Explore venue recommendation content.
+		☐ "Best place to play pool in [city]?"
+		☐ Auto-generate or curate lists from venue data.
+
+	☐ Explore pool-player starter kit.
+		☐ Cues.
+		☐ Rules.
+		☐ Table geometry.
+		☐ Games.
+		☐ Physics.
+		☐ Reference: https://mathematicalmysteries.org/pool-table-geometry/
+
+	☐ Explore ChalkySticks merchandise.
+		☐ Chalk.
+		☐ Gloves.
+		☐ Shirts.
+		☐ Hats.
+		☐ Bags.
+
+	☐ Explore businesses paying to be a featured bar or deep dive.
+
+	☐ Explore contests and giveaways.
+		☐ Best shot.
+		☐ Trickshot.
+		☐ Cues.
+		☐ Merch.
+		☐ "Win a new table" bar promotion.
+
+
+Research & References:
+
+	☐ Review competitor and reference sites.
+		☐ https://getcartwheel.com/home
+		☐ https://sharkspool.club/
+		☐ https://cuescore.com/
+		☐ http://caromtv.com/
+		☐ http://www.billiardsforum.com/pool-rules
+		☐ https://www.biliard8.hu/
+		☐ https://www.3cushionbilliards.com/where-to-play/detail/195/1/3-cushion-phil-panzera
+
+	☐ Review training app references.
+		☐ Cueist.
+		☐ WPB / World of Pool & Billiards.
+		☐ DrillRoom.
+		☐ Bullseye Billiards.
+		☐ Cue Cards.
+
+	☐ Research instructor marketplace possibilities.
+		☐ https://www.youtube.com/watch?v=AFf1oBDjcvk
+
+
+Data Imports:
+
+	☐ Continue venue-builder cleanup.
+		☐ Use regex: `(.*)\n(.*) (KY|SC|GA|NC)\n`
+		☐ Command: `php artisan venuebuilder:create --query="$1, $2 $3"`
+
+	✔ Duplicates should fetch the same address. @done(26-04-11 12:08)
+
+
+Recent Changes To Remember:
+
+	- Added selection marquee to Pad.
+	- Pad now handles `white`, `whiteball`, `w`, and `0` as ball types.
+	- Hid the cue-ball ghost line when ghost ball is hidden.
+	- Added UI menu to Trainer.
+	- Added ball collision HUD to Trainer.
+	- Improved ChalkySticks YouTube extension with modal and multiple selections.
+	- Added new model and context for Rules search in app.
+	- Added Rules search / advanced search in web-v3.
+	- Added Shift Up/Down for standing and crouching in Trainer.
+	- Need to update the API diagram to the new one.
+
+
+Tasks:
+
+	☐ for-creators page

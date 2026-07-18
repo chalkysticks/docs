@@ -1,77 +1,55 @@
 ---
-title: 'Racking Patterns'
-description: 'Standard and custom ball rack configurations'
+title: 'Racking'
+description: 'Rack strategies and standard ball layouts'
 ---
 
-## Rack Types
+Racking is described by the `Enum.RackStrategy` axis — the **physical layout** of balls at the start of a game, independent of `MatchFormat` (match shape) and `GameType` (game variant). The enum values partially overlap with `GameType` because common layouts share names with their matching game; the distinction matters for racks with no game counterpart (`DrillLine`, `Clear`, `RandomSpread`, `Custom`) and for games that borrow another game's layout (Killers on an `EightBall` rack).
 
-| Type | Description |
-|------|-------------|
-| `8ball` | 15-ball triangle rack |
-| `9ball` | 9-ball diamond rack |
-| `10ball` | 10-ball triangle rack |
-| `3ball` | 3-ball triangle |
-| `drill-line` | Balls in a line for drills |
-| `custom` | Manual ball placement |
+`RackStrategy` mirrors `App\Enums\RackStrategy` in the ChalkySticks API and the trainer enum — values must stay in sync across all three.
 
-## Standard Racks
+## Available Strategies
 
 ```typescript
-const rackManager = game.rackManager;
+import { Enum } from '@chalkysticks/sdk-game';
 
-// 8-ball rack
-rackManager.rackBalls('8ball');
-
-// 9-ball rack
-rackManager.rackBalls('9ball');
-
-// 10-ball rack
-rackManager.rackBalls('10ball');
+Enum.RackStrategy.EightBall;     // standard 15-ball triangle
+Enum.RackStrategy.NineBall;      // diamond rack
+Enum.RackStrategy.TenBall;       // 10-ball triangle
+Enum.RackStrategy.ThreeBall;     // 3-ball triangle
+Enum.RackStrategy.OneBall;       // single object ball
+Enum.RackStrategy.Rotation;      // rotation (1–15)
+Enum.RackStrategy.StraightPool;  // straight pool (14.1)
+Enum.RackStrategy.DrillLine;     // balls in a line
+Enum.RackStrategy.RandomSpread;  // randomized scatter
+Enum.RackStrategy.Clear;         // table cleared
+Enum.RackStrategy.Custom;        // caller-supplied layout
 ```
 
-## Rack Options
+All values are PascalCase strings (`'EightBall'`, `'DrillLine'`, ...).
+
+## Persisting The Layout
+
+The chosen layout lives on `Model.Game.rack_strategy`:
 
 ```typescript
-// Shuffle balls before racking
-rackManager.rackBalls('8ball', { shuffle: true });
-
-// Place at custom foot spot
-rackManager.rackBalls('8ball', {
-    footSpot: { x: 0.75, y: 0.5 }
-});
+game.getRackStrategy(); // Enum.RackStrategy (default: EightBall)
 ```
 
-## Drill Patterns
+## Rendering A Rack
+
+For the visual layout in the pad editor, use `Manager.Table` from `@chalkysticks/sdk-pad`:
 
 ```typescript
-// Line of balls for straight-in drill
-rackManager.rackBalls('drill-line', {
-    balls: [1, 2, 3, 4, 5],
-    spacing: 0.1
-});
+import { Manager } from '@chalkysticks/sdk-pad';
 
-// Custom positions
-rackManager.custom([
-    { number: 1, x: 0.3, y: 0.3 },
-    { number: 2, x: 0.5, y: 0.5 },
-    { number: 3, x: 0.7, y: 0.7 }
-]);
+const table = new Manager.Table({ height: 400, width: 800, x: 0, y: 0 });
+
+table.rack8Ball(true);   // include cue ball
+table.rack9Ball(true);
+table.rack10Ball(true);
+
+table.rackBalls(customBallsArray, false); // second arg: normalized coordinates
+table.shuffleBalls();
 ```
 
-## Cue Ball Placement
-
-```typescript
-// Place cue ball in kitchen
-rackManager.placeCueBall({ x: 0.25, y: 0.5 });
-
-// Ball in hand (anywhere on table)
-rackManager.placeCueBall({ x: 0.4, y: 0.6 });
-```
-
-## Rack Events
-
-```typescript
-rackManager.on('rack:complete', (pattern) => {
-    console.log('Balls racked:', pattern);
-});
-```
+See [Pad → Table Manager](/sdk/pad/table-manager) for the full racking API.

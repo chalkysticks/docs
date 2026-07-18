@@ -1,21 +1,21 @@
 ---
-title: 'Games & Matches'
-description: 'Game tracking, shots, and innings'
+title: 'Games'
+description: 'Individual games, shots, and innings'
 ---
 
-## Games
+A game is a single rack/round. For multi-game matches (race to N), see [Matches](/api/matches). Standalone listings of all shots and innings are also documented on [Shots](/api/shots) and [Innings](/api/innings).
 
-### List Games
+## List Games
 
 ```bash
 GET /v3/games
 GET /v3/games?user_id=1
 ```
 
-### Get Game
+## Get Game
 
 ```bash
-GET /v3/games/{id}
+GET /v3/games/{game}
 ```
 
 **Response:**
@@ -33,47 +33,76 @@ GET /v3/games/{id}
 }
 ```
 
-### Get Game State
+## Get Game State
+
+Computed game state including current player, ball groups, and score.
 
 ```bash
-GET /v3/games/{id}/state
+GET /v3/games/{game}/state
 ```
 
-### Create Game
+## Create Game
 
 ```bash
 POST /v3/games
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "game_type": "8ball",
   "user2_id": 2
 }
 ```
 
-### Update Game
+## Update Game
 
 ```bash
-PUT /v3/games/{id}
+PUT /v3/games/{game}
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "winner_id": 1,
   "status": "completed"
 }
 ```
 
-## Shots
+## Delete Game
+
+```bash
+DELETE /v3/games/{game}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Shots (scoped to a game)
 
 ### List Shots
 
 ```bash
-GET /v3/games/{id}/shots
+GET /v3/games/{game}/shots
+Authorization: Bearer YOUR_TOKEN
+```
+
+### Get Shot
+
+```bash
+GET /v3/games/{game}/shots/{shot}
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ### Record Shot
 
 ```bash
-POST /v3/games/{id}/shots
+POST /v3/games/{game}/shots
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "player_id": 1,
   "ball_pocketed": 3,
@@ -81,67 +110,60 @@ Authorization: Bearer YOUR_TOKEN
 }
 ```
 
-### Get Shot
+### Update Shot
 
 ```bash
-GET /v3/games/{id}/shots/{shot_id}
+PUT /v3/games/{game}/shots/{shot}
+Authorization: Bearer YOUR_TOKEN
 ```
 
-## Innings
+### Delete Shot
+
+```bash
+DELETE /v3/games/{game}/shots/{shot}
+Authorization: Bearer YOUR_TOKEN
+```
+
+## Innings (scoped to a game)
 
 ### List Innings
 
 ```bash
-GET /v3/games/{id}/innings
+GET /v3/games/{game}/innings
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ### Get Current Inning
 
 ```bash
-GET /v3/games/{id}/innings/current
+GET /v3/games/{game}/innings/current
+Authorization: Bearer YOUR_TOKEN
 ```
 
 ### Create Inning
 
 ```bash
-POST /v3/games/{id}/innings
+POST /v3/games/{game}/innings
 Authorization: Bearer YOUR_TOKEN
+```
+
+**Request:**
+```json
 {
   "player_id": 1
 }
 ```
 
-## Matches
-
-Matches contain multiple games (race to X).
-
-### List Matches
+### Update Inning
 
 ```bash
-GET /v3/matches
-```
-
-### Create Match
-
-```bash
-POST /v3/matches
+PUT /v3/games/{game}/innings/{inning}
 Authorization: Bearer YOUR_TOKEN
-{
-  "game_type": "9ball",
-  "race_to": 5,
-  "user2_id": 2
-}
 ```
 
-### Get Games in Match
+### Delete Inning
 
 ```bash
-GET /v3/matches/{id}/games
-```
-
-### Start Game in Match
-
-```bash
-POST /v3/matches/{id}/games/{game_id}/start
+DELETE /v3/games/{game}/innings/{inning}
 Authorization: Bearer YOUR_TOKEN
 ```

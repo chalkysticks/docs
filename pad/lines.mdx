@@ -194,12 +194,21 @@ trajectoryManager.clearTrajectories();
 
 ## Events
 
+Line events are emitted both locally and on the Event Bus (prefixed with `pad.`).
+
 ```typescript
-lineManager.on('line:added', (line) => {
-    console.log('Line added');
+// Via component ref
+this.$refs.pad.$on('line:add', (payload) => {
+    console.log('Line added:', payload);
 });
 
-lineManager.on('line:removed', (line) => {
-    console.log('Line removed');
+// Via Event Bus
+ChalkySticks.Core.Event.Bus.on('pad.line:add', (event) => {
+    console.log('Line added:', event.data);
 });
 ```
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `line:add` | `{ x, y }` | Line added from active ball to position |
+| `line:reflect` | `{ x, y }` | Reflection/bounce line created from ball at rail |
