@@ -8,24 +8,19 @@ description: 'Strategy pattern for local, computer, and online opponents'
 The opponent system uses the Strategy pattern to support different types of opponents. Each strategy handles how a player's turn is managed &mdash; from no-op for local players to full AI orchestration for computer opponents.
 
 ```
-Strategy/Opponent/Base.ts       (abstract)
-    ├── Strategy/Opponent/Local.ts      (human, same device)
-    ├── Strategy/Opponent/Computer.ts   (AI-controlled)
-    └── Strategy/Opponent/Online.ts     (remote, coming soon)
+System/Player/Strategy/Base.ts       (abstract)
+    ├── System/Player/Strategy/Local.ts      (human, same device)
+    ├── System/Player/Strategy/Computer.ts   (AI-controlled)
+    └── System/Player/Strategy/Online.ts     (remote multiplayer seat)
 ```
 
-Strategies are selected automatically based on the `mode` in `IMatchConfig`:
+Strategies are assigned per player by `Match/Manager.assignStrategies()`, based on player attributes rather than a mode table: a player with `getIsAI()` gets a Computer strategy wired to the `AiOpponentController`; in an online `VersusPlayer` match, the non-local seat gets an Online strategy wired to the Multiplayer Facade; every other player gets a Local strategy.
 
-| Match Mode | Player 1 Strategy | Player 2 Strategy |
-|------------|-------------------|-------------------|
-| `Practice` | Local | &mdash; (no opponent) |
-| `VersusCpu` | Local | Computer |
-| `VersusLocal` | Local | Local |
-| `VersusOnline` | Local | Online |
+Strategies do **not** block input. There is no `requiresInputBlocking()` &mdash; that API was deleted along with the `game/setInputBlocked` store surface. Input capability is *derived* by the `System/Gate` capability policy: conditions like `opponent-turn` (scoreboard turn ownership, which covers AI and remote turns) and `authority-unsettled` (the online `InputAuthority` state machines) decide what the local player can do. No strategy writes an "input blocked" boolean.
 
 ## Base Strategy
 
-**File:** `src/App/Strategy/Opponent/Base.ts`
+**File:** `src/App/System/Player/Strategy/Base.ts`
 
 All opponent strategies extend the abstract `Base` class, which defines the interface:
 
@@ -38,7 +33,6 @@ abstract class Base extends ChalkySticks.Core.Event.Dispatcher {
     public abstract detachEvents(): void;
     public abstract onTurnStart(): void;
     public abstract onTurnEnd(): void;
-    public abstract requiresInputBlocking(): boolean;
 
     public setPlayer(player: Model.Player): void;
     public getPlayer(): Model.Player | null;
@@ -53,87 +47,45 @@ abstract class Base extends ChalkySticks.Core.Event.Dispatcher {
 | `detachEvents()` | Called when the strategy is deactivated |
 | `onTurnStart()` | Called when this player's turn begins |
 | `onTurnEnd()` | Called when this player's turn ends |
-| `requiresInputBlocking()` | Whether to block user input during this player's turn |
 | `setPlayer(player)` | Associate a player model with this strategy |
 | `getPlayer()` | Get the associated player model |
 
 ## Local Strategy
 
-**File:** `src/App/Strategy/Opponent/Local.ts`
+**File:** `src/App/System/Player/Strategy/Local.ts`
 
-A no-op strategy for human players on the same device. All input handling is done through the normal input system &mdash; no special turn management is needed.
-
-```typescript
-class Local extends Base {
-    public readonly name = 'local';
-    public readonly type = 'local';
-
-    public requiresInputBlocking(): boolean {
-        return false; // Human controls their own input
-    }
-}
-```
+A no-op strategy for local human players. All input handling is done through the normal input system &mdash; no special turn management is needed.
 
 - `attachEvents()` &mdash; No-op
 - `detachEvents()` &mdash; No-op
 - `onTurnStart()` &mdash; No-op
 - `onTurnEnd()` &mdash; No-op
-- `requiresInputBlocking()` &mdash; Returns `false`
 
 ## Computer Strategy
 
-**File:** `src/App/Strategy/Opponent/Computer.ts`
+**File:** `src/App/System/Player/Strategy/Computer.ts`
 
-Delegates to the `AiOpponent/Controller` for decision making and shot execution. The strategy itself is thin &mdash; the heavy lifting happens in the [AI Opponent](/trainer/ai-opponent) system.
-
-```typescript
-class Computer extends Base {
-    public readonly name = 'computer';
-    public readonly type = 'computer';
-
-    public requiresInputBlocking(): boolean {
-        return true; // Block user input during AI turn
-    }
-}
-```
+Delegates to the `AiOpponent` controller for decision making and shot execution &mdash; `Match/Manager` wires it via `setAiController()` at assignment. The strategy itself is thin; the heavy lifting happens in the [AI Opponent](/trainer/ai-opponent) system, and the Gate's turn-ownership conditions keep local input closed while the AI shoots.
 
 - `attachEvents()` &mdash; Logs attachment
 - `detachEvents()` &mdash; Logs detachment
-- `onTurnStart()` &mdash; Logs turn start (AI Controller handles the actual turn)
+- `onTurnStart()` &mdash; Logs turn start (the AI controller handles the actual turn)
 - `onTurnEnd()` &mdash; Logs turn end
-- `requiresInputBlocking()` &mdash; Returns `true`
 
-## Online Strategy (Stub)
+## Online Strategy
 
-**File:** `src/App/Strategy/Opponent/Online.ts`
+**File:** `src/App/System/Player/Strategy/Online.ts`
 
-Placeholder for future multiplayer implementation. Currently logs stub messages.
+The live [multiplayer](/trainer/multiplayer) strategy for a remote seat. `Match/Manager` wires it to the Multiplayer Facade via `setMultiplayerManager()`; the Facade handles all remote communication, so the strategy's whole job is toggling the Facade's `isRemoteTurn` flag at turn boundaries:
 
-```typescript
-class Online extends Base {
-    public readonly name = 'online';
-    public readonly type = 'online';
+- `onTurnStart()` &mdash; sets `isRemoteTurn = true` (waiting for the remote player's events)
+- `onTurnEnd()` &mdash; sets `isRemoteTurn = false`, except for spectators, who keep it `true` because every turn is remote for them
 
-    public requiresInputBlocking(): boolean {
-        return true; // Block input while waiting for remote player
-    }
-}
-```
-
-### Planned Features
-
-When implemented, the Online strategy will handle:
-
-- WebSocket connection for real-time sync
-- REST API fallback for long-polling
-- Shot data serialization/deserialization
-- Opponent waiting UI state
-- Connection state management
-- Reconnection handling
+It does not block local input itself; input ownership derives from the capability Gate and the scoreboard's turn state.
 
 ## Player Manager
 
-**File:** `src/App/Service/Player/PlayerManager.ts`
+**File:** `src/App/System/Player/PlayerManager.ts`
 
 The `PlayerManager` manages player creation, switching, scoring, and state synchronization with the Vuex store.
 
@@ -205,9 +157,7 @@ export class Custom extends Base {
     public onTurnEnd(): void {
         // Handle turn end
     }
-
-    public requiresInputBlocking(): boolean {
-        return true; // Block input during this player's turn
-    }
 }
 ```
+
+Do not add input-blocking logic to a strategy. If the new opponent type needs the local player's input held during its turn, express that as a `System/Gate` condition so the capability policy derives it.

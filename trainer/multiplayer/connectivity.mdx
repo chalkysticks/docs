@@ -29,7 +29,8 @@ sequenceDiagram
     API-->>Client: capability-scoped token
     Client->>Ably: connect via authCallback
     Client->>Ably: attach channel cs:game:POOL-XXXX
-    Client->>Ably: presence enter with name, avatar, role
+    Client->>Ably: presence enter with name, avatar, role, userId
+    Client->>Ably: query current presence set
     Ably-->>Client: presence and game events from peers
 ```
 
@@ -43,7 +44,9 @@ The SDK is initialized with an `authCallback` rather than a static token, so eve
 
 The token's `clientId` is `user-{id}`; the client deliberately does not set its own (Ably rejects mismatches). Channel naming: the SDK's Game service namespaces channel ids with `cs:game:`, so room code `POOL-7XKM` becomes channel `cs:game:POOL-7XKM`. Ids that already start with `cs:` pass through unprefixed — which is how `cs:lobby` and `cs:user:{id}` resolve correctly through the same service.
 
-**Presence** is how disconnects are detected. Entering a room enters Ably presence with `avatarUrl`, `name`, and `role` (`player` or `spectator`). When a peer's presence *leave* fires, the room controller dispatches `Event.Multiplayer.OpponentLeft` locally — disconnect detection is presence-based, not a wire message. Spectator departures are ignored, and each client unsubscribes from presence-leave before leaving so its own departure never fires its own handler.
+**Presence** is how both connects and disconnects are detected. Entering a room enters Ably presence with `avatarUrl`, `name`, `role` (`player` or `spectator`), and `userId`, then **enumerates the current member set** (`getPresenceMembers`, backed by sdk-extras `AblyChannel.getPresence()`) so an opponent who arrived first is detected immediately instead of waiting for the `match:create` / `match:join` message handshake — which remains as identity/repair. A presence `enter` subscription catches late arrivals the same way. Evaluation filters spectators, the local client's own entry (by `userId`), and userId-less members, and is additive-only: a failed or empty query never clears the opponent-connected flag, so presence enumeration is evidence of an opponent, never proof of absence. All detectors deduplicate through one guard, so `Event.Multiplayer.OpponentJoined` fires exactly once per connection with the winning detector as its `reason` (`'presence'`, `'match-create'`, or `'match-join'`).
+
+When a peer's presence *leave* fires, the room controller dispatches `Event.Multiplayer.OpponentLeft` locally — disconnect detection is presence-based, not a wire message. Spectator departures are ignored, and each client unsubscribes from presence-leave before leaving so its own departure never fires its own handler. `Game.ts` mirrors both events into the reactive `game/isOpponentPresent` store flag, which drives the lower-third connectivity dot and the shell's join/leave toasts.
 
 ## Hosting a Table
 

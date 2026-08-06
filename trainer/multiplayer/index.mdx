@@ -47,7 +47,7 @@ Every sync flow in the system upholds these rules. Break one and you get a desyn
 
 ## What Works and Current Limitations
 
-**Working:** the verdict gate (inert offline, so practice and vs-CPU are unaffected); authoritative post-shot and foul application; per-sender sequence dedup; ACK/resend with the monotonic acceptance guard; fouler-only foul broadcasts including shot-clock fouls; single-writer shot-clock expiry with the watcher's clock paused during remote turns; opponent forfeit awarding an instant win; presence-based disconnect detection with a countdown that degrades the match to an async/offline-opponent state (banner only — async turn deadlines are not yet enforced); read-only spectating.
+**Working:** the verdict gate (inert offline, so practice and vs-CPU are unaffected); authoritative post-shot and foul application; per-sender sequence dedup; ACK/resend with the monotonic acceptance guard; fouler-only foul broadcasts including shot-clock fouls; single-writer shot-clock expiry with the watcher's clock paused during remote turns; opponent forfeit awarding an instant win; presence-set enumeration at room entry plus enter/leave events driving opponent-present state (the `game/isOpponentPresent` getter, a lower-third connectivity dot, and join/leave toasts) — an absent opponent shifts the match to a correspondence tempo rather than force-ending it; read-only spectating.
 
 **Hardened in code, pending live two-browser verification:** gap recovery via targeted replay or full snapshot; the reliable rack handshake with resends and duplicate re-acks.
 

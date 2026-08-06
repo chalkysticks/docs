@@ -67,10 +67,11 @@ Control messages carry a base of `{ currentPlayerIndex, playerIndex, rackId, rea
 | `foul-sync` | fouler | The authoritative foul result. Only the fouler broadcasts; the beneficiary stays silent. | post-shot shape plus `foulReason`, `foulType`, typically `ballInHand: true` |
 | `shot-result-request` | applier that saw a gap | Ask the authoring seat to replay a specific journaled result. | `rackId`, `requestReason`, `resultReason`, `shotId`, `writerIndex` |
 | `snapshot-request` | non-authority | Ask the host for a full state snapshot. | `requestReason` |
-| `snapshot-full` | host | Full-state recovery response. Always applied, bypassing the staleness gate, but still advances the high-water mark. | full state plus `requestReason` |
+| `snapshot-full` | host | Full-state recovery response. Bypasses the staleness gate and advances the high-water mark, with two receiver-side refusals: it is ignored while the receiver's own shot is still in flight (a forced apply would clobber a mid-shot table with the peer's stale view of it), and ignored entirely in durable async-paced matches, where the versioned API row outranks any unversioned peer snapshot. | full state plus `requestReason` |
 | `spectator-sync` | host | Response to a spectator's `state:request`. Active players ignore it. | full state plus `aim`, `elevation`, `english`, `power` |
 | `ack` | applier | Confirms receipt of a resolution; stops the writer's re-send when it comes from the opposing participant seat. | `ackReason`, `rackId`, `shotId` |
 | `match-restart` | host | Online rematch in the same room; the receiver re-dispatches it as a local event. | none |
+| `shot-in-progress` | active shooter | Answer to a mid-shot join: the shooter announces that its own shot is already rolling (the joiner subscribed too late to see the `shot:taken` packet, and the canonical snapshot is still pre-shot). The joiner holds its hydration cover until the resolving packet or a canonical convergence read lands. Carries no state version and never participates in durable authority. Sent by `Facade.broadcastShotInProgress()` when the opponent (re)joins while `localShotMotionComplete` is false. | `actorSeat`, `matchId` |
 
 Unrecognized reasons fall through to a plain drift-correcting ball-state apply on the joiner; the host logs and ignores them.
 
@@ -181,7 +182,7 @@ The applier side of the same exchange is `acceptResolution`, which runs on every
 
 One corollary is load-bearing: **every distinct terminal resolution must carry a strictly greater `shotId`**. A resolution with no shot behind it (a shot-clock timeout today; any future concede) must call `advanceResolutionId()` first, or it reuses the previous shot's id, collides with the high-water mark, is rejected as stale, and deadlocks both clients. `broadcastFoulSync` does this for shot-clock fouls. Ids only need to be monotonic, not contiguous.
 
-`snapshot-full` bypasses the staleness check — it always applies — but still advances the mark so a late older resolution cannot rewind past the snapshot.
+`snapshot-full` bypasses the staleness check but still advances the mark so a late older resolution cannot rewind past the snapshot. Two receiver-side guards temper "always applies": a peer snapshot is ignored while the receiver's own shot is in flight (the shooter's own resolved state and the versioned API row remain the recovery paths — suppression is scoped to the local shot-in-flight window only, so spectator and idle-watcher recovery keep applying snapshots normally), and in durable async-paced matches an unversioned peer snapshot is refused outright in favor of persisted authority.
 
 ### Sequence Gap, Targeted Replay, Full Snapshot
 
@@ -214,7 +215,7 @@ Rack transitions get their own handshake because racks are random and only the h
 1. Each ready client sends `rack-ready` carrying only `{ playerIndex, rackId }`, re-sent every 700 ms up to 8 times until the rack starts. The breaker is never on the wire — the host derives it from its own match state.
 2. When both seats are ready, the host increments `rackId`, resets `shotId` to 0, racks, and broadcasts `rack-start`, re-sending until the joiner replies `rack-ack`.
 3. Duplicate `rack-start` packets are re-acked without re-racking, guarded by the last applied rack-start id.
-4. Input is blocked on both clients for the duration of the handshake and unblocked from the adopted turn once the ACK lands.
+4. Both clients hold input for the duration of the handshake through the capability Gate — the live-rack dimension of the `System/Gate` `InputAuthority` state machine — and release it from the adopted turn once the ACK lands. The hold is bounded: when the host exhausts its 8 `rack-start` re-sends without a `rack-ack`, it treats the silent peer as absent and releases the rack hold itself (the versioned API snapshot is what catches the peer up on return), so an unanswered handshake can no longer strand input.
 
 ## Versioning and Compatibility
 

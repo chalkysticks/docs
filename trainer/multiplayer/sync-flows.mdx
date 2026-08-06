@@ -23,6 +23,7 @@ The invariants these flows lean on — single writer, never re-simulate, compare
 | Rack transition | `rack-ready`, `rack-start`, `rack-ack` | both legs re-sent until answered |
 | Game end and rematch | `post-shot-sync` + `gameEnd`, `match-restart` | rides the resolution tier |
 | Recovery | `shot-result-request`, `snapshot-request`, `snapshot-full` | journal replay, snapshot fallback |
+| Reopening and mid-shot joins | presence enumeration, `shot-in-progress`, canonical hydrate | bounded presence query + cover safety timer |
 | Disconnect and leave | `match:leave`, `match:end`, presence | fire-and-forget + presence |
 
 ## Connect and match start
@@ -45,10 +46,10 @@ sequenceDiagram
 
 What to notice:
 
-- The opponent-joined signal is the `match:join` transport event, not presence entry. Presence is used for disconnect detection only.
+- Opponent detection is presence-first. Entering a room enumerates the Ably presence set (`getPresenceMembers`) and subscribes to presence `enter` events, so an opponent who arrived first is detected immediately instead of waiting for a message. Three detectors — presence enumeration, a live presence enter, and the `match:create` / `match:join` message handshake (retained as identity/repair) — all funnel through one `markOpponentPresent` guard, so `OpponentJoined` fires exactly once per connection and carries the winning detector as its `reason` (`'presence'`, `'match-create'`, or `'match-join'`). Presence entries carry `userId`; the local client and spectators are filtered out, and a member without a real user id is never treated as the opponent. Presence evidence is additive only — a failed or empty query never clears the opponent-connected flag.
 - The joiner sets `localPlayerIndex = 1` inside `joinRoom`, before the match can start, so seat identity is never ambiguous mid-handshake.
 - Racking uses `Math.random`, so the layout cannot be reproduced remotely. For `startMode=initial` the joiner skips its own racking entirely and force-applies the host's authoritative ball positions.
-- `rack-start` is re-sent every 700 ms (up to 8 attempts) until the joiner replies `rack-ack`. The ack also derives input blocking from the turn: the joiner's input stays blocked whenever it is not the breaker.
+- `rack-start` is re-sent every 700 ms (up to 8 attempts) until the joiner replies `rack-ack`. The ack also settles the Gate's live-rack authority hold; whether the joiner can then act comes from ordinary turn ownership — its input opens only when it is the breaker.
 - `MatchAutoStart` is handled by menu and modal UI only — the live scene never listens for it. This is why rematch needed a separate `match-restart` signal (see game end below).
 - Log vocabulary: `Connected and listening`, `wire game:state reason=rack-start`, `Re-sending rack-start rack=N`, `Duplicate rack-start rack=N — re-acking without re-rack`.
 
@@ -126,7 +127,7 @@ What to notice:
 
 - The AGREE no-op is the sole guard keeping `switchToPlayer` from double-firing — the historical "player 2 can't shoot" regression. Never loosen it.
 - Even on AGREE, the derived `isRemoteTurn` flag is re-asserted if stale. The index can be correct while the flag is wrong after a rack or snapshot — the "both clients think it is their turn" symptom.
-- Divergence always uses an absolute `switchToPlayer(targetIndex)`, never a relative advance, followed by `setCurrentPlayer`, `prepareForNextShot`, and input-block sync (which defers while a rack handshake is pending).
+- Divergence always uses an absolute `switchToPlayer(targetIndex)`, never a relative advance, followed by `setCurrentPlayer` and `prepareForNextShot`. Input capability is then re-derived through the capability Gate — the live-rack `InputAuthority` dimension keeps it closed while a rack handshake is still pending.
 - On the remote-to-local transition only, the incoming player re-aims at the next legal ball so ghost and trajectory lines render — a turn adopted from a broadcast bypasses the local turn pipeline that normally aims.
 - Clock side effects: became-remote dispatches `ShotClockPause`, became-active dispatches `ShotClockRestart`. The restart intentionally overlaps the foul handler's explicit restart; both are idempotent.
 - Log vocabulary: `AGREE, no override`, `AGREE, corrected stale isRemoteTurn`, `DIVERGED, adopting`, `Reconciled turn`, `Became active — re-aiming at next ball`.
@@ -154,7 +155,6 @@ What to notice:
 - A shot-clock foul is a shot-less resolution: no `Shot.Start` ran, so `currentShotId` still equals the previously applied shot. `broadcastFoulSync` must call `advanceResolutionId()` first — without the strictly newer `shotId`, the applier's monotonic gate rejected the foul-sync as stale and both clients deadlocked. This was audited, fixed, and confirmed against two-browser logs.
 - The applier re-syncs its `currentShotId` from the payload, so the next real shot stays monotonic on both machines.
 - The watcher pause is a hardening, not the primary defense — even if the watcher's clock somehow expired, the `ownsShotVerdict` gate logs `Shot-clock EXPIRED — not my verdict, waiting for shooter foul-sync` and does nothing.
-- The disconnect countdown (see below) pauses the clock only for the non-shooter; a shooter's clock keeps burning through their own disconnect, by design.
 
 ## Rack transition
 
@@ -171,17 +171,18 @@ sequenceDiagram
     H->>J: game:state reason=rack-start startMode=next
     J->>J: startNextRack, force-apply balls, adopt turn
     J->>H: game:state reason=rack-ack
-    H->>H: unblock input if host turn
+    H->>H: release rack hold, turn ownership decides input
 ```
 
 What to notice:
 
 - `rack-ready` carries only `{ playerIndex, rackId }`. It never chooses the breaker — the host derives the breaker from its own match state (`pendingNextBreakerIndex`), so a stale or forged ready message cannot redirect the break.
 - Two independent reliability timers: the ready client re-sends `rack-ready` and the host re-sends `rack-start`, both at 700 ms up to 8 attempts. A duplicate `rack-start` is re-acked without re-racking, keyed on `lastAppliedRackStartId`.
-- Input is blocked on both clients for the duration of the handshake; the turn-driven input sync explicitly defers while `awaitingRackAck` is set.
+- Both clients hold input for the duration of the handshake through the Gate's live-rack `InputAuthority` dimension; while `awaitingRackAck` is set the hold reads `awaiting-acknowledgement`.
+- The hold is bounded. When the host exhausts its 8 `rack-start` re-sends without a `rack-ack`, it treats the silent peer as absent, clears `awaitingRackAck`, and re-derives live-rack authority itself — the versioned API snapshot is the handoff that catches the peer up when it returns. Previously this branch stranded the `awaiting-acknowledgement` hold forever, since the only other release was a `rack-ack` that was evidently not coming.
 - UI fallback: `GameOutcome` arms an 8 second timeout. If `NetworkRackStart` never arrives, it requests a full snapshot with reason `rack-timeout` and re-enables the button instead of hanging on "Waiting for opponent".
 - Verification status: the hardening (retries, duplicate re-ack, host-derived breaker) is code-verified and build-verified, but live two-browser verification of host-break, joiner-break, and next-rack sequences is still outstanding.
-- Log vocabulary: `Re-sending rack-ready`, `Re-sending rack-start rack=N`, `rack-ready still unanswered after N re-sends — waiting for UI retry`, `rack-start rack=N still unacked after M re-sends`.
+- Log vocabulary: `Re-sending rack-ready`, `Re-sending rack-start rack=N`, `rack-ready still unanswered after N re-sends — waiting for UI retry`, `rack-start rack=N still unacked after M re-sends — treating peer as absent, releasing rack hold`.
 
 ## Game end and auto-rematch
 
@@ -242,15 +243,39 @@ What to notice:
 
 - Replay is source-aware: the request carries `writerIndex`, and only the peer whose seat matches answers. A missed joiner-authored result is replayed by the joiner from its own 12-entry journal — never overwritten by stale host state.
 - The replayed payload is the exact original `stateData`, so it flows through the standard `acceptResolution` path; the ack and monotonic gate make replays safe even if the original eventually arrives too.
-- `snapshot-full` bypasses the staleness check (it always applies) but still advances the `rackId:shotId` high-water mark, so a later stale resolution cannot rewind past the snapshot.
+- `snapshot-full` bypasses the staleness check but still advances the `rackId:shotId` high-water mark, so a later stale resolution cannot rewind past the snapshot. Two receiver-side refusals apply: a peer snapshot is ignored while the receiver's own shot is still in flight (a forced apply would cancel the mid-shot table for the peer's stale view of it), and in durable async-paced matches an unversioned peer snapshot is refused outright — persisted API authority outranks it.
 - A non-forced state apply that arrives while the local machine is not in `Aiming` is parked in `pendingRemoteSnapshot` and replayed once the state settles. Forced applies (all resolutions) never defer.
 - A third, durable tier exists outside the participant layer: each persisted shot stores `table_state_after`, so a full reload can rebuild the table via the replay machinery. It is asynchronous and can lag the live table by a shot or two.
 - Verification status: this tier is build-verified hardening; it is not on the verified-in-live-play list.
 - Log vocabulary: `GAP, requesting targeted result`, `GAP, requesting full snapshot`, `DUPLICATE, ignoring`, `Replaying journaled result`, `No journaled result found`, `Resolution still unacked after N re-sends — giving up`.
 
+## Reopening a match and mid-shot joins
+
+A client opening (or reopening) an ongoing durable match hydrates from the canonical API row, and the recap-versus-live decision is made exactly once, after presence is known:
+
+```mermaid
+flowchart TD
+    A[Join retained realtime room] --> B[Enumerate presence set, bounded]
+    B --> C{Opponent present?}
+    C -- absent --> D[Replay unseen shot delta as recap]
+    C -- present --> E[Skip recap]
+    D --> F[Apply canonical persisted snapshot]
+    E --> F
+    F --> G[Reveal the hydration cover]
+```
+
+What to notice:
+
+- The async coordinator waits for presence enumeration (`refreshOpponentPresence()`, bounded by `Config.AsyncMatch.PRESENCE_QUERY_TIMEOUT_MS` = 2000 ms) before deciding. Without it, a client opening into an occupied room defaulted to "absent", started a correspondence recap, and the live peer's arrival had to cancel it mid-flight. The presence enter-event subscription remains the fallback detector for a peer who arrives after the query.
+- Opponent present means no recap: the client lands directly on the canonical snapshot, so there are never two competing replay owners during a live handoff.
+- Correspondence opens force a scene-transition cover with a manual reveal (`forceCover: true`, `coverAutoEnd: 'manual'` on the relaunch options). The coordinator owns the reveal: recap playback begins it, hydrate completion schedules it, and terminal failures — including sign-in-required — reveal so the failure notice never presents against a black wipe. Every cover, manual included, is bounded by the transition safety timer, so an unrevealed cover cannot outlive its session.
+- A joiner cannot see a shot that was already rolling when it subscribed, and the canonical snapshot is still pre-shot until that shot's turn command commits. The active shooter therefore answers the join with `game:state` `reason=shot-in-progress` (see [Wire Protocol](/trainer/multiplayer/protocol)); the joiner holds its cover until the resolving packet or a canonical convergence read lands, then reveals the settled table.
+
 ## Disconnect and leave
 
-Three distinct signals cover departure: `match:leave` for a clean exit (Leave button, page unload via `beforeunload`), the Ably presence leave for crashes and network drops, and `match:end` with a forfeit payload when a player explicitly quits an in-progress match. The remaining player's experience depends on which arrives.
+Three distinct signals cover departure: `match:leave` for a clean exit via the Leave button (`leaveRoom()`), the Ably presence leave for tab closes, crashes, and network drops, and `match:end` with a forfeit payload when a player explicitly quits an in-progress match. The remaining player's experience depends on which arrives.
+
+Page unload is deliberately presence-only: the `beforeunload` handler drops presence but does **not** send `match:leave`. Closing a tab is indistinguishable from a refresh, and the match is durable — the player can return to it — so announcing a departure would overstate what happened. Leaving presence says "not here right now", which is exactly true; only the explicit quit path announces a real departure.
 
 ```mermaid
 sequenceDiagram
@@ -262,17 +287,16 @@ sequenceDiagram
     end
     L->>O: match:leave
     L->>L: leave presence and channel, solo freeplay
-    O->>O: OpponentLeft, start disconnect countdown
-    O->>O: countdown zero, connection degraded
+    O->>O: OpponentLeft, presence flag false, toast
+    O->>O: canonical API read, correspondence tempo
 ```
 
 What to notice:
 
 - `presence-leave` is not a wire `game:state` reason. It is only the `reason` field on the local `OpponentLeft` bus event fired when the presence channel reports a departure — disconnect detection is presence-based, not message-based.
-- The forfeiting client broadcasts `match:end` before leaving the room, and the receiver clears its opponent-connected flag first, so the trailing presence drop is inert. The opponent gets an immediate victory takeover with no countdown, and the rematch countdown refuses to arm when the opponent is absent.
-- Without a forfeit, the remaining player enters a disconnect countdown: the rule set's `disconnectHardTimeoutSeconds`, falling back to 60 seconds. At zero the connection is marked degraded and the match becomes asynchronous rather than force-ended.
-- During the countdown, the remaining player's shot clock pauses only if it is their own turn. A disconnected shooter's clock keeps burning — disconnecting cannot buy thinking time.
-- If the opponent reconnects before the countdown expires, presence recovery resets the state to connected and resumes any paused clock.
+- The forfeiting client broadcasts `match:end` before leaving the room, and the receiver clears its opponent-connected flag first, so the trailing presence drop is inert. The opponent gets an immediate victory takeover, and the rematch countdown refuses to arm when the opponent is absent.
+- Without a forfeit there is no countdown: the match simply changes tempo. `OpponentLeft` flips the reactive `game/isOpponentPresent` store flag (the lower-third connectivity dot and the shell's "disconnected" toast follow it), and in a durable match the async coordinator verifies through a canonical API read before settling presentation — a real disconnect settles into correspondence waiting, an explicit forfeit settles into completed, and neither flashes a false "Turn sent". Presence loss is never itself proof that authority advanced.
+- On reconnect, presence enter fires `OpponentJoined` again: any in-flight correspondence recap is cancelled (the live participant now owns visual playback), the peer is resynchronized, and if the local shot is mid-flight the shooter answers with `shot-in-progress` so the rejoiner holds its cover for the resolution.
 - The leaving client tears down cleanly into solo freeplay: room left, store flags cleared, and the cue reset to seat 0 so it does not keep playing with the opponent's cue.
 - Log vocabulary: `Opponent left via presence`, `Broadcasting forfeit`, `Opponent forfeited — awarding win`, `match:leave ignored — no opponent was connected`.
 

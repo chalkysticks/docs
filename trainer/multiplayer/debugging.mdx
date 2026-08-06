@@ -101,6 +101,17 @@ Line by line: the shooter broadcasts its authored resolution; the watcher receiv
 
 When reporting a desync, capture the last ~12 `multiplayer:flow` lines from **both** consoles around the failure, plus whether the stuck side shows a `← wire ... post-shot-sync` for the relevant rack and shot.
 
+## Gate diagnostics
+
+Input never blocks through a boolean anymore — capability is derived by `System/Gate` from named conditions, with the `authority-unsettled` condition folding the `InputAuthority` state machines (session open, durable commands, queue hydration, live rack handshake, remote convergence). When input appears stuck, ask the gate why:
+
+```typescript
+window.__gate.dump()          // every condition and capability right now
+window.__gate.why('shoot')    // just the conditions blocking one capability
+```
+
+The `window.__gate` helper is **opt-in** — it evaluates every condition on each Vuex mutation, so ordinary sessions do not pay that cost. Append `?gatediag=1` to the URL to enable it for one load, or set `localStorage['chalky:gatediag'] = '1'` to enable it for every load. Without the opt-in, `window.__gate` is not installed.
+
 ## Local testing
 
 Two-browser setup:
@@ -113,11 +124,11 @@ Type-check and run notes:
 
 - The real type gate is `yarn serve` — the webpack fork-ts-checker output (`No issues found.`) is authoritative. Standalone `tsc --noEmit` produces hundreds of false errors from `.vue` shims and path aliases; do not use it.
 - Known-noise build warnings: `@chalkysticks/sass` asset globs and the optional `@capacitor/haptics` dependency.
-- The `.spec.ts` files type-check but cannot execute — no Jest toolchain is installed.
+- The `.spec.ts` suites are runnable: `yarn test` executes Jest via `jest.config.json`, and the multiplayer/coordinator/gate suites under `tests/` are part of the regression net.
 
 ## Known limitations
 
-**Verified working** (mechanisms landed in code, exercised in-game): the single-writer verdict gate including offline inertness; authoritative post-shot and foul apply as forced recovery; per-sender sequence dedup with gap-to-targeted-replay and gap-to-snapshot recovery; ACK plus the monotonic `(rackId, shotId)` guard (no ball-in-hand re-grants or turn rewinds from resends); fouler-only `foul-sync` with the shot-clock `advanceResolutionId` invariant; single-writer shot-clock expiry with the watcher's clock paused during remote turns; the game-end marker riding `post-shot-sync`; the rack-ready/rack-start/rack-ack handshake with resends and duplicate re-ack; opponent forfeit producing an instant win; the presence disconnect countdown degrading to asynchronous play (60-second default, ruleset-overridable).
+**Verified working** (mechanisms landed in code, exercised in-game): the single-writer verdict gate including offline inertness; authoritative post-shot and foul apply as forced recovery; per-sender sequence dedup with gap-to-targeted-replay and gap-to-snapshot recovery; ACK plus the monotonic `(rackId, shotId)` guard (no ball-in-hand re-grants or turn rewinds from resends); fouler-only `foul-sync` with the shot-clock `advanceResolutionId` invariant; single-writer shot-clock expiry with the watcher's clock paused during remote turns; the game-end marker riding `post-shot-sync`; the rack-ready/rack-start/rack-ack handshake with resends and duplicate re-ack; opponent forfeit producing an instant win; presence-set enumeration and enter/leave events driving opponent-present state, with an absent opponent shifting the match to a correspondence tempo.
 
 **Verification pending / first-cut:**
 

@@ -5,25 +5,26 @@ description: 'File-by-file guide to the multiplayer system: what each class does
 
 ## Folder Map
 
-All realtime multiplayer code lives in `src/App/System/Multiplayer/`. The barrel (`index.ts`) exports `ConfigCoordinator`, `Facade` (as `MultiplayerFacade`), `RoomController`, and the `Matchmaking`, `Participant`, and `Transport` sub-barrels. `Presence`, `Checksum`, `InviteIntent`, `RealtimeAuth`, `SequenceTracker`, and `TransportPayload` are deep-imported by their consumers.
+All realtime multiplayer code lives in `src/App/System/Multiplayer/`. The barrel (`index.ts`) exports `ConfigCoordinator`, `Facade` (as `MultiplayerFacade`), `RoomController`, the `ensureRealtimeAuth` / `resetRealtimeAuth` functions, and the `Matchmaking`, `Participant`, and `Transport` sub-barrels. The `Protocol/` helpers (`Checksum`, `SequenceTracker`, `TransportPayload`), `InviteIntent`, and `Rematch` are deep-imported by their consumers.
 
 ```text
 src/App/System/Multiplayer/
 ├── Facade.ts                Public API; orchestrates everything below
 ├── ConfigCoordinator.ts     Match-startup config handshake
 ├── RoomController.ts        Ably room lifecycle, presence, seat/role state
-├── Presence.ts              In-match disconnect countdown state machine
 ├── RealtimeAuth.ts          Deferred token-based Ably initialization
-├── SequenceTracker.ts       Per-sender sequence dedup / gap detection
-├── Checksum.ts              Ball-state checksums (diagnostic only)
-├── TransportPayload.ts      Envelope unwrap helper
+├── Rematch.ts               Canonical server-row creation for an online rematch
 ├── InviteIntent.ts          Invite-link capture singleton
 ├── index.ts                 Barrel
 ├── Participant/
-│   ├── Base.ts              The protocol core (~2,800 lines)
+│   ├── Base.ts              The protocol core
 │   ├── Host.ts              Seat 0, state authority
 │   ├── Player.ts            Seat 1, joiner
 │   └── Spectator.ts         Read-only observer
+├── Protocol/
+│   ├── Checksum.ts          Ball-state checksums (diagnostic only)
+│   ├── SequenceTracker.ts   Per-sender sequence dedup / gap detection
+│   └── TransportPayload.ts  Envelope unwrap helper
 ├── Transport/
 │   └── AblyTransport.ts     Wire implementation of IMultiplayerTransport
 └── Matchmaking/
@@ -37,7 +38,6 @@ Construction is rooted in `Game.ts`. The facade owns the room controller and con
 flowchart TD
     Game[Game.ts] --> Transport[new AblyTransport]
     Game --> Facade[new Facade]
-    Game --> Presence[new Presence]
     Facade --> Room[RoomController]
     Facade --> Config[ConfigCoordinator]
     Facade -->|createGame joinGame spectateGame| Part[Participant: Host, Player, or Spectator]
@@ -60,6 +60,8 @@ The thin public API (`Facade.ts`, extends `ChalkySticks.Core.Event.Dispatcher`).
 | `isConnected(): boolean` | Room controller has a `gameId` |
 | `isStateAuthority(): boolean` | Participant flag; defaults `true` with no participant so offline play is unchanged |
 | `isOpponentConnected(): boolean` / `isSpectating(): boolean` | Room state queries |
+| `refreshOpponentPresence(): Promise<boolean>` | Re-query the Ably presence set and fold the result into the opponent-connected flag. Used by the async coordinator during hydration, where the message handshake may have completed long before this client subscribed. Additive evidence only — a failed or empty query never clears the flag. |
+| `broadcastShotInProgress(serverMatchId, actorSeat)` | Announce that this client's shot is currently in motion; sent when the opponent (re)joins mid-shot so their hydration holds its cover for the resolving packet. Rides `game:state` with `reason: 'shot-in-progress'`; carries no state version and never participates in durable authority. |
 | `broadcastForfeit(winnerIndex: number)` | Sends `match:end` with reason `forfeit` before leaving |
 | `getGameId()` / `getLocalPlayerIndex()` / `getCurrentRackId()` / `getCurrentShotId()` | Identity and protocol counters |
 | `setMultiplayerConfig(config, playerName)` | Stores the host's pending match config on the coordinator |
@@ -74,7 +76,7 @@ The public field `isRemoteTurn: boolean` is the live turn flag, written by the O
 
 ## Participant/Base — the core
 
-`Participant/Base.ts` (~2,800 lines) is where the entire bidirectional gameplay protocol lives. Host, Player, and Spectator are thin flag-and-handler layers on top of it. If you are tracing a sync bug, start here. The message formats it produces are documented in [Wire Protocol](/trainer/multiplayer/protocol) and the runtime sequences in [Sync Flows](/trainer/multiplayer/sync-flows).
+`Participant/Base.ts` (~3,800 lines) is where the entire bidirectional gameplay protocol lives. Host, Player, and Spectator are thin flag-and-handler layers on top of it. If you are tracing a sync bug, start here. The message formats it produces are documented in [Wire Protocol](/trainer/multiplayer/protocol) and the runtime sequences in [Sync Flows](/trainer/multiplayer/sync-flows).
 
 Key state: `localShotInFlight` (set at the local `Shot.Start`, gates the post-shot broadcast — this is not the turn flag), `currentRackId` / `currentShotId` protocol counters, a monotonic `(lastAppliedRackId, lastAppliedShotId)` high-water mark, the unacked-result resend state, a result journal (last 12 results keyed `rackId:shotId:reason`), rack-handshake state, and a deferred remote snapshot slot.
 
@@ -132,17 +134,18 @@ Only the menu UI listens for `MatchAutoStart` (`View/Modal/MatchConfig.vue`, `Vi
 Owns the Ably room lifecycle, presence, seat/role assignment, and store sync. Constructed by the facade.
 
 - `createRoom` / `joinRoom` / `spectateRoom(gameId, localPlayerName)` — join the channel, attach transport listeners, enter presence, send `match:create` / `match:join` (spectators send nothing), commit store state, dispatch `RoomCreated` / `RoomJoined`.
+- `refreshOpponentPresence()` — re-query the presence set on demand (the async coordinator's hydration hook). Additive evidence only.
 - `broadcastForfeit(winnerIndex)` — sends `match:end { reason: 'forfeit', winnerIndex }` while still connected.
 - `leaveRoom()` — `match:leave`, leave presence, detach, reset, dispatch `Disconnected`.
 - `generateRoomCode()` — `POOL-` plus four characters from a 32-character alphabet with no `0/O/1/I` ambiguity.
 
-Dispatches `Multiplayer.OpponentJoined` / `OpponentLeft` / `OpponentForfeited` from remote `match:*` events and presence-leave; echo suppression via `isOpponentConnected` guards (Ably echoes your own publishes). Commits `game/setIsMultiplayerConnected`, `game/setLocalPlayerIndex`, `game/setMultiplayerGameId`, `game/setMultiplayerRole`. A `beforeunload` handler sends `match:leave` and leaves presence on tab close.
+**Presence enumeration.** Opponent-connected state is derived from the Ably presence *set*, not just the `match:create` / `match:join` message handshake (which remains as identity/repair). Entering presence publishes `{ avatarUrl, name, role, userId }`, then enumerates who is already in the room via `transport.getPresenceMembers()` (sdk-extras `AblyChannel.getPresence()`) and subscribes to presence `enter` events for late arrivals. `evaluatePresenceMembers` filters spectators, the local client's own entry (by `userId`), and any member without a real user id — an anonymous member is indistinguishable from an own echo. Evaluation is additive-only: a failed or empty query never flips the flag false; only presence-leave, `match:leave`, and `reset()` do. All detectors funnel through `markOpponentPresent(reason)`, so `Multiplayer.OpponentJoined` fires exactly once per connection with the winning detector as its payload `reason` (`'presence'`, `'match-create'`, or `'match-join'`).
 
-## Presence
+Dispatches `Multiplayer.OpponentJoined` / `OpponentLeft` / `OpponentForfeited` from presence events and remote `match:*` events; echo suppression via `isOpponentConnected` guards (Ably echoes your own publishes). Commits `game/setIsMultiplayerConnected`, `game/setLocalPlayerIndex`, `game/setMultiplayerGameId`, `game/setMultiplayerRole`. The `beforeunload` handler drops presence only — it deliberately does **not** send `match:leave`. Closing a tab is indistinguishable from a refresh and the match is durable, so announcing a departure would overstate what happened; leaving presence says "not here right now", and the explicit quit path (`leaveRoom`) is what announces a real departure.
 
-The in-match opponent-connection state machine behind the disconnect overlay. Raw presence-leave detection lives in RoomController; this class consumes the resulting `Multiplayer.OpponentLeft` / `OpponentJoined` bus events (plus `Match.Start` / `Match.End`). Constructed directly by `Game.ts`.
+## Opponent presence in the store
 
-Inert unless the match is `InProgress`, online, and `VersusPlayer`. On opponent departure it writes `match/setOpponentConnection` (`'connected'`, `'disconnected'`, or `'degraded'`) and a 1 Hz `match/setDisconnectRemaining` countdown from `FALLBACK_HARD_TIMEOUT_SECONDS = 60` (ruleset-overridable via `disconnectHardTimeoutSeconds`); at zero the match degrades to asynchronous play. Shot-clock policy: it pauses the clock (`Match.ShotClockPause`) only when it is the local player's turn — a disconnected shooter's clock keeps burning.
+There is no dedicated presence class (the old `Presence.ts` disconnect-countdown state machine was removed along with its overlay; an absent opponent now changes the match's tempo instead of counting down). Instead, `Game.ts` bridges the RoomController's bus events into one reactive source: `Multiplayer.OpponentJoined` commits `game/setOpponentPresent(true)`, `Multiplayer.OpponentLeft` commits `false` — covering both graceful leaves and presence drops, so the flag reads "not here right now" rather than "gone for good" — and match teardown clears it. Components read the `game/isOpponentPresent` getter rather than hand-mirroring the bus events. Consumers: the lower-third endcap connectivity dot and the shell's join/leave toasts (see [Integration Points](#integration-points-outside-the-folder)).
 
 ## RealtimeAuth
 
@@ -194,11 +197,12 @@ Singleton (`export default new InviteIntent()`) handling `?join=POOL-XXXX` invit
 | `Game.ts` | Constructs and attaches everything; handles `Multiplayer.MatchRestart` (protocol reset + restart in the same room) and `Multiplayer.OpponentForfeited` (instant win via `matchManager.endMatch`). |
 | `View/Modal/GameOutcome.vue` | Per-rack outcome UI calls `readyForNextRack(breakerIndex)` with an 8 s fallback to `requestFullSnapshot('rack-timeout')`. |
 | `View/Presentation/Takeover/MatchTakeover.vue` | Match-end takeover; 5 s auto-rematch countdown, host authors `broadcastMatchRestart()`; rematch requires `isOpponentConnected()`. |
-| `View/Overlay/Multiplayer/Disconnect.vue` | Renders `match/opponentConnection` + `match/disconnectRemaining` (countdown banner, then "continues asynchronously"); mounted globally by `Scene/Shell.vue`. |
+| `View/Overlay/LowerThird/Generic/PlayerEndcap.vue` | Seat connectivity dot on the lower-third endcaps (Generic lower-third style only). Renders only in online matches; the local seat always reads connected and the remote seat mirrors `game/isOpponentPresent`. |
+| `Scene/Shell.vue` | Join/leave toasts: `Multiplayer.OpponentJoined` / `OpponentLeft` surface as "joined the match" / "reconnected" / "disconnected" info toasts, gated on `match/isOnline` so offline sessions never toast. |
 | `View/Presentation/TurnStatus.vue` | Persistent lower-third turn notifier whenever `game/isLocalPlayerTurn` is not `true` in a non-Practice match; pure store-derived. |
 | `View/Modal/Menu/Multiplayer.vue` + children | The Online menu (`landing \| quickmatch \| room` views) with `HostCard`, `JoinCode`, `OpenTables`, `QuickMatch`, `Room`. Consumes `Multiplayer.OpponentInfo` for seat cards and `MatchAutoStart` to configure and start the match. Gated by the `play_online` feature flag. See [Connectivity](/trainer/multiplayer/connectivity). |
 
-Store surface written by multiplayer code: `game/setIsMultiplayerConnected`, `game/setLocalPlayerIndex`, `game/setMultiplayerGameId`, `game/setMultiplayerRole`, `game/setInputBlocked`, `game/setBallInHand`, aim/power/english mutations, `match/setOpponentConnection`, `match/setDisconnectRemaining`.
+Store surface written by multiplayer code: `game/setIsMultiplayerConnected`, `game/setLocalPlayerIndex`, `game/setMultiplayerGameId`, `game/setMultiplayerRole`, `game/setOpponentPresent`, `game/setBallInHand`, and aim/power/english mutations. There is no input-blocked mutation — `game/setInputBlocked` and `game/isInputBlocked` were deleted outright; input capability is *derived* by the `System/Gate` capability policy, whose `authority-unsettled` condition folds the `InputAuthority` state machines (session open, durable commands, queue hydration, live rack handshake, remote convergence). Every authority hold is bounded by a grace fallback, cap-out release, terminal settlement, or player-facing retry.
 
 ## Persistence Model
 
