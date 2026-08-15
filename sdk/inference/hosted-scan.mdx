@@ -1,0 +1,193 @@
+---
+title: 'Hosted Scan'
+description: 'Private-model image, multi-view, video, and live table inference through scan.chalkysticks.com'
+---
+
+`Scan` is the primary interface for table inference. By default it sends image
+bytes to `https://scan.chalkysticks.com/scan`, where ChalkySticks' private model
+runs inside the Lambda container. Model weights and artifact URLs are never
+sent to the browser.
+
+## One image
+
+```typescript
+import * as Scan from '@chalkysticks/sdk-inference/scan';
+
+const result = await Scan.fromImage(file);
+
+console.log(result.balls);
+console.log(result.views[0]?.frame.inference?.scan?.model);
+```
+
+The dedicated `/scan` package entry keeps the full hosted pipeline but omits
+the local TensorFlow/YOLO engine implementations. The prebuilt browser/CDN
+equivalent is `build/web/chalkysticks-scan.js`.
+
+The result includes normalized balls and pockets, homography/table-space
+coordinates, local identity post-evaluation, ambiguity diagnostics, and the
+view that produced the fused state.
+
+## Multiple inputs
+
+The same front door covers each supported capture flow:
+
+```typescript
+const stills = await Scan.fromImages([leftPhoto, centerPhoto, rightPhoto]);
+const clip = await Scan.fromVideo(videoFile);
+
+const live = Scan.live(cameraVideo, {
+    durationMilliseconds: 10_000,
+    intervalMilliseconds: 700,
+});
+
+live.on('result', (event) => render(event.data));
+
+const final = await live.stop();
+await live.dispose();
+```
+
+Multiple views are independently evaluated, aligned, and fused. Cross-view
+voting can recover occluded balls, resolve identity disagreements, and reject
+redundant or geometrically inconsistent frames.
+
+## Configure the hosted client
+
+Pass `hosted` when a one-off scan needs different request behavior:
+
+```typescript
+const result = await Scan.fromImage(file, {
+    hosted: {
+        confidence: 0.45,
+        overlap: 0.3,
+        timeoutMs: 20_000,
+        maxAttempts: 2,
+        retryDelayMs: 250,
+    },
+});
+```
+
+`timeoutMs` applies to each attempt. Automatic retries are limited to network
+errors, timeouts, throttling, and selected transient HTTP statuses. The
+default is one attempt so inference is never duplicated implicitly.
+
+## Reuse one engine
+
+For repeated scans, create one engine and own its lifecycle:
+
+```typescript
+const engine = Scan.createHostedEngine({
+    confidence: 0.4,
+    timeoutMs: 15_000,
+});
+
+const first = await Scan.fromImage(firstPhoto, { engine });
+const second = await Scan.fromImage(secondPhoto, { engine });
+
+await engine.dispose();
+```
+
+An incremental session can mix input types before fusion:
+
+```typescript
+const engine = Scan.createHostedEngine();
+const session = Scan.open({ engine });
+
+await session.addImage(leftPhoto);
+await session.addImage(rightPhoto);
+const result = await session.fuse();
+
+await session.dispose(); // preserves the injected engine
+await engine.dispose();
+```
+
+`engine` and `hosted` are mutually exclusive. A session owns and disposes the
+engine it constructs; it never disposes an injected engine.
+
+## Raw inference and Node
+
+`Input.Engine.ChalkyScan` exposes the normalized engine contract directly.
+Existing `Blob`, `File`, `ArrayBuffer`, and typed-array inputs are uploaded as
+raw bytes without base64 expansion. Browser media elements are encoded once.
+
+```typescript
+import { Input } from '@chalkysticks/sdk-inference';
+import { readFile } from 'node:fs/promises';
+
+const bytes = await readFile('./table.jpg');
+const inference = await Scan.infer({
+    id: 'scan-123',
+    source: bytes,
+    sourceWidth: 1280,
+    sourceHeight: 720,
+});
+
+console.log(inference.predictions);
+```
+
+`Scan.infer()` owns a temporary engine. Use `Scan.createHostedEngine()` when
+several requests should share one lifecycle and configuration. The complete
+post-evaluation and homography pipeline needs drawable pixels, so use browser
+media/canvas sources or provide your own decoded canvas implementation for
+those stages.
+
+## Active and pinned models
+
+Normal product code uses the stable `/scan` route, which follows the model
+baked into the active deployment. Evaluation tools can pin an exact model:
+
+```typescript
+const engine = Scan.createHostedEngine({
+    modelSlug: 'balls-and-pockets-qi5jc',
+    modelVersion: 4,
+});
+```
+
+Both fields are required together. An explicit `endpoint` takes precedence.
+Each response reports the actual active model under `result.scan.model`.
+
+## Health, cancellation, and errors
+
+```typescript
+const health = await Scan.health();
+// { status, runtime, model, durationMs }
+
+const controller = new AbortController();
+const pending = engine.infer({ source: bytes, signal: controller.signal });
+controller.abort();
+```
+
+Hosted failures are `Input.Engine.ChalkyScanError` instances. Their stable
+fields are `code`, `status`, `recoverable`, and `attempts`; use those fields for
+UI and telemetry instead of parsing the human-readable message.
+
+Hosted response metadata is retained on every engine result:
+
+```typescript
+inference.scan = {
+    attempts: 1,
+    image: { width: 1280, height: 720 },
+    inferenceId: '...',
+    model: { slug: 'balls-and-pockets-qi5jc', version: '4' },
+    serverDurationMs: 625,
+};
+```
+
+## Post-evaluation controls
+
+Hosted `Scan` sessions enable local post-evaluation in `auto` mode. This adds
+appearance evidence, known-confusion scoring, table-wide identity uniqueness,
+and review annotations after the detector responds.
+
+```typescript
+const result = await Scan.fromImage(file, {
+    postEvaluation: {
+        enabled: true,
+        mode: 'auto',
+        preset: 'conservative',
+    },
+});
+```
+
+Set `enabled: false` for detector-only comparison. Local YOLOLite and Roboflow
+engines remain explicit opt-ins through `{ engine }`; `Scan` never downloads
+private model weights by default.

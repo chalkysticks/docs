@@ -14,21 +14,8 @@ Now:
 		☐ Make impersonation auditable.
 		☐ Use it to test social, game, and venue flows without sharing credentials.
 
-
-Workers & Commands:
-
-	☐ Run and monitor the accomplishments worker.
-		☐ `php artisan queue:work --queue=accomplishments`
-
-	☐ Normalize diagram layouts.
-		☐ `php artisan diagrams:normalize-layout`
-
-	☐ Continue filtered venue imports.
-		☐ `php artisan venue:import-filtered --file=filtered-businesses.json --save-photos --limit=100 --skip=240`
-
-	☐ Upload scanned table data to the backend.
-		☐ Define payload shape for detected balls, pockets, table bounds, and confidence.
-		☐ Support user correction before final save.
+	☐ Lots of stats in CMS?
+		☐ Like venues, what I could sell
 
 
 Auth, Billing & Notifications:
@@ -41,7 +28,9 @@ Auth, Billing & Notifications:
 		☐ Handle subscription transfer.
 		☐ Handle one-time purchases.
 
-	☐ Add 2FA or OTP support, especially for admin accounts.
+	☐ Add 2FA or OTP support, especially for admin accounts. @started(26-07-24 19:51)
+
+	☐ Detailed stats for venues, like clicks, views, users
 
 	☐ Track which app versions a user has opened.
 		☐ Add helpers for checks like "opened version >= 3.4".
@@ -58,6 +47,8 @@ Auth, Billing & Notifications:
 Media, Reactions & Safety:
 
 	☐ Add IP-based rate limiting to image uploads.
+
+	☐ Sensible rate limiting for API users or something
 
 	☐ Delete offensive images that already passed moderation.
 

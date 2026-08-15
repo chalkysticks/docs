@@ -1,0 +1,224 @@
+---
+title: 'CloudFront Inference Edge'
+description: 'Location, configuration, deployment, DNS, health checks, rollback, and removal for the table-scan CloudFront distribution'
+---
+
+## Purpose
+
+CloudFront gives the native table-scan Lambda a stable public hostname and the
+`scan.chalkysticks.com` custom domain without routing through EC2, nginx, or API
+Gateway.
+
+```text
+Laravel or another client
+    -> https://scan.chalkysticks.com/{model}/{version}
+    -> CloudFront
+    -> Lambda Function URL
+    -> native ONNX inference container
+```
+
+Inference responses are never cached. CloudFront is acting as an HTTPS edge
+and origin router, not an inference result cache.
+
+## Current Resources
+
+| Resource | Value |
+| --- | --- |
+| CloudFormation stack | `chalkysticks-inference` |
+| Stack region | `us-east-2` |
+| Distribution ID | `EKX0VYUSUZJLV` |
+| CloudFront hostname | `di7v13w34zitn.cloudfront.net` |
+| CloudFront URL | `https://di7v13w34zitn.cloudfront.net` |
+| Custom hostname | `scan.chalkysticks.com` |
+| Origin | `5afuy5ggk4elgsocnhfoh7mqge0vvllj.lambda-url.us-east-2.on.aws` |
+| ACM certificate region | `us-east-1` — required by CloudFront |
+| ACM certificate ARN | `arn:aws:acm:us-east-1:172720370877:certificate/68e4e42c-1cd0-4b27-913a-ccce954f4245` |
+| Infrastructure source | `bin/api-v2/docker/aws/template.yml` |
+
+The custom hostname was activated and verified on 2026-08-02. CloudFront
+reported `Deployed`; health and POST inference both returned HTTP 200 through
+`scan.chalkysticks.com`.
+
+CloudFront is an `AWS::CloudFront::Distribution` in the same stack as the
+Lambda. Do not change the distribution directly in the AWS console for normal
+operations; direct changes create CloudFormation drift and may be reverted by
+the next deployment.
+
+## Behavior Configuration
+
+The default behavior is intentionally API-oriented:
+
+| Setting | Value | Reason |
+| --- | --- | --- |
+| Allowed methods | All, including `POST` | Image inference is a POST request |
+| Cache policy | AWS managed `CachingDisabled` | Every scan must reach Lambda |
+| Origin request policy | `AllViewerExceptHostHeader` | Preserve body, query parameters, and headers while sending Lambda its own origin host |
+| Viewer protocol | HTTPS only | Prevent unencrypted uploads |
+| Origin protocol | HTTPS only | Encrypt CloudFront-to-Lambda traffic |
+| Origin read timeout | 60 seconds | Defensive headroom above normal sub-10-second inference |
+| HTTP versions | HTTP/2 and HTTP/3 | Modern client transport |
+
+The origin request policy is important. Forwarding
+`Host: scan.chalkysticks.com` to a Lambda Function URL can prevent the origin
+from working; Lambda expects its `lambda-url...on.aws` hostname instead.
+
+## DNS and Certificate
+
+Linode is authoritative for `chalkysticks.com`; there is no Route 53 hosted
+zone in the ChalkySticks AWS account. The two records are therefore managed
+manually in Linode.
+
+```text
+ACM validation CNAME
+Name:   _ac7bd1cffd9d6ba6ec5709ccb7c5a922.scan
+Target: _4bdded0e21bfdd57ad357b8c45fb451c.jkddzztszm.acm-validations.aws
+
+Public hostname CNAME
+Name:   scan
+Target: di7v13w34zitn.cloudfront.net
+```
+
+Keep the ACM validation record permanently. ACM uses it for automatic renewal.
+
+The deploy tool reads these values from `bin/api-v2/.env`:
+
+```dotenv
+CHALKYSTICKS_INFERENCE_CUSTOM_DOMAIN=scan.chalkysticks.com
+CHALKYSTICKS_INFERENCE_CERTIFICATE_ARN=arn:aws:acm:us-east-1:172720370877:certificate/68e4e42c-1cd0-4b27-913a-ccce954f4245
+```
+
+If ACM is still `PENDING_VALIDATION`, the tool deploys CloudFront on its
+permanent AWS hostname without attaching the alias. When the certificate is
+`ISSUED`, rerunning **Deploy to AWS Lambda** verifies that the certificate
+covers the hostname and attaches both through CloudFormation.
+
+## Inspect the Live Distribution
+
+```bash
+aws cloudfront get-distribution \
+  --id EKX0VYUSUZJLV \
+  --query 'Distribution.{Status:Status,Domain:DomainName,Enabled:DistributionConfig.Enabled,Aliases:DistributionConfig.Aliases.Items}' \
+  --output json
+```
+
+Inspect stack outputs instead of relying on copied URLs:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name chalkysticks-inference \
+  --region us-east-2 \
+  --query 'Stacks[0].Outputs' \
+  --output table
+```
+
+Useful output keys are `CloudFrontDomainName`, `CloudFrontUrl`,
+`CustomDomainUrl`, and `FunctionUrl`.
+
+## Update CloudFront
+
+Edit `bin/api-v2/docker/aws/template.yml`, then use the stack-managed deploy:
+
+```bash
+cd bin/api-v2
+./docker/tool/run
+# -> Deploy to AWS Lambda
+```
+
+The command runs SAM non-interactively and waits for CloudFormation. A
+CloudFront configuration change can take several minutes to propagate. An
+ordinary model-image deployment does not replace the distribution; it keeps
+the same CloudFront and custom hostnames.
+
+Never use the CloudFront console as the normal update path. If an emergency
+console change is unavoidable, immediately reproduce it in `template.yml` and
+redeploy so CloudFormation returns to the desired state.
+
+## Verify
+
+Health:
+
+```bash
+curl -fsS https://scan.chalkysticks.com/ | jq
+```
+
+Expected runtime:
+
+```json
+{
+  "status": "ok",
+  "runtime": "native-offline-rfdetr-onnx"
+}
+```
+
+Inference:
+
+```bash
+base64 -i /path/to/table.jpg | curl -sS -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-binary @- \
+  'https://scan.chalkysticks.com/balls-and-pockets-qi5jc/4?confidence=0.4&overlap=0.3' | jq
+```
+
+To isolate DNS or certificate trouble, run the same tests against
+`https://di7v13w34zitn.cloudfront.net`.
+
+## Take Down or Disable
+
+### Emergency stop without deleting infrastructure
+
+Throttle the Lambda to zero. CloudFront remains deployed but inference calls
+fail quickly instead of creating compute work:
+
+```bash
+aws lambda put-function-concurrency \
+  --function-name chalkysticks-inference \
+  --reserved-concurrent-executions 0 \
+  --region us-east-2
+```
+
+Restore normal on-demand concurrency:
+
+```bash
+aws lambda delete-function-concurrency \
+  --function-name chalkysticks-inference \
+  --region us-east-2
+```
+
+### Remove CloudFront but retain Lambda
+
+Remove `InferenceDistribution` and its CloudFront/custom-domain outputs from
+`bin/api-v2/docker/aws/template.yml`, then deploy through SAM. Remove the
+`scan` DNS record after CloudFormation finishes. Do not delete the distribution
+directly because the stack owns it.
+
+### Delete the entire inference service
+
+This removes CloudFront, Lambda, the Function URL, and stack-created IAM
+resources:
+
+```bash
+cd bin/api-v2/docker/aws
+sam delete \
+  --stack-name chalkysticks-inference \
+  --region us-east-2
+```
+
+The ECR repository and separately requested ACM certificate are not owned by
+this stack. Preserve them for rollback unless retirement is intentional.
+
+After CloudFront no longer references the certificate, it can be deleted:
+
+```bash
+aws acm delete-certificate \
+  --region us-east-1 \
+  --certificate-arn arn:aws:acm:us-east-1:172720370877:certificate/68e4e42c-1cd0-4b27-913a-ccce954f4245
+```
+
+Deleting the ECR repository is destructive and removes rollback images:
+
+```bash
+aws ecr delete-repository \
+  --repository-name chalkysticks/roboflow-table-detection \
+  --region us-east-2 \
+  --force
+```

@@ -1,0 +1,261 @@
+---
+title: 'Lambda Inference Service'
+description: 'Architecture, resource locations, deployment, health checks, rollback, shutdown, and deletion for native table-scan inference'
+---
+
+## Purpose
+
+`chalkysticks-inference` is an on-demand AWS Lambda that runs the private
+ChalkySticks RF-DETR model without calling Roboflow during requests. It scales
+to zero, independently of the Laravel API servers, and preserves the HTTP
+response contract consumed by `Services\Roboflow`.
+
+```text
+CloudFront
+    -> Lambda Function URL
+    -> Lambda Web Adapter
+    -> FastAPI native runtime on port 8080
+    -> ONNX Runtime CPU provider
+    -> local weights.onnx
+```
+
+## Current Resources
+
+| Resource | Value |
+| --- | --- |
+| AWS account | `172720370877` |
+| Region | `us-east-2` |
+| CloudFormation stack | `chalkysticks-inference` |
+| Lambda function | `chalkysticks-inference` |
+| Architecture | `arm64` |
+| Memory | `10240 MB` |
+| Effective CPU | Approximately six vCPUs |
+| Timeout | `120 seconds` |
+| Ephemeral storage | `1024 MB` |
+| Log group | `/aws/lambda/chalkysticks-inference` |
+| Direct Function URL | `https://5afuy5ggk4elgsocnhfoh7mqge0vvllj.lambda-url.us-east-2.on.aws` |
+| Preferred public URL | `https://scan.chalkysticks.com` |
+| ECR repository | `172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection` |
+
+## Source Locations
+
+| Concern | File |
+| --- | --- |
+| SAM/CloudFormation stack | `bin/api-v2/docker/aws/template.yml` |
+| Native HTTP runtime | `bin/api-v2/docker/inference/lambda_native_app.py` |
+| Lambda Docker image | `bin/api-v2/docker/inference/Dockerfile.lambda-native` |
+| Lambda CPU topology shim | `bin/api-v2/docker/inference/cpuinfo-shim.c` |
+| Build/deploy orchestration | `bin/api-v2/docker/tool/src/commands.ts` |
+| Tool configuration | `bin/api-v2/docker/tool/src/config.ts` |
+| API endpoint configuration | `bin/api-v2/.env` |
+
+The model is not embedded in browser code. It remains private in ECR and in
+the Lambda execution environment.
+
+## Runtime Contract
+
+The native service accepts:
+
+```text
+POST /{model-slug}/{version}?confidence=0.4&overlap=0.3&api_key=...
+Content-Type: application/x-www-form-urlencoded
+Body: base64-encoded image bytes
+```
+
+`api_key` is accepted for compatibility but ignored. `overlap` is accepted but
+ignored for the current RF-DETR path because the vendor implementation does
+not run NMS there. `confidence` is applied locally.
+
+The runtime performs image decoding, stretch resize, RGB conversion, float
+scaling, ImageNet normalization, ONNX execution, confidence filtering, class
+remapping, box conversion, coordinate rounding, and JSON serialization.
+
+## Build and Deploy
+
+The normal workflow is menu-driven:
+
+```bash
+cd bin/api-v2
+./docker/tool/run
+```
+
+For inference-code changes with unchanged model artifacts:
+
+1. **Build Lambda image**
+2. Run local candidate and parity tests
+3. **Push to ECR**
+4. **Deploy to AWS Lambda**
+5. Test CloudFront/custom-domain health and inference
+
+For a new model version, follow [Model Sync and Release](/infrastructure/model-release).
+
+### What push does
+
+The ECR command publishes:
+
+- `latest`
+- an immutable UTC timestamp tag such as `2026-08-02T20-40-37`
+
+Unchanged Docker layers are reused.
+
+### What deploy does
+
+The deployment command:
+
+1. Resolves ECR `latest` to its immutable `sha256` digest.
+2. Runs `sam build`.
+3. Passes `repository@sha256:...` into `sam deploy`.
+4. Lets CloudFormation update the Lambda and CloudFront stack.
+5. Prints the direct, CloudFront, and custom endpoints.
+
+Digest pinning matters because CloudFormation sees `:latest` to `:latest` as
+no configuration change even when the underlying bytes differ.
+
+Do not use `aws lambda update-function-code` for normal deployment. That makes
+the live function diverge from CloudFormation and previously caused unreliable
+updates and rollbacks.
+
+## Validate Before Deploying
+
+```bash
+cd bin/api-v2
+
+python3 -m py_compile \
+  docker/inference/lambda_native_app.py \
+  docker/inference/lambda_app.py \
+  docker/inference/offline_app.py
+
+sh -n docker/inference/launch.sh docker/inference/warmup.sh
+
+cd docker/tool
+bun run typecheck
+cd ../..
+
+sam validate --template-file docker/aws/template.yml --lint
+```
+
+Run the candidate with the same read-only constraint used by Lambda:
+
+```bash
+docker run --rm -d \
+  --name chalkysticks-lambda-candidate \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=512m \
+  -p 127.0.0.1:18080:8080 \
+  chalkysticks/inference:lambda
+```
+
+## Inspect and Monitor
+
+Function status:
+
+```bash
+aws lambda get-function \
+  --function-name chalkysticks-inference \
+  --region us-east-2 \
+  --query '{State:Configuration.State,Update:Configuration.LastUpdateStatus,Memory:Configuration.MemorySize,Image:Code.ResolvedImageUri}' \
+  --output json
+```
+
+Recent logs:
+
+```bash
+aws logs tail /aws/lambda/chalkysticks-inference \
+  --region us-east-2 \
+  --since 15m \
+  --format short
+```
+
+Lambda `REPORT` lines include request duration, billed duration, maximum memory,
+and `Init Duration` for cold starts. Expected public behavior from the initial
+native release was approximately 4-5 seconds cold and 0.6-0.8 seconds warm.
+
+## Health and Inference Checks
+
+```bash
+curl -fsS https://scan.chalkysticks.com/ | jq
+```
+
+```bash
+base64 -i /path/to/table.jpg | curl -sS -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-binary @- \
+  'https://scan.chalkysticks.com/balls-and-pockets-qi5jc/4?confidence=0.4&overlap=0.3' | jq
+```
+
+Run inference twice: the first request measures a possible cold start; the
+immediate repeat measures warm behavior.
+
+## Roll Back
+
+List recent ECR images before changing anything:
+
+```bash
+aws ecr describe-images \
+  --repository-name chalkysticks/roboflow-table-detection \
+  --region us-east-2 \
+  --query 'reverse(sort_by(imageDetails,& imagePushedAt))[:10].{tags:imageTags,digest:imageDigest,pushed:imagePushedAt}' \
+  --output table
+```
+
+Move `latest` to a known-good immutable timestamp, then use the normal
+CloudFormation deployment:
+
+```bash
+ECR_REPO='172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection'
+ROLLBACK_TAG='2026-08-02T20-40-37'
+
+aws ecr get-login-password --region us-east-2 \
+  | docker login --username AWS --password-stdin \
+    '172720370877.dkr.ecr.us-east-2.amazonaws.com'
+
+docker pull "$ECR_REPO:$ROLLBACK_TAG"
+docker tag "$ECR_REPO:$ROLLBACK_TAG" "$ECR_REPO:latest"
+docker push "$ECR_REPO:latest"
+```
+
+Then run `./docker/tool/run` and select **Deploy to AWS Lambda**. Restore the
+API model path to the version baked into that image if the rollback changes
+model versions.
+
+## Disable or Remove
+
+### Emergency stop
+
+```bash
+aws lambda put-function-concurrency \
+  --function-name chalkysticks-inference \
+  --reserved-concurrent-executions 0 \
+  --region us-east-2
+```
+
+Restore:
+
+```bash
+aws lambda delete-function-concurrency \
+  --function-name chalkysticks-inference \
+  --region us-east-2
+```
+
+### Delete the stack
+
+```bash
+cd bin/api-v2/docker/aws
+sam delete \
+  --stack-name chalkysticks-inference \
+  --region us-east-2
+```
+
+This also removes stack-owned CloudFront and Function URL resources. It does
+not remove ECR images or the separately requested ACM certificate. Preserve
+those until rollback is no longer required.
+
+## Important Invariants
+
+1. The Lambda image and ECR repository must use the same AWS region.
+2. The deployed architecture is `arm64`; build with `linux/arm64`.
+3. `10240 MB`, the `0-5` CPU topology shim, and six ONNX threads are coupled.
+4. Lambda reserves port 9001 for its runtime API; the application uses 8080.
+5. The root filesystem is read-only; only `/tmp` is writable.
+6. Runtime requests must never download weights or call Roboflow.
+7. CloudFormation owns deployment state; avoid direct function/distribution updates.

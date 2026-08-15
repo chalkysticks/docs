@@ -1,0 +1,226 @@
+---
+title: 'Stateless Diagram Embeds'
+description: 'Build public, non-persistent pool diagrams from a compact URL DSL'
+---
+
+## Overview
+
+The stateless diagram embed turns a query string into a 2D Pad diagram. It does
+not create an account-owned diagram, save to the API, or require an id:
+
+```text
+https://www.chalkysticks.com/create/embed
+```
+
+Use it for instructional diagrams, articles, documentation, and small editable
+playgrounds where persistence is unnecessary.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/create/embed?balls=cue:0.2,0.5;1:0.67,0.5&amp;lines=0&gt;1&amp;zones=circle:0.67,0.5,0.09&amp;size=7&amp;theme=purple"
+	width="700"
+	height="390"
+	style="border: 0"
+	title="Pool shot diagram"
+></iframe>
+```
+
+<Note>
+  `/create/embed` is an HTML iframe endpoint. In read mode it generates an SVG
+  or raster image inside the iframe, but the endpoint itself is not an image
+  response. Use `<iframe>`, not `<img src>`.
+</Note>
+
+This is separate from the [Trainer embed](/trainer/embedding). Diagram embeds
+show or edit a 2D layout. Trainer embeds run a playable 3D drill and support the
+rules shorthand. Rule parameters such as `flow`, `with`, `win`, and `lose` do
+not apply to `/create/embed`.
+
+## Complete DSL
+
+```text
+balls=cue:0.2,0.5;1:0.67,0.5;ghost:0.78,0.32&lines=0>1;1>2&zones=circle:0.67,0.5,0.09;rect:0.43,0.72,0.18,0.12&size=7&theme=purple&editable=1&format=svg
+```
+
+All positions and dimensions use normalized table space. `x` runs left to
+right and `y` runs top to bottom; both range from `0` to `1`.
+
+## Query parameters
+
+| Parameter | Syntax and behavior |
+| --- | --- |
+| `balls` | Semicolon-separated `type:x,y` placements. Types: `cue`, `1`–`15`, `ghost`, `arrow`, `none`. |
+| `lines` | Semicolon-separated `from>to` coach lines, each with optional `:style` and `:color` modifiers. Numbers are zero-based positions in the `balls` list. |
+| `zones` | Semicolon-separated `circle:x,y,radius` or `rect:x,y,width,height` target zones. |
+| `size` | `6`, `7`, `8`, `9` (default), or `billiards`. |
+| `theme` | `blue` (default), `green`, `grey`, `purple`, `red`, or `yellow`. |
+| `editable` | Set to `1`, `true`, or `yes` for pointer and keyboard editing without Pad toolbars. Omit for generated read mode. |
+| `format` | `svg` (default), `png`, `webp`, or `jpeg`. Used only by generated read mode. |
+
+### Balls
+
+```text
+balls=cue:0.2,0.5;1:0.67,0.5;8:0.78,0.32
+```
+
+`0`, `cueball`, `w`, `white`, and `whiteball` are accepted aliases for `cue`.
+Coordinates outside `0..1` are clamped to the nearest edge.
+
+The `none` type is an invisible marker: it draws no ball but still occupies an
+ordinal, so a line can bend through it (a bank or kick cushion contact) without
+placing a visible ball on the cushion.
+
+### Lines
+
+Lines reference ball positions rather than ball numbers:
+
+```text
+balls=cue:0.2,0.5;9:0.67,0.5;ghost:0.78,0.32
+lines=0>1;1>2
+```
+
+`0>1` connects the first ball (the cue ball) to the second (the 9-ball). `1>2`
+connects the 9-ball to the ghost ball.
+
+Each connection accepts any number of order-independent `:modifier` tokens
+after the pair. A modifier is either a stroke style — `solid` (default),
+`dashed`, or `dotted` — or a bare hex color (the leading `#` is omitted; encode
+it as `%23` if you include it):
+
+```text
+balls=cue:0.2,0.5;1:0.67,0.5;none:0.5,0.2;ghost:0.78,0.32
+lines=0>2:dashed:ffffff;2>1:dashed:ffffff;1>3:e6c63a
+```
+
+Here the cue's aim (`0>2>1`) is a dashed white line routed through an invisible
+`none` marker at a cushion, while the object ball's line to the ghost (`1>3`) is
+a solid yellow. `0>1:e6c63a` colors a solid line; `0>1:dashed` dashes it in the
+default color; `0>1:dashed:e6c63a` does both, in either order. An unrecognized
+modifier is ignored and reported in `config.warnings`.
+
+### Target zones
+
+```text
+zones=circle:0.67,0.5,0.09;rect:0.43,0.72,0.18,0.12
+```
+
+A circle takes `x,y,radius`; a rectangle takes `x,y,width,height`. Dimensions
+must be greater than zero. Zone colors and opacity are currently fixed by the
+renderer.
+
+### Table size and appearance
+
+```text
+size=8&theme=grey&format=png
+```
+
+Themes are intentionally named presets. Arbitrary table colors and zone opacity
+are not part of the public URL contract.
+
+## Generated read mode
+
+Read mode is the default. The iframe creates the requested image, removes its
+temporary live table, and displays only the generated output. There are no Pad
+pointer or keyboard interactions.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/create/embed?balls=cue:0.24,0.62;8:0.7,0.38&amp;lines=0&gt;1&amp;zones=rect:0.7,0.38,0.18,0.14&amp;size=8&amp;theme=grey&amp;format=png"
+	width="700"
+	height="390"
+	style="border: 0"
+	title="Eight-ball diagram"
+></iframe>
+```
+
+SVG is usually the best choice for diagrams because it remains sharp at
+different iframe sizes. PNG, WebP, and JPEG are available when a raster result
+is preferable.
+
+## Editable playground mode
+
+Add `editable=1` to mount the live table surface:
+
+```html
+<iframe
+	id="diagram"
+	src="https://www.chalkysticks.com/create/embed?balls=cue:0.2,0.5;1:0.67,0.5&amp;lines=0&gt;1&amp;theme=green&amp;editable=1"
+	width="700"
+	height="390"
+	style="border: 0"
+	title="Editable pool shot diagram"
+></iframe>
+```
+
+Editable mode enables the table's pointer and keyboard behavior, but does not
+add toolbars, menus, save controls, or persistence. The `format` parameter is
+ignored because the visible surface is a live table.
+
+As the user manipulates the table, the iframe replaces its own URL with the
+canonical DSL and posts a change event to its parent window:
+
+```javascript
+const frame = document.querySelector('#diagram');
+
+window.addEventListener('message', (event) => {
+	if (event.origin !== 'https://www.chalkysticks.com') return;
+	if (event.source !== frame.contentWindow) return;
+	if (event.data?.type !== 'chalky:diagram-change') return;
+
+	console.log(event.data.dsl);    // URL-encoded canonical query fragment
+	console.log(event.data.config); // parsed diagram configuration
+});
+```
+
+The message shape is:
+
+```typescript
+interface DiagramChangeMessage {
+	type: 'chalky:diagram-change';
+	dsl: string;
+	config: {
+		balls: Array<{ type: string; x: number; y: number }>;
+		editable: boolean;
+		format: 'jpeg' | 'png' | 'svg' | 'webp';
+		lines: Array<{ from: number; to: number }>;
+		tableSize: string;
+		theme: 'blue' | 'green' | 'grey' | 'purple' | 'red' | 'yellow';
+		warnings: string[];
+		zones: Array<Record<string, unknown>>;
+	};
+}
+```
+
+Always validate `event.origin` and, when there are multiple frames, verify
+`event.source` before consuming a message.
+
+## Parsing the DSL in an application
+
+The portable codec lives in `@chalkysticks/sdk-pad`:
+
+```typescript
+import { Constant, Parser } from '@chalkysticks/sdk-pad';
+
+const config = Parser.DiagramEmbedCodec.parse(window.location.search);
+const layout = Parser.DiagramEmbedCodec.toLayout(config);
+const colors = Constant.getDiagramThemeColors(config.theme);
+
+// After editing a Pad table:
+const nextConfig = Parser.DiagramEmbedCodec.fromTableState(tableState, config);
+const nextDsl = Parser.DiagramEmbedCodec.stringify(nextConfig);
+```
+
+`parse()` is tolerant: malformed list segments are omitted and reported in
+`config.warnings`, while valid siblings still render. The parser accepts up to
+32 balls, 64 lines, and 32 target zones per URL.
+
+`stringify()` returns a URL-encoded canonical query fragment and omits default
+values. Use `URLSearchParams` when combining it with other parameters.
+
+## Persistence
+
+The embed never saves automatically. If a user decides to keep an edited
+diagram, listen for `chalky:diagram-change`, then pass the returned configuration
+through your own authorized save flow. For the normal persistent Pad workflow,
+see [Export & Persistence](/pad/export) and [SDK diagram saving](/sdk/pad/saving).
+

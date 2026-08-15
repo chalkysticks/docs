@@ -86,6 +86,7 @@
             "group": "Inference",
             "pages": [
               "sdk/inference/index",
+              "sdk/inference/hosted-scan",
               "sdk/inference/image-analyzer",
               "sdk/inference/detection",
               "sdk/inference/homography",
@@ -226,7 +227,8 @@
           {
             "group": "Overview",
             "pages": [
-              "pad/index"
+              "pad/index",
+              "pad/diagram-embedding"
             ]
           },
           {
@@ -383,13 +385,23 @@
             "pages": [
               "infrastructure/roboflow-sidecar",
               "infrastructure/inference-tool",
+              "infrastructure/model-release",
+              "infrastructure/native-runtime-retrospective",
               "infrastructure/model-caching"
             ]
           },
           {
             "group": "Cloud Deployment",
             "pages": [
-              "infrastructure/aws-deployment"
+              "infrastructure/aws-deployment",
+              "infrastructure/lambda-inference",
+              "infrastructure/cloudfront-inference"
+            ]
+          },
+          {
+            "group": "Internal Tools",
+            "pages": [
+              "infrastructure/venue-scanner-desktop"
             ]
           },
           {

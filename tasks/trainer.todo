@@ -1,12 +1,13 @@
+
 Inbox:
 
-	☐ Hot-streak special meter.
-		Note: Tony Hawk / NBA Jam style.
-		Note: Visual language could be a "burning net" or similar on-fire state.
+	☐ Hot-streak special meter
+		Note: Tony Hawk / NBA Jam style
+		Note: Visual language could be a "burning net" or similar on-fire state
 
-	☐ Safety drill mode.
-		☐ Player gets 3 chances to leave a safety.
-		☐ Opponent gets 3 chances to escape.
+	☐ Safety drill mode
+		☐ Player gets 3 chances to leave a safety
+		☐ Opponent gets 3 chances to escape
 
 	☐ Should the Trainer engine be white-labeled?
 
@@ -17,24 +18,15 @@ Inbox:
 	  it didn't "disconnect" cause we're still on the SPA and it wouldn't
 	  go forward
 
-	☐ A few times during online, Legs didn't get the "Move ball" notification
-	  but I did. Hmm..
-
 
 Now:
 
-	☐ More area on scrolling in menu like play modes
-
-		☐ Fade out top header thing like in our app
-
-	☐ Figure out why distant line trajectories repeat
-
-	☐ Update aim direction on kick shot + jump shot in tutorial
+	✔ More area on scrolling in menu like play modes @done(26-07-24 16:48)
+		✔ Fade out top header thing like in our app @done(26-07-24 16:48)
+	✔ Figure out why distant line trajectories repeat @done(26-07-24 16:48)
+	✔ Update aim direction on kick shot + jump shot in tutorial @done(26-07-24 16:48)
 
 	☐ Is the trainer embed coordinates correct?
-
-		☐ Why do we have this whole fucking inverted thing?
-			This was due to diagrams at some point. do we still need it?
 
 	☐ New achievement design
 
@@ -61,8 +53,7 @@ Now:
 
 	☐ Click a codex shot to bring up a Pad diagram that allows for the shot to be done
 
-	☐ turn off aim lines when opponent is shooting @started(26-06-22 16:18)
-
+	✔ turn off aim lines when opponent is shooting @started(26-06-22 16:18) @done(26-07-24 17:08) @lasted(4w4d50m25s)
 
 	☐ Move the speed-run countdown out of common shot lines on mobile and desktop.
 
@@ -71,19 +62,7 @@ Now:
 	☐ Fix Straight Pool / 14.1 turn handling.
 		☐ After a successful pot, it switched to the other player.
 
-	☐ Clean up abandoned-match flow.
-		☐ If the opponent leaves and the local player exits, clear lower-third UI, shot clock, and match state.
-		☐ Return the table to Freeplay or another neutral state.
-
-	☐ Fix joining disconnected or abandoned matches.
-		☐ "Join" should attach to the existing match or reject clearly.
-		☐ It should not start a phantom match.
-		☐ It should not show "Opponent connected" without entering the match.
-
-	☐ Fix recurring keyboard shortcut leak.
-		☐ Repro note: pressing Undo caused camera shortcuts to trigger.
-
-	☐ Fix missing instructions on the diagram page.
+	✔ Fix missing instructions on the diagram page. @done(26-08-11 16:13)
 
 	☐ Add nominated-pocket support.
 

@@ -1,0 +1,214 @@
+---
+title: 'Native Lambda Runtime Retrospective'
+description: 'How the table-scan container fell from 9.9 GB to 585 MB and cold inference fell from as much as 110 seconds to under five'
+---
+
+## Result
+
+The final ChalkySticks Lambda image is approximately 585 MB instead of 9.9 GB.
+Measured public behavior was 4-5 seconds cold and 0.6-0.8 seconds warm. A local
+real-table fixture produced 13 detections that matched the official vendor
+runtime exactly after removing only generated IDs and elapsed time.
+
+This was not achieved by compressing the same server. We stopped deploying the
+general-purpose Roboflow server and implemented the narrow runtime contract the
+active model actually needed.
+
+## Starting Point
+
+The initial solution ran Roboflow's official CPU inference image. It was useful
+because it supported the expected HTTP API and could acquire many model types,
+but it also included:
+
+- the general Roboflow inference server
+- PyTorch and TorchVision
+- CUDA/NVIDIA libraries
+- Triton
+- JAX
+- Matplotlib and Supervision
+- enterprise workflow integrations
+- loaders for many unrelated model families
+
+After removing several obviously unrelated packages and flattening Docker
+layers, the image was still about 9.9 GB. The current `cpu-slim` vendor image
+was also several gigabytes, while an older ARM image was too old to load the
+active model package.
+
+## First Hidden Problem: A Warm Cache Was Not Offline
+
+Weights existed on disk and inference looked cached, but a new vendor-server
+process still requested package metadata from Roboflow to determine which blobs
+belonged to the model.
+
+The fix separated update time from runtime:
+
+1. `warmup.sh` sends a tiny acquisition request while Roboflow access is
+   explicitly allowed.
+2. It stores `model-metadata.json` beside the cached model version.
+3. `offline_app.py` replaces the remote metadata provider with that manifest.
+4. Artifact fallback URLs are rewritten to loopback-only failures so an
+   incomplete image fails locally instead of silently calling Roboflow.
+
+Lesson: cached weights do not prove that package discovery, telemetry, license
+checks, or fallback downloads are offline.
+
+## Lambda Compatibility Problems
+
+### Read-only root filesystem
+
+Lambda container roots are read-only; only `/tmp` is writable. The vendor
+runtime expected writable model-cache state.
+
+The first workaround copied roughly 450 MB of cache into `/tmp` during every
+cold start. It worked but was slow. The later vendor-compatible launcher used a
+small writable overlay: immutable blobs remained under `/opt`, `/tmp` contained
+only small indexes/manifests, and a symlink connected the two.
+
+The final native runtime does not need the vendor cache layout at request time.
+
+### Port 9001 collision
+
+Lambda's own Runtime API uses port 9001. The HTTP service therefore runs on
+8080 and the Lambda Web Adapter bridges invocations to FastAPI.
+
+### Missing CPU topology files
+
+Lambda does not expose the normal files beneath `/sys/devices/system/cpu/`.
+ONNX Runtime's bundled CPU detector tried to read them and aborted before its
+logger was fully initialized.
+
+`cpuinfo-shim.c` is a narrow `LD_PRELOAD` interceptor for only those topology
+files. It returns an in-memory CPU range rather than replacing general file
+operations.
+
+The first shim reported `0-1`. That fixed correctness but restricted a 10 GB
+Lambda to two effective ONNX threads. The final shim reports `0-5`, matching the
+approximately six vCPUs allocated at 10240 MB, and ONNX uses six intra-op
+threads.
+
+## Why Import Tricks Were Not Enough
+
+A narrow compatibility app bypassed Roboflow's eager package initializer and
+loaded only the RF-DETR implementation. It also stubbed an unused optional
+conversion dependency so Matplotlib did not load.
+
+Local first-request time improved substantially, but Lambda still had to
+prepare and page a roughly 9.9 GB image containing PyTorch and the broad vendor
+runtime. Public cold measurements varied from about 25.6 seconds to roughly
+110 seconds; one initial request reached the 120-second timeout.
+
+Warm requests under one second proved that inference itself was viable. Image
+preparation and general-purpose runtime initialization were the problem.
+
+## The Decisive Change: Replace the Server, Not the Model
+
+The active package manifest revealed that production needed:
+
+- a roughly 116 MB `weights.onnx`
+- a 67-byte class list
+- a roughly 520-byte inference configuration
+
+The model contract was straightforward enough to reproduce exactly in
+`lambda_native_app.py`:
+
+1. Decode with OpenCV.
+2. Stretch to `576 x 576`.
+3. Convert BGR to RGB and transpose to NCHW.
+4. Convert to float32, divide by 255, and apply ImageNet normalization.
+5. Execute `weights.onnx` with ONNX Runtime's CPU provider.
+6. Apply sigmoid and choose each query's highest-confidence class.
+7. Filter and sort by confidence.
+8. Remove/remap the synthetic background class.
+9. Convert normalized center/size boxes to pixel-space coordinates.
+10. Round in the same order as the vendor implementation.
+11. Serialize the response contract expected by `Services\Roboflow`.
+
+## How 9.9 GB Became 585 MB
+
+The final Dockerfile is multi-stage:
+
+```text
+Large standalone vendor-compatible image
+    -> artifact source only
+    -> copy weights.onnx
+    -> copy inference_config.json
+    -> copy class_names.txt
+
+python:3.11-slim-bookworm
+    + NumPy
+    + OpenCV headless
+    + ONNX Runtime
+    + FastAPI/Uvicorn
+    + Lambda Web Adapter
+    + CPU topology shim
+    + selected model artifacts
+    = approximately 585 MB
+```
+
+The final stage does not inherit the source image. Docker copies only three
+model files out of it, so deleting broad packages and fighting tombstone layers
+is unnecessary. This reduced the deployed image by roughly 94%.
+
+## How Cold Time Fell Below Five Seconds
+
+The improvements compounded:
+
+1. The final image became roughly 94% smaller.
+2. Thousands of unrelated Python modules disappeared.
+3. PyTorch was not loaded.
+4. The 450 MB cold-start cache copy disappeared.
+5. Runtime model discovery and remote metadata checks disappeared.
+6. ONNX Runtime loaded one local graph directly.
+7. The CPU topology crash was fixed.
+8. The topology and ONNX thread pool were corrected from two CPUs to six.
+
+The thread correction was larger than expected:
+
+| Revision | Cold | Warm |
+| --- | --- | --- |
+| Native runtime restricted to two threads | 18.1 s | about 1.6 s |
+| Native runtime using six threads, run 1 | 4.09 s | 0.56 s |
+| Final exact revision | 4.78 s | 0.80 s |
+
+Representative Lambda initialization was approximately 2.36 seconds. Local
+real-image native inference was about 0.83 seconds.
+
+## Exactness Gate
+
+Both the official local runtime and native candidate received the same
+`3000 x 4000` real table image. The comparison removed only:
+
+- generated inference ID
+- generated detection IDs
+- elapsed time
+
+The remaining normalized JSON matched exactly: 13 detections in the same
+order, with the same class, class ID, confidence, rounded coordinates, and
+image dimensions.
+
+The native candidate also ran with a read-only root, writable `/tmp` only, and
+an isolated Docker network.
+
+## Approaches to Avoid Repeating
+
+- Shipping model weights to a browser exposes the private model.
+- Running inference on the main API server couples scaling and resource load.
+- Cached weights without metadata are not fully offline.
+- Copying the whole cache into `/tmp` adds cold-start I/O.
+- The old ARM vendor image cannot load the active package.
+- The current vendor slim image remains too broad.
+- Deleting a handful of packages from a large parent is fragile and saves too little.
+- Narrow imports do not remove image preparation or PyTorch costs.
+- Reporting two CPUs needlessly serializes a six-vCPU function.
+- Deploying mutable `latest` does not create a CloudFormation diff.
+- Updating Lambda outside CloudFormation creates stack drift.
+
+## Future Adapter Rule
+
+The native runtime is intentionally strict. A new ONNX model is not
+automatically compatible merely because it has an `.onnx` extension. Different
+tensor layouts, resize modes, color modes, normalization, segmentation output,
+or class operations require a new adapter and vendor/native parity tests.
+
+That narrowness is what keeps the deployed runtime private, deterministic,
+small, and fast.

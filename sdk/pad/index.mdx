@@ -47,6 +47,7 @@ Ball types are strings: `'cue'`, `'1'`–`'15'`, `'ghost'`, `'arrow'`. There is 
 | **Constant** | TABLE_CONFIGS, BALL_SIZE, BallLineColor, DIAGRAM_CUSTOMIZATION_DEFAULTS, DEFAULT_RULES_PHRASES |
 | **Enum** | DiagramState, LineStyle, PocketLocation, RailDirection, RailLocation |
 | **Factory** | `Factory.Diagram.model()` / `Factory.Diagram.collection()` pre-wired to the v3 API |
+| **Parser** | `DiagramEmbedCodec` for the [stateless diagram DSL](/pad/diagram-embedding) |
 | **Rules** | Custom-rules shorthand compiler, drill rule parser, human-readable summaries |
 | **Core** | Re-export of `@chalkysticks/sdk-core` |
 
@@ -63,6 +64,7 @@ import {
     Geometry,    // quadraticBezierPoint, lineDistance, normalizeCoordinates, ...
     Manager,     // Table, Ball, Line, Shape, Sticker, Text, Rail, Trajectory, Base
     Model,       // Diagram
+    Parser,      // DiagramEmbedCodec (stateless diagram query DSL)
     Rules,       // CustomRulesShorthandCompiler, DrillRuleParser, ShorthandSummaryFormatter, ...
 } from '@chalkysticks/sdk-pad';
 ```
@@ -75,6 +77,7 @@ Importing the package also auto-registers a `User.diagrams` relationship on the 
 - **Managers** contain pure logic for manipulating table state (no UI)
 - **Geometry** utilities handle coordinate math and normalization
 - **Diagrams** are the main container for pad content
+- **Stateless diagram URLs** use `Parser.DiagramEmbedCodec` and do not require a model or API persistence
 - **Balls** are positioned on the table (`'cue'`, `'1'`–`'15'`, `'ghost'`, `'arrow'`)
 - **Lines** connect balls to show shot paths (optional Bezier control point, color, style)
 - **Rules** are authored as a shorthand DSL string stored on the diagram (`diagram.getRules()`)

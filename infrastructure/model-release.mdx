@@ -1,0 +1,290 @@
+---
+title: 'Roboflow Model Sync and Release'
+description: 'Acquire a Roboflow model once, capture an offline package, build the private native Lambda image, verify parity, and deploy it'
+---
+
+## Boundary: Update Time vs Runtime
+
+Roboflow participates only in an explicit model update on a trusted developer
+machine. Deployed Lambda requests never call Roboflow and do not contain the
+Roboflow Python server.
+
+```text
+Update workstation
+    -> official Roboflow server downloads/verifies a model package
+    -> warmup captures package metadata and content-addressed blobs
+    -> standalone vendor-compatible artifact is built
+    -> native builder selects the active ONNX package
+    -> final Lambda image receives weights + config + class names
+    -> ECR + Lambda deployment
+
+Runtime request
+    -> CloudFront
+    -> Lambda
+    -> local ONNX graph
+    -> response
+    -> no Roboflow network access
+```
+
+## Current Model
+
+| Property | Value |
+| --- | --- |
+| Model | `balls-and-pockets-qi5jc/4` |
+| Family | RF-DETR object detection |
+| ONNX input | `1 x 3 x 576 x 576`, float32 |
+| Required artifacts | `weights.onnx`, `inference_config.json`, `class_names.txt` |
+| Approximate weights | 116 MB |
+| Public model path | `/balls-and-pockets-qi5jc/4` |
+
+The builder requires exactly one active combined model. The old two-model
+table-detection plus ball-classification configuration is retained only as a
+legacy fallback in some API code and documentation history.
+
+## First Decide What Changed
+
+| Change | Rebuild model image? | Deploy API? | Deploy Lambda? |
+| --- | --- | --- | --- |
+| Ball appearance thresholds or formulas | No | Yes | No |
+| Duplicate/missing-ball assignment scoring | No | Yes | No |
+| Homography/controller behavior | No | Yes | No |
+| Native preprocessing/postprocessing code | Yes, Lambda stage only | Usually no | Yes |
+| Compatible new RF-DETR version | Yes, full flow | Env/restart | Yes |
+| Different architecture or preprocessing contract | Implement adapter first | Possibly | Only after parity |
+
+API post-evaluation lives outside the ONNX model. Do not rebuild Lambda for
+changes to `BallAppearanceAnalyzer`, `BallAssignmentResolver`, homography, or
+controller formulas.
+
+## Full Model Update
+
+### 1. Record the deployed release
+
+```bash
+aws lambda get-function \
+  --function-name chalkysticks-inference \
+  --region us-east-2 \
+  --query '{State:Configuration.State,Update:Configuration.LastUpdateStatus,Image:Code.ResolvedImageUri}' \
+  --output json
+```
+
+```bash
+aws ecr describe-images \
+  --repository-name chalkysticks/roboflow-table-detection \
+  --region us-east-2 \
+  --query 'reverse(sort_by(imageDetails,& imagePushedAt))[:10].{tags:imageTags,digest:imageDigest,pushed:imagePushedAt}' \
+  --output table
+```
+
+Record the current digest and timestamp tag in release notes.
+
+### 2. Configure the new acquisition target
+
+Point `bin/api-v2/.env` at the local sidecar while acquiring the package:
+
+```dotenv
+ROBOFLOW_DETECTION_MODEL_URL=http://127.0.0.1:9001/new-model-slug/5
+ROBOFLOW_WARMUP_MODELS=new-model-slug/5
+```
+
+`ROBOFLOW_WARMUP_MODELS` is only an optional warmup override. The native build
+resolves its active model from `ROBOFLOW_DETECTION_MODEL_URL`, so keep them
+identical when both are set.
+
+The Roboflow API key is required only during acquisition.
+
+### 3. Start from a deliberate cache state
+
+From `bin/api-v2`:
+
+```bash
+./docker/tool/run
+```
+
+For a clean release:
+
+1. Optionally **Export cache** for backup.
+2. **Stop everything**.
+3. **Cleanup** and confirm removal of the local model cache volume.
+4. **Start (CPU)**.
+
+Cleanup affects the developer cache, not ECR or the deployed Lambda.
+
+### 4. Warm and capture the offline manifest
+
+The CPU stack starts the official acquisition server and a one-shot warmup
+container. Watch it:
+
+```bash
+docker compose -f docker/inference/compose.cpu.yml logs -f warmup
+```
+
+Required success messages:
+
+```text
+[warmup] -> new-model-slug/5
+[warmup]    cached (200)
+[warmup]    offline manifest saved
+[warmup] All models warmed successfully. Cache is ready to build an offline image.
+```
+
+Stop if manifest capture fails. Cached weights alone are not offline-complete;
+the vendor server otherwise requests package metadata from Roboflow when a new
+process starts.
+
+### 5. Test the official acquisition runtime
+
+In the tool, run:
+
+1. **Test inference (smoke)**
+2. **Test inference (real image)**
+
+Use several representative table images. Record counts, classes, coordinates,
+and material confidence changes against the current version.
+
+### 6. Build the standalone artifact
+
+Choose **Build standalone image**.
+
+The command requires cached model files plus `model-metadata.json`, then builds
+`chalkysticks/inference:latest`. This larger image is the strict offline vendor
+compatibility/debug artifact and the immutable artifact source for the native
+Lambda build.
+
+### 7. Build the native Lambda image
+
+Choose **Build Lambda image**.
+
+The builder:
+
+1. Requires exactly one combined active model.
+2. Reads the model's captured manifest from the standalone image.
+3. Selects the manifest's ONNX package.
+4. Resolves content-addressed blobs for the three required files.
+5. Passes slug, version, and blob hashes to `Dockerfile.lambda-native`.
+6. Produces `chalkysticks/inference:lambda` for `linux/arm64`.
+
+Do not copy artifact hashes by hand.
+
+### 8. Check compatibility
+
+The current native adapter expects:
+
+- RF-DETR-style ONNX outputs named `dets` and `labels`
+- three-channel RGB input
+- stretch resize
+- config-defined scaling and normalization
+- class removals expressible by `inference_config.json`
+
+Letterbox resize, center crop, segmentation, YOLO tensor layouts, dynamic input
+shapes, or another model family require a new adapter and parity fixtures.
+
+### 9. Run the native candidate
+
+```bash
+docker run --rm -d \
+  --name chalkysticks-lambda-candidate \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=512m \
+  -p 127.0.0.1:18080:8080 \
+  chalkysticks/inference:lambda
+```
+
+```bash
+base64 -i /path/to/table.jpg | curl -sS -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-binary @- \
+  'http://127.0.0.1:18080/new-model-slug/5?confidence=0.4&overlap=0.3' | jq
+```
+
+### 10. Require vendor/native parity
+
+Run the same fixture through both local runtimes. Normalize only generated IDs
+and elapsed time:
+
+```bash
+jq -S '
+  del(.inference_id, .time)
+  | .predictions |= map(del(.detection_id))
+' vendor.json > vendor.normalized.json
+
+jq -S '
+  del(.inference_id, .time)
+  | .predictions |= map(del(.detection_id))
+' native.json > native.normalized.json
+
+diff -u vendor.normalized.json native.normalized.json
+```
+
+An empty diff is the release goal. Version 4 produced exact parity for all 13
+detections in the real-table fixture after normalizing only generated fields.
+
+Parity proves the native implementation matches the vendor implementation. It
+does not prove that the new model is better; evaluate it against labeled
+fixtures separately.
+
+### 11. Push and deploy
+
+In the tool:
+
+1. **Push to ECR**
+2. Record the immutable timestamp tag and digest.
+3. **Deploy to AWS Lambda**
+4. Wait for `UPDATE_COMPLETE`.
+
+The deployment resolves `latest` to a digest and updates through
+CloudFormation. Never update the function out of band.
+
+### 12. Verify and switch the API
+
+```bash
+base64 -i /path/to/table.jpg | curl -sS -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-binary @- \
+  'https://scan.chalkysticks.com/new-model-slug/5?confidence=0.4&overlap=0.3' | jq
+```
+
+Run twice for cold and warm behavior. Then update:
+
+```dotenv
+ROBOFLOW_DETECTION_MODEL_URL=https://scan.chalkysticks.com/new-model-slug/5
+```
+
+Restart PHP-FPM and queue workers, then verify the full post-evaluation path:
+
+```bash
+curl -sS -X POST \
+  -F 'image=@/path/to/table.jpg' \
+  -F 'ball_set=standard' \
+  http://localhost:8000/v3/data/table-scan-full | jq
+```
+
+## Roll Back
+
+Move ECR `latest` to the known-good timestamp tag and run **Deploy to AWS
+Lambda** again. If the rollback changes model versions, restore
+`ROBOFLOW_DETECTION_MODEL_URL` to the baked path and restart API workers.
+
+See [Lambda Inference Service](/infrastructure/lambda-inference) for exact ECR
+rollback commands.
+
+## Release Checklist
+
+- [ ] Current digest and timestamp tag recorded
+- [ ] Exactly one combined model configured
+- [ ] Warmup downloaded the intended version
+- [ ] Offline manifest saved
+- [ ] Official local real-image output reviewed
+- [ ] Standalone image built from the intended cache
+- [ ] Native image selected the intended ONNX package
+- [ ] Read-only native candidate works
+- [ ] Vendor/native normalized parity is empty
+- [ ] New model evaluated against labeled fixtures
+- [ ] Python, shell, TypeScript, and SAM validation pass
+- [ ] ECR immutable tag and digest recorded
+- [ ] CloudFormation reaches `UPDATE_COMPLETE`
+- [ ] Public health and real-image requests return 200
+- [ ] Cold and warm latency recorded
+- [ ] API points at the deployed model path
+- [ ] Full `table-scan-full` response reviewed
+- [ ] Known-good rollback tag retained

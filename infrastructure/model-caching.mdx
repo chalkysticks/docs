@@ -1,9 +1,15 @@
 ---
-title: 'Browser Model Caching'
-description: 'Service worker cache-first strategy for offline-first browser inference'
+title: 'Browser Model Caching (Experimental)'
+description: 'Legacy service-worker cache strategy for intentionally distributable browser models—not the private production Lambda model'
 ---
 
-When running `sdk-inference` in the browser, model weights are fetched from Roboflow's CDN on first use. A service worker intercepts these requests and caches everything locally, so subsequent page loads — and all inference after the first — work completely offline.
+> **Production privacy boundary:** the private table-scan model is not shipped
+> to browsers. It stays in ECR and Lambda. This page documents an experimental
+> pattern only for models that are intentionally public/distributable.
+
+When running an intentionally distributable model through `sdk-inference` in
+the browser, a service worker can intercept model requests and cache them
+locally so subsequent page loads work offline.
 
 ## What Gets Cached
 

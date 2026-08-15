@@ -1,150 +1,213 @@
 ---
-title: 'Roboflow Sidecar'
-description: 'Self-hosted Roboflow inference server via Docker Compose — setup, caching, offline mode, and model updates'
+title: 'Roboflow Acquisition Sidecar'
+description: 'Local official Roboflow runtime used to acquire, cache, inspect, and compare model packages before native Lambda deployment'
 ---
 
-## What It Is
+## Current Role
 
-The sidecar is Roboflow's official open-source inference server (`roboflow/roboflow-inference-server-cpu:latest`) running as a Docker container next to the Laravel API. It speaks the **exact same HTTP contract** as `serverless.roboflow.com` — `POST /{slug}/{version}` with base64 body and `api_key` query param — so the PHP `Services\Roboflow` class works unchanged.
+The Roboflow sidecar is a trusted local **model acquisition and comparison
+environment**. It is not the production request runtime.
 
-## How It Works
+It runs Roboflow's official inference server on localhost, downloads a selected
+model package, and preserves the vendor HTTP behavior used for parity testing.
+The production Lambda later receives only the selected ONNX weights,
+configuration, and class names.
 
+```text
+Roboflow (update time only)
+    -> local official sidecar
+    -> persistent model cache
+    -> captured offline package manifest
+    -> vendor-compatible standalone image
+    -> native Lambda artifact extraction
 ```
-Laravel API ──POST──▶ http://127.0.0.1:9001/{slug}/{version}
-                       │
-                       ▼
-                Roboflow inference server (local container)
-                       │
-                       ├── cache hit  → reply from /tmp/cache
-                       └── cache miss → fetch weights from Roboflow once,
-                                        store in /tmp/cache, reply
+
+The sidecar speaks the familiar contract:
+
+```text
+POST /{slug}/{version}?confidence=...&overlap=...&api_key=...
+Body: base64 image
 ```
 
-First call per model version fetches weights from Roboflow (a few seconds). Every subsequent call — including all calls after a Roboflow outage — is served entirely from the local cache.
+## Start
 
-## Start the Sidecar
-
-From `bin/api-v2/`:
+From `bin/api-v2`:
 
 ```bash
 docker compose -f docker/inference/compose.cpu.yml up -d
 ```
 
-This starts two containers:
+This creates:
 
-1. **`chalkysticks-inference`** — the inference server on port 9001 (bound to localhost only)
-2. **`chalkysticks-inference-warmup`** — a one-shot init container that pre-downloads model weights so the first real request doesn't pay the cold-cache penalty
+1. `chalkysticks-inference` — official acquisition server on
+   `127.0.0.1:9001`
+2. `chalkysticks-inference-warmup` — one-shot model acquisition and manifest
+   capture
 
-The warmup container reads `ROBOFLOW_API_KEY` from `bin/api-v2/.env` automatically (via `env_file: ../../.env` in the compose file).
+The recommended entry point is the menu tool:
 
-Watch the warmup download models:
+```bash
+./docker/tool/run
+# -> Start (CPU)
+```
+
+## Configure the Active Model
+
+The current combined model is:
+
+```dotenv
+ROBOFLOW_DETECTION_MODEL_URL=http://127.0.0.1:9001/balls-and-pockets-qi5jc/4
+ROBOFLOW_WARMUP_MODELS=balls-and-pockets-qi5jc/4
+```
+
+The warmup script prefers `ROBOFLOW_DETECTION_MODEL_URL`. It retains support
+for the legacy `ROBOFLOW_MODEL_URL` plus
+`ROBOFLOW_BALLDETECTION_MODEL_URL` pair, but the native Lambda builder requires
+exactly one active combined model.
+
+`ROBOFLOW_API_KEY` is required while downloading a new model package. It is not
+used by deployed native Lambda requests.
+
+## Warmup and Offline Manifest
+
+Watch acquisition:
 
 ```bash
 docker compose -f docker/inference/compose.cpu.yml logs -f warmup
 ```
 
-Expected output:
+Expected output includes:
 
-```
-[warmup] Inference server: http://inference:9001
-[warmup] Models to warm:   my-first-project-2-qvkxb/8 ball-detection-feb-2026/11
-[warmup] -> my-first-project-2-qvkxb/8
+```text
+[warmup] -> balls-and-pockets-qi5jc/4
 [warmup]    cached (200)
-[warmup] -> ball-detection-feb-2026/11
-[warmup]    cached (200)
-[warmup] All models warmed successfully. Sidecar is ready for offline operation.
+[warmup]    offline manifest saved
+[warmup] All models warmed successfully. Cache is ready to build an offline image.
 ```
 
-## Point the Laravel API at the Sidecar
-
-Update `bin/api-v2/.env`:
+The weights live in the named Docker volume `chalkysticks-model-cache`, mounted
+at `/tmp/cache` in the official container.
 
 ```bash
-ROBOFLOW_MODEL_URL=http://127.0.0.1:9001/my-first-project-2-qvkxb/8
-ROBOFLOW_BALLDETECTION_MODEL_URL=http://127.0.0.1:9001/ball-detection-feb-2026/11
+docker exec chalkysticks-inference du -sh /tmp/cache
+docker exec chalkysticks-inference find /tmp/cache -name model-metadata.json -print
 ```
 
-Restart PHP-FPM. The Laravel API now talks to your local sidecar instead of `serverless.roboflow.com`. No PHP code changes needed — `Services\Roboflow` is already parameterized by URL.
+## Important Correction: Weights Alone Are Not Offline
 
-## Model Cache
+An early assumption was that a warm weight cache removed Roboflow from the
+runtime path. Testing a fresh process showed that the official server still
+requested model-package metadata before associating cached blobs with a model.
 
-Model weights are stored in a Docker named volume `chalkysticks-model-cache` mounted at `/tmp/cache` inside the container. The cache persists across container restarts.
+`warmup.sh` now captures `model-metadata.json` during the authorized update
+phase. `offline_app.py` installs a local metadata provider and redirects any
+missing-artifact fallback to a loopback-only failure. The standalone image
+therefore either runs fully offline or fails locally; it does not silently call
+Roboflow.
 
-Inspect the cache:
+## Test the Vendor Runtime
+
+Menu shortcuts:
 
 ```bash
-docker exec chalkysticks-inference ls -la /tmp/cache/
-docker exec chalkysticks-inference du -sh /tmp/cache/shared-blobs/
+./docker/tool/run
+# -> Test inference (smoke)
+# -> Test inference (real image)
 ```
 
-Expected: two large files in `shared-blobs/` (~109 MB + ~120 MB) — the RF-DETR YOLO weights for each model.
-
-## Offline Mode
-
-Once the cache is populated, the sidecar works without internet:
+Direct request:
 
 ```bash
-# Block Roboflow DNS inside the container
-docker exec chalkysticks-inference sh -c 'echo "127.0.0.1 api.roboflow.com" >> /etc/hosts'
-
-# Verify inference still works
-curl -F image=@/path/to/table.jpg http://localhost:8000/v3/data/table-scan-full
-
-# Restore (easier than editing /etc/hosts back)
-docker compose -f docker/inference/compose.cpu.yml up -d --force-recreate inference
+base64 -i /path/to/table.jpg | curl -sS -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-binary @- \
+  'http://127.0.0.1:9001/balls-and-pockets-qi5jc/4?confidence=0.4&overlap=0.3' | jq
 ```
 
-Telemetry is disabled via `METRICS_ENABLED=False` in the compose file, so there are no other outbound dependencies after models are cached.
+Use this output as the vendor side of native parity testing.
+
+## Build the Standalone Vendor Artifact
+
+```bash
+./docker/tool/run
+# -> Build standalone image
+```
+
+The command refuses to build unless the active model has both cached package
+files and its captured manifest. It produces:
+
+```text
+chalkysticks/inference:latest
+```
+
+This image has two roles:
+
+- strict offline vendor-compatible debugging
+- immutable artifact source for `Dockerfile.lambda-native`
+
+It is intentionally not the small production image. The native multi-stage
+build copies only `weights.onnx`, `inference_config.json`, and
+`class_names.txt` into the final Lambda runtime.
+
+## Updating Models
+
+Do not rely on the first production request to download a model. Use the
+controlled release flow:
+
+1. Point `ROBOFLOW_DETECTION_MODEL_URL` at the new local slug/version.
+2. Optionally export the old cache.
+3. Stop and clean the local cache for an independently complete release.
+4. Start CPU acquisition and wait for manifest capture.
+5. Test official output on representative images.
+6. Build the standalone artifact.
+7. Build the native Lambda candidate.
+8. Require vendor/native parity.
+9. Push and deploy through CloudFormation.
+
+See [Roboflow Model Sync and Release](/infrastructure/model-release) for the
+complete operational sequence.
 
 ## GPU Variant
 
-For NVIDIA hosts with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html):
+For a compatible NVIDIA host:
 
 ```bash
 docker compose -f docker/inference/compose.cpu.yml down
 docker compose -f docker/inference/compose.gpu.yml up -d
 ```
 
-Both compose files share the same `chalkysticks-model-cache` volume, so weights from the CPU sidecar carry over to the GPU variant without re-downloading.
+CPU and GPU compose files share `chalkysticks-model-cache`. GPU acquisition can
+help local experimentation, but the production Lambda runtime uses ONNX Runtime
+on arm64 CPU.
 
-## Updating Models
+## Stop and Clean Up
 
-When Roboflow publishes a new model version:
-
-1. Update the version number in `.env` (e.g. `/my-first-project-2-qvkxb/8` → `/my-first-project-2-qvkxb/9`)
-2. Restart the Laravel API
-3. The first `tableScanFull` call triggers a one-time fetch of the new weights into the existing cache volume
-
-No sidecar rebuild needed. The cache accumulates model versions.
-
-## Standalone Image (Air-Gapped)
-
-For distribution or air-gapped deployments, the model cache can be baked into a Docker image:
+Stop containers without removing the persistent cache:
 
 ```bash
-./docker/tool/run
-# → Build standalone image
+docker compose -f docker/inference/compose.cpu.yml down
+docker compose -f docker/inference/compose.gpu.yml down
 ```
 
-This produces `chalkysticks/inference:latest` — a self-contained image with both model versions already on disk. Run it anywhere with no Roboflow access needed:
+Use **Cleanup** in `./docker/tool/run` to remove the cache volume. Cleanup is
+destructive to local cached packages, so export first when a backup matters.
 
-```bash
-docker run -d --name chalkysticks-inference -p 9001:9001 chalkysticks/inference:latest
-```
+## Environment Reference
 
-## Environment Variables (Container-Side)
+| Variable | Role |
+| --- | --- |
+| `ROBOFLOW_API_KEY` | Authorized model acquisition only |
+| `ROBOFLOW_DETECTION_MODEL_URL` | Active combined local model URL |
+| `ROBOFLOW_WARMUP_MODELS` | Optional explicit warmup slug/version |
+| `MODEL_CACHE_DIR` | Official server cache location; `/tmp/cache` in compose |
+| `METRICS_ENABLED` | Set to `False` |
+| `NUM_WORKERS` | Official server worker count |
+| `HOST` / `PORT` | Local service bind; port 9001 outside Lambda |
 
-| Variable | Default | Notes |
-|---|---|---|
-| `MODEL_CACHE_DIR` | `/tmp/cache` | Where weights are stored. Mapped to the named volume. |
-| `NUM_WORKERS` | `1` | uvicorn workers. Bump for concurrent scans. |
-| `MAX_DETECTIONS` | `300` | Cap per request. Fine for pool tables (~30-40 objects max). |
-| `METRICS_ENABLED` | `False` | Disables Roboflow telemetry pingback. |
-| `HOST` | `0.0.0.0` | Bind address. |
-| `PORT` | `9001` | Bind port. |
+## Boundaries
 
-## Important Notes
-
-- **RF-DETR models require PyTorch.** The regular `roboflow-inference-server-cpu` image includes PyTorch + CUDA libs (~10 GB). The dedicated `arm-cpu` slim variant (~855 MB) strips PyTorch and **will not work** with our RF-DETR models — you'll get `Model type not supported: ('object-detection', 'rfdetr-nano')`.
-- **Port 9001 is bound to localhost only** (`127.0.0.1:9001:9001` in compose) so nothing outside the host can reach it. This is intentional — the sidecar is an internal dependency, not a public endpoint.
-- **The warmup container uses `curlimages/curl:latest`** (~10 MB) and exits after caching. It's recreated on every `docker compose up` but runs in less than 1 second if models are already cached.
+- Port 9001 is bound to localhost so the acquisition server is not public.
+- The broad official image may remain multi-gigabyte; production does not ship it.
+- Cached weights without `model-metadata.json` are not offline-complete.
+- A new ONNX package is not automatically compatible with the native adapter.
+- The private production model is never intentionally distributed to browsers.

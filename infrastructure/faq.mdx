@@ -1,211 +1,263 @@
 ---
-title: 'FAQ & Troubleshooting'
-description: 'Common scenarios, testing recipes, and troubleshooting for the ChalkySticks inference infrastructure'
+title: 'Inference FAQ and Troubleshooting'
+description: 'Common model, sidecar, Lambda, CloudFront, certificate, deployment, and rollback questions'
 ---
 
-## Common Scenarios
+## Common Operations
 
-### I updated my Roboflow model and it has a new version number. How do I update?
+### Where is production inference?
 
-1. Update the version number in `bin/api-v2/.env`:
-   ```bash
-   # Old
-   ROBOFLOW_MODEL_URL=http://127.0.0.1:9001/my-first-project-2-qvkxb/8
-   # New
-   ROBOFLOW_MODEL_URL=http://127.0.0.1:9001/my-first-project-2-qvkxb/9
-   ```
-2. Restart PHP-FPM (or your queue workers)
-3. The first `tableScanFull` call triggers the sidecar to download the new model version into the existing cache. Takes a few seconds, then cached forever.
-
-If you also built a standalone image (Option B), you need to re-warm and rebuild:
-
-```bash
-./docker/tool/run
-# → Stop everything
-# → Cleanup (wipes old cache)
-# → Start (CPU) (re-warms with new model)
-# → Build standalone image (bakes new cache into image)
+```text
+https://scan.chalkysticks.com/balls-and-pockets-qi5jc/4
 ```
 
-### How does the inference sidecar hook into the Laravel API?
+Request path:
 
-`Services\Roboflow` reads `ROBOFLOW_MODEL_URL` from `config/services.php`, which reads it from `.env`. The service POSTs a base64-encoded image to that URL with `api_key`, `confidence`, and `overlap` as query params. The sidecar speaks the exact same HTTP contract as `serverless.roboflow.com`, so switching is a pure env-var swap with zero code changes.
-
-Key files:
-- `app/Services/Roboflow.php` — the HTTP client
-- `config/services.php` (lines 58-71) — model URL defaults
-- `app/Http/Controllers/v3/Data.php` — `tableScanFull` method (creates two Roboflow service instances, one per model)
-
-### How do I test if the sidecar is working?
-
-**Quick smoke test (no real image needed):**
-
-```bash
-./docker/tool/run
-# → Test inference (smoke)
+```text
+CloudFront -> Lambda Function URL -> native ONNX runtime
 ```
 
-This POSTs a 1x1 transparent PNG to each model. If you get `HTTP 200`, the sidecar is alive and serving.
+Fallback endpoints:
 
-**Real inference test with an actual pool table photo:**
+```text
+CloudFront: https://di7v13w34zitn.cloudfront.net
+Origin:     https://5afuy5ggk4elgsocnhfoh7mqge0vvllj.lambda-url.us-east-2.on.aws
+```
+
+### How do I check it?
 
 ```bash
-KEY=$(grep '^ROBOFLOW_API_KEY=' .env | cut -d= -f2-)
+curl -fsS https://scan.chalkysticks.com/ | jq
+```
+
+```bash
 base64 -i /path/to/table.jpg | curl -sS -X POST \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
-    --data-binary @- \
-    "http://localhost:9001/my-first-project-2-qvkxb/8?api_key=$KEY&confidence=0.4&overlap=0.3" | jq
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-binary @- \
+  'https://scan.chalkysticks.com/balls-and-pockets-qi5jc/4?confidence=0.4&overlap=0.3' | jq
 ```
 
-Expected: a JSON object with `predictions` array containing Ball, Pocket, and Rail detections with confidence scores and bounding boxes.
+If the custom hostname fails, test the CloudFront fallback, then the direct
+origin. That isolates DNS/certificate, edge, and Lambda failures in order.
 
-**End-to-end test through the Laravel API:**
+### How does the API call it?
 
-```bash
-curl -F image=@/path/to/table.jpg http://localhost:8000/v3/data/table-scan-full | jq
+`app/Services/Roboflow.php` sends a base64 image to the configured model URL.
+The combined model is configured through:
+
+```dotenv
+ROBOFLOW_DETECTION_MODEL_URL=https://scan.chalkysticks.com/balls-and-pockets-qi5jc/4
 ```
 
-### How do I compare sidecar results against Roboflow's hosted API?
+The native runtime preserves the response contract, so the PHP client does not
+need a provider-specific branch. Restart PHP-FPM and queue workers after
+changing environment configuration.
 
-```bash
-# Get sidecar results
-curl -F image=@table.jpg http://localhost:8000/v3/data/table-scan-full | jq > sidecar.json
+### I changed ball-evaluation formulas. Do I rebuild Lambda?
 
-# Temporarily switch to serverless.roboflow.com in .env, restart PHP
-curl -F image=@table.jpg http://localhost:8000/v3/data/table-scan-full | jq > serverless.json
+No. Appearance analysis, duplicate/missing identity resolution, homography, and
+controller formulas run in the Laravel API after raw model inference. Test and
+deploy the API only.
 
-# Diff
-diff <(jq -S . sidecar.json) <(jq -S . serverless.json)
-```
+Rebuild Lambda when native image preprocessing/postprocessing changes or when
+the baked model package changes.
 
-Expected: structurally identical — same prediction count, same `ball_type` assignments, coordinates within floating-point drift.
+### I created a new Roboflow model version. What now?
 
-### Can I run the sidecar on a remote server?
+Do not point production at Roboflow or let a production request download it.
+Follow [Roboflow Model Sync and Release](/infrastructure/model-release):
 
-Yes. The standalone image (`chalkysticks/inference:latest`) runs anywhere Docker runs:
+1. Acquire the package locally.
+2. Capture its offline manifest.
+3. Test official output.
+4. Build the standalone artifact.
+5. Build the native image.
+6. Require vendor/native parity.
+7. Push immutable ECR tags.
+8. Deploy through CloudFormation.
+9. Switch the API model path.
 
-```bash
-# On the remote host
-docker run -d --name chalkysticks-inference -p 9001:9001 chalkysticks/inference:latest
+### Where is ECR?
 
-# In your Laravel .env (on the API server)
-ROBOFLOW_MODEL_URL=http://<remote-host>:9001/my-first-project-2-qvkxb/8
-ROBOFLOW_BALLDETECTION_MODEL_URL=http://<remote-host>:9001/ball-detection-feb-2026/11
-```
-
-### How do I ship the standalone image to another machine?
-
-```bash
-# On the build machine
-docker save chalkysticks/inference:latest | gzip > chalkysticks-inference.tar.gz
-
-# Transfer (scp, rsync, S3, USB, whatever)
-scp chalkysticks-inference.tar.gz user@remote:/tmp/
-
-# On the target machine
-gunzip -c /tmp/chalkysticks-inference.tar.gz | docker load
-docker run -d -p 9001:9001 chalkysticks/inference:latest
-```
-
-### Where's the ECR repository?
-
-```
+```text
 172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection
 ```
 
-Region: `us-east-2` (Ohio). Authenticate before push/pull:
-
 ```bash
-aws ecr get-login-password --region us-east-2 | \
-  docker login --username AWS --password-stdin \
-  172720370877.dkr.ecr.us-east-2.amazonaws.com
+aws ecr get-login-password --region us-east-2 \
+  | docker login --username AWS --password-stdin \
+    '172720370877.dkr.ecr.us-east-2.amazonaws.com'
 ```
 
-## Troubleshooting
+## Sidecar and Model Acquisition
 
-### `Model type not supported: ('object-detection', 'rfdetr-nano')`
+### Warmup cached weights but the standalone image still calls Roboflow
 
-You're using the wrong base image. The dedicated `roboflow-inference-server-arm-cpu` image strips PyTorch, and our RF-DETR models need PyTorch. Use the full `roboflow-inference-server-cpu` image instead (which is the default in our Dockerfile).
+Weights alone are insufficient. A fresh official process may still request
+package metadata. Successful warmup must include:
 
-### Warmup says `ROBOFLOW_API_KEY is empty; skipping warmup`
+```text
+[warmup]    offline manifest saved
+```
 
-`bin/api-v2/.env` is missing or doesn't define `ROBOFLOW_API_KEY`. The warmup exits 0 (skip) so it doesn't block the inference server, but the cache won't be pre-populated — the first real request will trigger the download instead.
+Verify `model-metadata.json` exists for the active slug/version before building
+the standalone image.
 
-### Service worker says "offline cache disabled" on mobile
+### Warmup says the API key is empty
 
-Service workers require HTTPS (secure context). `localhost` is exempt, but LAN IPs like `http://192.168.1.88:61350` are not. Either use Chrome's `chrome://flags/#unsafely-treat-insecure-origin-as-secure` flag, or serve over HTTPS (e.g., via cloudflared tunnel).
+`bin/api-v2/.env` must define `ROBOFLOW_API_KEY` during acquisition. The key is
+not needed by the deployed native runtime.
 
-### Docker says "no space left on device" during Lambda image build
+### Model package has ONNX weights but the native build rejects it
 
-Each iteration of "Build Lambda image" creates ~9 GB of dangling images. Run `docker image prune -f` and `docker builder prune -af` to reclaim space. The tool now auto-prunes before and after each Lambda build, but if you hit this from a manual build, that's the fix.
+An `.onnx` extension does not prove compatibility. The current adapter expects
+the RF-DETR tensor, resize, RGB, normalization, and class-operation contract
+used by `balls-and-pockets-qi5jc/4`.
 
-### CloudFormation stack is in `UPDATE_ROLLBACK_FAILED`
+Inspect input/output names and shapes plus `inference_config.json`, implement a
+new adapter when needed, and require vendor/native parity before deployment.
 
-This happens when `aws lambda update-function-code` (an out-of-band update) makes CloudFormation's recorded state diverge from actual state. Fix:
+### How do I inspect local cache and images?
+
+```bash
+docker exec chalkysticks-inference du -sh /tmp/cache
+docker exec chalkysticks-inference find /tmp/cache -name model-metadata.json -print
+docker image inspect chalkysticks/inference:latest --format '{{.Size}}'
+docker image inspect chalkysticks/inference:lambda --format '{{.Size}} {{.Architecture}}'
+```
+
+## CloudFront and Certificate
+
+### ACM stays `PENDING_VALIDATION`
+
+Confirm every authoritative nameserver returns the validation CNAME and that
+Linode did not append the zone twice:
+
+```bash
+dig +short NS chalkysticks.com
+dig +short CNAME _ac7bd1cffd9d6ba6ec5709ccb7c5a922.scan.chalkysticks.com @ns1.linode.com
+```
+
+The expected target is:
+
+```text
+_4bdded0e21bfdd57ad357b8c45fb451c.jkddzztszm.acm-validations.aws.
+```
+
+ACM can remain pending for several minutes after public DNS is correct. Keep
+the validation CNAME after issuance for renewal.
+
+### CloudFront says it cannot find a certificate
+
+CloudFront only lists issued ACM certificates from `us-east-1`. Do not create a
+duplicate certificate while the intended one is pending. Wait for `ISSUED`,
+then rerun **Deploy to AWS Lambda** so CloudFormation attaches the alias.
+
+### CloudFront hostname works but `scan.chalkysticks.com` fails
+
+Check:
+
+1. `scan` resolves to `di7v13w34zitn.cloudfront.net`.
+2. ACM is `ISSUED` in `us-east-1`.
+3. Stack outputs include `CustomDomainUrl`.
+4. The distribution alias includes `scan.chalkysticks.com`.
+5. The certificate covers the exact hostname or a valid one-level wildcard.
+
+### Why not CNAME directly to the Function URL?
+
+DNS does not rewrite TLS certificates or HTTP `Host`. The Function URL's
+certificate covers its AWS hostname, not `scan.chalkysticks.com`. CloudFront
+terminates TLS for the custom domain and sends the expected origin host.
+
+### CloudFront returns 403
+
+Verify the distribution uses `AllViewerExceptHostHeader`. Forwarding the
+viewer `Host` to the Function URL can prevent Lambda from accepting the origin
+request.
+
+### Could inference responses be cached?
+
+No. The behavior must use AWS managed `CachingDisabled`. Cached health or model
+responses can hide deployments and return another request's inference result.
+
+## Lambda
+
+### ONNX Runtime aborts while reading `/sys/devices/system/cpu/*`
+
+The final image must preload `/opt/cpuinfo-shim.so`. The shim supplies CPU range
+`0-5`, matching the approximately six vCPUs at 10240 MB. Rebuild with
+`Dockerfile.lambda-native` and confirm `LD_PRELOAD` is present.
+
+### Lambda returns a strange response from port 9001
+
+Lambda reserves port 9001 for its Runtime API. The native FastAPI application
+must listen on 8080, with Lambda Web Adapter forwarding invocations there.
+
+### Cold requests exceed ten seconds
+
+Check:
+
+1. The deployed image is the approximately 585 MB native image, not the vendor artifact.
+2. Lambda memory is `10240 MB`.
+3. The CPU shim reports `0-5`.
+4. ONNX intra-op threads are six.
+5. The model package has not changed to a materially larger graph.
+6. CloudWatch `REPORT` lines for `Init Duration` and execution duration.
+
+Expected initial native measurements were 4-5 seconds cold and 0.6-0.8 seconds
+warm.
+
+### The root filesystem is read-only
+
+That is normal for Lambda. Model artifacts stay immutable in the image; only
+`/tmp` is writable. Test candidates with `--read-only` and a `/tmp` tmpfs before
+deployment.
+
+## CloudFormation and Rollback
+
+### A pushed `latest` image did not update Lambda
+
+CloudFormation compares the `ImageUri` string, so `:latest` to `:latest` can be
+a no-op. The deployment tool resolves `latest` to its `sha256` digest and passes
+`repository@sha256:...` into SAM.
+
+### Stack is `UPDATE_ROLLBACK_FAILED`
+
+This often follows an out-of-band `aws lambda update-function-code`. Stop
+direct function updates and return ownership to CloudFormation:
 
 ```bash
 aws cloudformation continue-update-rollback \
   --stack-name chalkysticks-inference \
   --region us-east-2
-
-# If that also fails, skip the problematic resource:
-aws cloudformation continue-update-rollback \
-  --stack-name chalkysticks-inference \
-  --region us-east-2 \
-  --resources-to-skip InferenceFunction
 ```
 
-Then redeploy with `sam deploy` through the tool.
+If a resource must be skipped, investigate the exact stack event before using
+`--resources-to-skip`; skipping can leave drift that needs reconciliation.
 
-### Lambda returns `Error in cpuinfo: failed to parse the list of possible processors`
+### How do I roll back a model?
 
-Lambda's container sandbox doesn't expose `/sys/devices/system/cpu/possible`. The fix is `LD_PRELOAD=/opt/cpuinfo-shim.so` which intercepts `open()` calls for those paths and returns a memfd with `"0-1\n"`. This is already baked into `Dockerfile.lambda`. If you're building a Lambda image from scratch, make sure the shim is compiled and preloaded.
+Move ECR `latest` to the known-good immutable timestamp tag and run **Deploy to
+AWS Lambda** again. Restore the API URL's model path if the release changed
+slug/version. Exact commands are in
+[Lambda Inference Service](/infrastructure/lambda-inference).
 
-### Lambda returns 404 with Go-style `text/plain` body
+### How do I stop or delete everything?
 
-Port conflict. Lambda's runtime API binds `127.0.0.1:9001`. If your app also binds 9001, it silently fails (EADDRINUSE), and LWA's readiness check connects to Lambda's runtime API instead. Fix: use port 8080 for the app (already set in `Dockerfile.lambda`).
+Use the lifecycle sections in:
 
-### Lambda returns 503 after 30 seconds
+- [Lambda Inference Service](/infrastructure/lambda-inference)
+- [CloudFront Inference Edge](/infrastructure/cloudfront-inference)
 
-Cold start is taking longer than the function timeout. The 9.6 GB image + Python imports take 25-40 seconds. If you're using API Gateway HTTP API, it has a hard 30s timeout cap. Switch to a Lambda Function URL (no timeout cap) or increase the function Timeout.
+For an emergency stop, set Lambda reserved concurrency to zero. For full
+retirement, use `sam delete`; preserve ECR and ACM until their rollback and
+certificate responsibilities are intentionally ended.
 
-### Sidecar boots locally but crashes in Lambda
+## Privacy Boundary
 
-Common causes we've seen:
+### Can we ship this model in the browser SDK?
 
-1. **PyTorch can't find CUDA libs** — don't delete `nvidia/` from the image; PyTorch dlopens `libcudart.so` at import time even on CPU
-2. **cpuinfo can't read /sys** — use the LD_PRELOAD shim
-3. **asyncua / mediapipe / etc. missing** — Roboflow's `blocks_loader` eagerly imports all enterprise workflow blocks at startup; you can't strip any library that backs a workflow block
-4. **uvicorn on wrong port** — use 8080, not 9001
-
-### How do I check what's actually running inside the inference container?
-
-```bash
-# Container logs
-docker logs chalkysticks-inference --tail 50
-
-# Running processes
-docker top chalkysticks-inference
-
-# Cache contents
-docker exec chalkysticks-inference ls -la /tmp/cache/
-docker exec chalkysticks-inference du -sh /tmp/cache/shared-blobs/
-
-# Python site-packages (useful for debugging missing deps)
-docker run --rm chalkysticks/inference:latest du -sh \
-  /usr/local/lib/python3.11/site-packages/* | sort -h | tail -25
-```
-
-## What We Learned
-
-1. **Roboflow's CPU inference image bundles ~5 GB of unused ML frameworks** (nvidia CUDA libs, triton GPU JIT, jaxlib, etc.) for features we don't use (CLIP, SAM, VLMs, LLMs). The `arm-cpu` slim variant strips these but also strips PyTorch, which our RF-DETR models need.
-
-2. **Lambda port 9001 is reserved** for the Lambda runtime API. Never bind an application to port 9001 inside a Lambda container.
-
-3. **Docker layer model bites hard when stripping images.** `RUN rm -rf` in a Dockerfile creates tombstone layers but doesn't actually shrink the image. The only way to truly remove content is `docker export | docker import` (flatten to a single layer) or multi-stage `COPY --from` into a fresh base.
-
-4. **Lambda's `/sys/devices/system/cpu/` is not exposed.** Any ML library that uses `cpuinfo` for CPU topology detection will crash. `LD_PRELOAD` with an interceptor shim is the cleanest workaround.
-
-5. **SAM doesn't see diffs when the ImageUri parameter string is unchanged.** If you push a new `:latest` to ECR, you must resolve the digest and pass `repo@sha256:DIGEST` as the SAM parameter for CloudFormation to detect a change.
-
-6. **The Roboflow inference server eagerly imports ALL enterprise workflow blocks at startup.** If any block's dependency is missing, the entire server fails to boot. You can't selectively strip libraries without understanding Roboflow's import tree.
+Technically yes, but that exposes the weights to every client. The current
+private production model stays in ECR/Lambda. Browser inference and browser
+model caching are appropriate only for intentionally distributable models or
+development experiments.

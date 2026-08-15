@@ -116,7 +116,7 @@ Funding & Partnerships:
 		☐ play_with_mami
 		☐ thekristinatkach
 		☐ Margarita Sepolova?
-		☐ pocketbilliardshots
+		☐ p
 		☐ ralph_g._eckert
 		☐ poolstriker_trickshots
 		☐ professionalbilliardinstructor
@@ -125,9 +125,34 @@ Funding & Partnerships:
 		☐ sensei nate (yt)
 			natejmt@gmail.com
 
+		☐ https://www.youtube.com/@PoolTips101
+		☐ https://www.instagram.com/jp.billiard
+		☐ https://www.instagram.com/calbilliards
+		☐ https://www.instagram.com/popinpopoffpopout
+		☐ https://longrailbilliards.com/
+
 
 
 Marketing & Media:
+
+	✔ Collect cue names and brand logos @done(26-07-26 16:22)
+
+	☐ When we update web-app, make sure to use uastc for memory bloat
+	  and reduce textures in it to 1024 rather than 2048/4096
+
+	✔ Fix the Your Matches opponent stuff @done(26-07-24 10:53)
+		✔ Fix timezone on them (it shows 3 hours ago) @done(26-07-24 10:53)
+
+	✔ When going from Play to Daily, it doesn't refresh table @done(26-07-24 16:04)
+		✔ I think we need a full RESET or something, reload @done(26-07-24 16:04)
+
+	☐ Fix the 8pm daily challenge switch
+		(or at least show todays in the list)
+
+	✔ If we're the host, maybe we share our table loadout with opponent @done(26-07-24 19:49)
+
+	☐ Anyone who talks shit about Chalky gets put in the game as a Fargo 100
+		☐ Jordan Cuck
 
 	☐ Create tutorial on how Chalky Players and Chalky Creators can use pad / trainer
 
@@ -142,11 +167,11 @@ Marketing & Media:
 		☐ Add "Last updated by @PoolShark92 - 2 days ago" style attribution.
 		☐ Add "Most Helpful Editors" leaderboard.
 
-	☐ Make more video ads.
+	☐ Make more video ads
 
-	☐ Start PlayPoolNYC Instagram ads.
+	☐ Start PlayPoolNYC Instagram ads
 		☐ Review Envato template: https://elements.envato.com/osfrae-urban-instagram-post-portrait-template-WKGAEBE
-		☐ Consider a NYC-specific `playpool.nyc` site powered by ChalkySticks.
+		☐ Consider a NYC-specific `playpool.nyc` site powered by ChalkySticks
 
 	☐ Do more publications
 		☐ TimeOutNY
@@ -154,6 +179,9 @@ Marketing & Media:
 		☐ Thrillist
 		☐ Hell Gate NYC
 		☐ NYMag
+		☐ NYGroove.NYC
+		☐ Brooklyn Eagle
+		☐ WNYC
 		☐ Patch.com
 		☐ NY1
 		☐ New York Times
@@ -204,28 +232,28 @@ Business Ideas:
 		☐ Include images, videos, links, Fargo rating, profile, and business-card content
 		☐ Use verified profiles to promote ChalkySticks
 
-	☐ Offer users their own pool-player link tree.
+	☐ Offer users their own pool-player link tree
 
 	☐ Explore venue recommendation content.
 		☐ "Best place to play pool in [city]?"
 		☐ Auto-generate or curate lists from venue data.
 
-	☐ Explore pool-player starter kit.
-		☐ Cues.
-		☐ Rules.
-		☐ Table geometry.
-		☐ Games.
-		☐ Physics.
+	☐ Explore pool-player starter kit
+		☐ Cues
+		☐ Rules
+		☐ Table geometry
+		☐ Games
+		☐ Physics
 		☐ Reference: https://mathematicalmysteries.org/pool-table-geometry/
 
 	☐ Explore ChalkySticks merchandise.
-		☐ Chalk.
-		☐ Gloves.
-		☐ Shirts.
-		☐ Hats.
-		☐ Bags.
+		☐ Chalk
+		☐ Gloves
+		☐ Shirts
+		☐ Hats
+		☐ Bags
 
-	☐ Explore businesses paying to be a featured bar or deep dive.
+	☐ Explore businesses paying to be a featured bar or deep dive
 
 	☐ Explore contests and giveaways.
 		☐ Best shot.
@@ -282,4 +310,83 @@ Recent Changes To Remember:
 
 Tasks:
 
-	☐ for-creators page
+	☐ For creators, we might want user scenarios
+
+		"Let's say you're watching YouTube and want to try that rack. Just copy and paste."
+
+	☐ Setup a staging server, apis, etc
+
+	☐ Setup a bunch of cameras, like pocket cams and stuff.. then save them all somewhere
+
+	☐ Add a overlay in the replay editor with a ChalkySticks call out
+		"Made with ChalkySticks" or something. can just be a png overlay
+
+
+
+In the "For Creators" page, we need a section talking
+about discoverability so we can cover writers/bloggers,
+coaches/instructors, league operators, or whatnot.
+
+People planning a trip or a vacation. (business or personal)
+	- Use chalky to find tables where you're staying
+	- "If you're a New Yorker traveling far away lands like London or Brooklyn, use Chalky to see if they have tables there."
+
+
+Practice with your coffee, on your lunch break, in between meetings, etc
+
+Copy from YouTube / live matches
+
+
+	☐ Re-style the play menu for mobile
+
+	☐ Allow natural sequences from Pad, like next shot next shot kinda like
+	  in Runout, but with regular diagrams so you can setup a table, then
+	  shoot the whole thing. Essentially a much simpler sequencer. We dont have
+	  to save all the diagrams, we just have to save the layouts. Then we can
+	  save all the diagrams later if we like it.
+
+	☐ Make the rules editor more graphic like a big hero for "9-ball"
+	  and it says like "Lowest first", etc
+
+	  We'll have a few like Play Modes, then a Custom utility
+	  What we have now is essentially all custom
+
+
+
+	☐ You Versus Raymond (EverybodyVsRaymond.com)
+
+		Raymond shoots a layout, then we set it up for everyone to see.
+
+		They unlock his layout after completing theirs.
+
+		It's a mini-site. Separate from chalkysticks.
+
+		Maybe anyone can post a video from youtube and do it.
+		So it's just like... challenge my rack?
+
+		Or maybe like... chalky.pro/you-vs-raymond
+
+
+	☐ Ask for Coach
+		Basically the autoaim feature in Trainer
+
+
+	☐ Try building a behind the scenes game analyzer
+		Use large models
+		Check scenes for cameras angles
+			✔ How fast can we analyze a video's frames on CLI? @done(26-08-13 · ~25ms/frame via Detection.ClothQuad, no model)
+		Report back stats like railbird
+		Note: foundation shipped as sdk-inference camera-survey.mjs + Detection.ClothQuad
+
+
+	✔ Unhomography. Turn pattern into a real table picture @done(26-08-14 15:07)
+
+
+	☐ Create a 2D game like MiniClip
+		☐ Move some of this logic into Pad.. so maybe we could actually dynamically
+		  general a diagram by using real physics and shooting it. Maybe there's an
+		  interactive mode where we can set english + speed and it'll move our diagram
+		  around for us.
+
+
+	☐ If we have matchroom live events, we should air them on tv first

@@ -1,156 +1,141 @@
 ---
-title: 'AWS Deployment'
-description: 'Lessons learned deploying the Roboflow inference container to AWS — Lambda, ECR, Fargate, and what actually works'
+title: 'AWS Inference Deployment'
+description: 'Current AWS architecture and the operational boundaries between ECR, Lambda, CloudFront, ACM, and CloudFormation'
 ---
 
-## Summary of Decisions
+## Current Decision
 
-We extensively evaluated deploying the Roboflow inference container to AWS. Here's what we tried, what worked, what didn't, and why.
+Native ONNX inference on AWS Lambda is the active deployment. The original
+general-purpose Roboflow container was too large and slow for Lambda, but a
+narrow multi-stage runtime solved both constraints:
 
-### What We Wanted
+| Metric | General vendor path | Native production path |
+| --- | --- | --- |
+| Image size | About 9.9 GB after stripping | About 585 MB |
+| Public cold request | About 25-110 seconds during experiments | About 4-5 seconds |
+| Public warm request | Under one second | About 0.6-0.8 seconds |
+| Runtime Roboflow dependency | Metadata/package discovery remained | None |
+| Primary inference dependency | Broad server + PyTorch | ONNX Runtime + OpenCV/NumPy |
 
-- Run the inference sidecar in AWS so the Laravel API can call it remotely
-- Same wire contract as `serverless.roboflow.com` and the local sidecar — `POST /{slug}/{version}` with base64 body
-- Survive Roboflow outages
-- Minimize cost
+The old conclusion that Lambda was abandoned is no longer correct. See
+[Native Lambda Runtime Retrospective](/infrastructure/native-runtime-retrospective)
+for the experiments, dead ends, exact parity gate, and final rewrite.
 
-### What We Tried
+## AWS Topology
 
-| Approach | Outcome | Why |
-|---|---|---|
-| **AWS Lambda + API Gateway** | Abandoned | Cold start takes 25-40s for our 9.6 GB image. API Gateway has a hard 30-second timeout. Even with Lambda Function URLs (no 30s cap), the cold start UX is unacceptable. |
-| **AWS Lambda + Function URL** | Abandoned | Same cold-start problem — it takes too long even without the API Gateway timeout cap. |
-| **AWS App Runner** | Not attempted | AWS is discontinuing App Runner to new customers (April 2026). Not worth starting a project on a sunsetting product. |
-| **AWS Lightsail Containers** | Not attempted | $80/month for a medium bundle (2 vCPU / 4 GB). Worse value than EC2 for a single container. |
-| **AWS ECS Fargate** | Viable but expensive | ~$96/month for 1 always-on task (2 vCPU / 4 GB + ALB). No cold starts. Fully managed. Good option if budget allows. |
-| **AWS EC2 (t4g.medium)** | Recommended | ~$28/month. No cold starts, no cold-start surprises, `docker run` and done. Cheapest option with no operational complexity for a single container. |
-| **Local Docker Compose sidecar** | Currently active | $0. Works perfectly. The local sidecar is the primary inference endpoint today. |
+```text
+Linode DNS
+    scan.chalkysticks.com CNAME
+        -> CloudFront (global)
+        -> Lambda Function URL (us-east-2)
+        -> Lambda container image from ECR (us-east-2)
+        -> CloudWatch Logs
 
-### Why Lambda Failed
+ACM certificate (us-east-1)
+    -> attached to CloudFront
 
-Lambda is architecturally wrong for this workload. Here's the layered breakdown of every issue we hit and solved:
+CloudFormation/SAM stack (us-east-2)
+    -> Lambda
+    -> Function URL
+    -> IAM execution role
+    -> CloudFront distribution
+```
 
-**1. Port 9001 conflict with Lambda Runtime API.**
-Lambda's internal runtime API server binds to `127.0.0.1:9001` (via `AWS_LAMBDA_RUNTIME_API`). Our Roboflow image's uvicorn defaults to port 9001. Both can't bind the same port. Fix: we moved uvicorn to port 8080 in `Dockerfile.lambda`.
+## Ownership
 
-**2. Image exceeds Lambda's 10 GiB cap.**
-The full `roboflow-inference-server-cpu` image is ~10.6 GB uncompressed. Lambda's hard cap is 10 GiB. Fix: we strip `triton`, `jaxlib`, and `debugpy` (~958 MB) via a strip + flatten dance (export container filesystem → docker import as a single-layer flat image). This shrinks to ~9.6 GB. We keep `nvidia/` and `torch` because RF-DETR needs them.
+| Resource | Owner | Lifecycle |
+| --- | --- | --- |
+| Lambda function | `chalkysticks-inference` stack | `sam deploy` / `sam delete` |
+| Function URL | `chalkysticks-inference` stack | `sam deploy` / `sam delete` |
+| CloudFront distribution | `chalkysticks-inference` stack | `sam deploy` / `sam delete` |
+| Lambda IAM role | `chalkysticks-inference` stack | `sam deploy` / `sam delete` |
+| ECR repository | Created separately | Preserve across stack deletion for rollback |
+| ACM certificate | Requested separately in `us-east-1` | Preserve while custom hostname is used |
+| Linode DNS records | Linode | Manual |
 
-**3. ONNX Runtime crashes because Lambda's sandbox doesn't expose `/sys/devices/system/cpu/`.**
-ONNX Runtime uses the `cpuinfo` library to detect CPU topology at init time. Lambda's container sandbox doesn't provide `/sys/devices/system/cpu/possible` etc. cpuinfo fails, ONNX Runtime tries to log a warning, its `LoggingManager::DefaultLogger()` isn't initialized yet, C++ throws, `terminate()` is called, the process aborts. Fix: a small C shim (`cpuinfo-shim.c`) compiled as a shared library and loaded via `LD_PRELOAD` intercepts `open()`/`openat()`/`fopen()` calls for those specific paths and returns a `memfd_create`-backed file descriptor with `"0-1\n"`.
-
-**4. Cold start too slow for API Gateway's 30-second timeout.**
-Even after all fixes, the cold start for a 9.6 GB image (image pull + extract + Python imports + model weight loading) takes 25-40 seconds. API Gateway HTTP API has a hard 30-second integration timeout. Lambda Function URLs remove that cap, but the cold start UX is still unacceptable for any user-facing or time-sensitive call.
-
-### Cost Comparison
-
-| Service | Monthly | Cold start | Notes |
-|---|---|---|---|
-| Local sidecar | $0 | None | Currently running |
-| EC2 t4g.medium | ~$28 | None | Cheapest AWS option |
-| ECS Fargate (2 vCPU / 4 GB) | ~$96 | None | Fully managed |
-| Lambda (10 GB, on-demand) | ~$1-2 | 25-40 seconds | Free tier covers low traffic |
-| Lambda + Provisioned Concurrency | ~$435 | None | Defeats Lambda's cost advantage |
+Avoid direct changes to stack-owned resources. Manual Lambda or CloudFront
+updates create CloudFormation drift.
 
 ## ECR Repository
 
-Our container images are pushed to Amazon Elastic Container Registry:
-
-```
+```text
 172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection
 ```
 
-### Authentication
+Authenticate:
 
 ```bash
-aws ecr get-login-password --region us-east-2 | \
-  docker login --username AWS --password-stdin \
-  172720370877.dkr.ecr.us-east-2.amazonaws.com
+aws ecr get-login-password --region us-east-2 \
+  | docker login --username AWS --password-stdin \
+    '172720370877.dkr.ecr.us-east-2.amazonaws.com'
 ```
 
-### Push an Image
+The deployment tool pushes both `latest` and an immutable timestamp. It then
+resolves `latest` to `repository@sha256:...` before SAM deployment so
+CloudFormation sees an actual image change.
+
+## SAM Deployment
+
+The stack source is `bin/api-v2/docker/aws/template.yml`. The supported path is:
 
 ```bash
-docker tag chalkysticks/inference:lambda \
-  172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection:latest
-
-docker push \
-  172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection:latest
+cd bin/api-v2
+./docker/tool/run
+# -> Deploy to AWS Lambda
 ```
 
-Or use the tool's "Push to ECR" command which handles login, tagging, and push in one step.
+The tool supplies all parameters non-interactively, including:
 
-## SAM (Serverless Application Model)
+- immutable image digest
+- `MemorySize=10240`
+- custom hostname when its certificate is issued
+- ACM certificate ARN
+- ECR image repository mapping
 
-The Lambda stack is defined in `bin/api-v2/docker/aws/template.yml` using AWS SAM. SAM is a CloudFormation transform that simplifies Lambda + API Gateway / Function URL definitions.
+Do not mix this with `aws lambda update-function-code`. We tested that path;
+out-of-band image changes made the stack's recorded state diverge and led to
+update/rollback failures.
 
-### Key SAM Commands
+## Service Runbooks
+
+Use the component-specific pages for operational commands:
+
+- [Lambda Inference Service](/infrastructure/lambda-inference) — deploy,
+  health, logs, rollback, emergency disable, and deletion
+- [CloudFront Inference Edge](/infrastructure/cloudfront-inference) — custom
+  domain, DNS, certificate, behavior changes, diagnostics, and removal
+- [Roboflow Model Sync and Release](/infrastructure/model-release) — acquire,
+  capture, build, parity-test, push, deploy, and switch model versions
+
+## Why Not the Other Options?
+
+| Option | Status | Reason |
+| --- | --- | --- |
+| Roboflow hosted inference | Available fallback | Preserves external cost and runtime dependency |
+| Browser private-model inference | Not used | Ships private weights to clients |
+| Main API server | Not used | Couples API and inference resource scaling |
+| EC2 inference host | Viable fallback | Always-on operational cost and host management |
+| ECS/Fargate | Viable at higher steady traffic | More baseline cost than scale-to-zero Lambda |
+| General vendor image on Lambda | Rejected | Multi-gigabyte image and unpredictable cold initialization |
+| Native ONNX Lambda | Active | Small, private, independently scalable, deterministic runtime |
+
+## Full Retirement
+
+Deleting the stack removes stack-owned compute and edge resources:
 
 ```bash
 cd bin/api-v2/docker/aws
-
-# Build (no-op for image-based functions, but canonical step)
-sam build
-
-# Deploy (first time — interactive)
-sam deploy --guided
-
-# Deploy (subsequent — non-interactive)
-sam deploy \
+sam delete \
   --stack-name chalkysticks-inference \
-  --region us-east-2 \
-  --parameter-overrides "ImageUri=<ecr-uri>" "MemorySize=10240" \
-  --image-repositories "InferenceFunction=<ecr-repo>" \
-  --capabilities CAPABILITY_IAM \
-  --no-confirm-changeset \
-  --no-fail-on-empty-changeset
+  --region us-east-2
 ```
 
-### Known SAM Gotchas
+Afterward:
 
-- **SAM doesn't detect image changes when `ImageUri` is `:latest`.** CloudFormation compares the parameter string. `:latest` → `:latest` = no diff = no update. Fix: resolve the ECR digest before deploying and pass `repo@sha256:DIGEST` as the parameter.
-- **Don't mix `sam deploy` with `aws lambda update-function-code`.** Out-of-band updates make CloudFormation's recorded state diverge from actual state, leading to `UPDATE_ROLLBACK_FAILED`. Always deploy image updates through SAM.
-- **`--guided` fights with Bun's stdio.** SAM's interactive prompts and Bun's `@clack/prompts` both read stdin. The first keystroke is captured by clack's leftover handler instead of SAM's readline, crashing the tool. Fix: pass all SAM answers as CLI flags, skip `--guided`.
+1. Remove `scan.chalkysticks.com` from Linode DNS.
+2. Preserve ECR until the rollback retention window closes.
+3. Delete the ACM certificate only after CloudFront no longer references it.
+4. Delete ECR only when all rollback images are intentionally retired.
 
-## Lambda-Specific Docker Configuration
-
-The Lambda variant (`Dockerfile.lambda`) adds several layers on top of the standalone image that are only needed for Lambda's environment:
-
-### Port 8080 (not 9001)
-
-```dockerfile
-ENV AWS_LWA_PORT=8080
-ENV PORT=8080
-ENTRYPOINT ["sh", "-c", "... exec /usr/local/bin/uvicorn cpu_http:app --workers 1 --host 0.0.0.0 --port 8080"]
-```
-
-Lambda's runtime API is bound to `127.0.0.1:9001`. Any app trying to bind `0.0.0.0:9001` silently fails (EADDRINUSE) and uvicorn dies before LWA can reach it.
-
-### AWS Lambda Web Adapter
-
-```dockerfile
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
-```
-
-LWA is a Lambda extension that translates Lambda event invocations into local HTTP requests against our FastAPI server. No application code changes needed.
-
-### cpuinfo Shim (LD_PRELOAD)
-
-```dockerfile
-COPY --from=cpuinfo-shim-builder /tmp/cpuinfo-shim.so /opt/cpuinfo-shim.so
-ENV LD_PRELOAD=/opt/cpuinfo-shim.so
-```
-
-The shim intercepts `open()` / `openat()` / `fopen()` calls for `/sys/devices/system/cpu/*` and returns a memory-backed file with `"0-1\n"`. This fixes ONNX Runtime's cpuinfo crash in Lambda's sandboxed filesystem.
-
-### Thread Count Env Vars
-
-```dockerfile
-ENV OMP_NUM_THREADS=2
-ENV OPENBLAS_NUM_THREADS=2
-ENV MKL_NUM_THREADS=2
-ENV ONNXRUNTIME_INTRA_OP_NUM_THREADS=2
-ENV TORCH_NUM_THREADS=2
-```
-
-Hardcodes thread counts so numerical libraries don't try to autodetect CPU count (which would call cpuinfo again via a different path).
+Destructive resource commands are documented on the component pages so they
+remain adjacent to their warnings and recovery implications.

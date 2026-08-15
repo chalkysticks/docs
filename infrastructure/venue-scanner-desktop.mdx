@@ -1,0 +1,485 @@
+---
+title: 'Venue Scanner Desktop'
+description: 'Architecture, operating state, versioning, and private release process for the ChalkySticks venue photo scanner'
+---
+
+## Overview
+
+ChalkySticks Venue Scanner is an internal macOS and Windows desktop application
+for finding useful pool-table photos attached to venue listings. It pulls venue
+candidates from the ChalkySticks API, drives Google Search and Google Photos in
+Playwright Chromium, evaluates photos with two local models, requires a human to
+choose the final images, and uploads approved media to the CMS.
+
+The [source repository](https://github.com/chalkysticks/venue-scanner-desktop)
+is private.
+
+The application consolidates the older venue-scanning prototypes into one
+operator-facing product. The Chrome extension in
+`prototypes/51-chalkysticks-extension` remains the behavioral reference when
+Google changes its photo UI.
+
+## Current State
+
+Last verified: **August 2, 2026**
+
+| Area | State |
+| --- | --- |
+| Application version | `1.0.0` |
+| End-to-end workflow | Working through CMS upload dry run |
+| Live scan verification | 17 Google photos collected, 4 pool-table photos retained |
+| Automated tests | 210 sidecar tests, plus sidecar/UI type checks |
+| macOS | Signed `.app` and DMG build and launch verified locally |
+| Windows | Application build and NSIS installer verified on `windows-latest` |
+| Production CMS upload | Not yet performed; only dry-run upload is verified |
+| macOS notarization | Not configured |
+| Windows signing | Not configured; installer reports an unknown publisher |
+| Real Windows desktop test | Pending |
+| Automatic updater | Not implemented |
+
+The first verified Windows installer is:
+
+```text
+ChalkySticks Venue Scanner_1.0.0_x64-setup.exe
+```
+
+The installer is 56,245,979 bytes. Its verification-build SHA-256 is:
+
+```text
+088ae6e03eadf9fd0994685dcac1ccdd410366b709183b8b5128cd687d7c7a48
+```
+
+That checksum identifies the August 2 verification build, not every future
+`1.0.0` rebuild. A tagged release should publish and record its own checksum.
+
+### Release history
+
+| Version | Date | Channel | Notes |
+| --- | --- | --- | --- |
+| `1.0.0` | 2026-08-02 | Verification artifact | First clean Windows NSIS build; proper tagged GitHub Release pending |
+
+Add one row per tagged release. Release notes should record the tag, commit,
+installer filename, SHA-256, signing state, and physical-machine verification.
+
+## What the Application Does
+
+The operator workflow is deliberately staged:
+
+```text
+Pull -> Scan -> Classify -> Moderate -> Upload
+```
+
+### Pull
+
+The sidecar requests pending venue candidates from the ChalkySticks API and
+stores them in a local SQLite queue. Removing a venue from the Queue view marks
+it as skipped while retaining its deduplication row, so another pull cannot
+silently resurrect it.
+
+### Scan
+
+Each venue is scanned in an isolated child process. Playwright launches
+Chromium, searches Google for the venue, opens the venue photo browser, closes
+the default large-photo viewer, scrolls through the thumbnail collection, and
+collects images while Google lazily loads and virtualizes the gallery.
+
+The first model pass runs inside the Google page:
+
+- TensorFlow.js with the ChalkySticks table-detector model
+- pool-table confidence threshold of `0.9`
+- qualifying images downloaded at Google size `=s960`
+
+The scanner harvests images during every scroll iteration. It does not wait
+until the end because Google removes off-screen thumbnails from the DOM.
+
+### Classify
+
+The Bun sidecar keeps `Xenova/clip-vit-base-patch32` resident in-process and
+classifies downloaded photos at roughly 70–85 ms per image after startup. This
+second pass assigns upload categories such as table, darts, ping-pong,
+shuffleboard, and live music. The first model determines what is worth
+downloading; CLIP determines what the downloaded photo represents.
+
+CLIP weights are about 580 MB and are downloaded into the application model
+cache on first use. Images below the classification threshold move into the
+venue's `other/` directory.
+
+### Moderate
+
+Human review is mandatory. The detector is useful but not accurate enough to
+publish without an operator.
+
+The Moderation view provides:
+
+- venue filters and API-sync status
+- image strips and a full-size lightbox
+- keyboard navigation and approve/reject shortcuts
+- per-image upload checkboxes
+- **All**, **None**, **First 3**, and **First 4** selection presets
+- an `other/` rescue tray for false negatives
+- bulk venue rejection
+
+Root images begin selected. When the operator unchecks images and saves, those
+files move into `other/` as one batch. The Upload stage cannot send excluded
+files. This is how an operator reduces a venue with 30 similar or duplicate
+photos to the best three or four.
+
+### Upload
+
+Only approved, category-prefixed files are eligible for CMS upload. Uploads are
+tracked per image, so a partial failure retries only the files still missing
+from the CMS. Venue status becomes `uploaded` when nothing remains or `partial`
+when at least one file still needs attention.
+
+The application has resolved a real CMS venue and completed the upload path in
+dry-run mode. A real production upload remains an explicit operational test.
+
+## Architecture
+
+The product has three runtime layers:
+
+```text
+Tauri v2 shell (Rust)
+    -> starts and supervises the bundled Bun sidecar
+    -> injects a random loopback port and bearer token into the webview
+
+Bun sidecar (TypeScript)
+    -> REST + WebSocket control server on 127.0.0.1
+    -> SQLite queue, migrations, settings, logs, jobs, models, and API clients
+    -> starts one isolated scan worker per venue
+
+Scan worker + Playwright Chromium
+    -> navigates Google
+    -> handles cookies and CAPTCHA intervention
+    -> injects the table detector
+    -> downloads matching photos
+```
+
+The Vue UI never accesses the database or CMS directly. It uses the sidecar's
+typed REST/WebSocket contract. A WebSocket connection receives a complete
+snapshot first and then live job updates, which prevents stale UI state after a
+reconnect.
+
+### Why Tauri and a sidecar
+
+The business logic is built around Bun APIs including `bun:sqlite`,
+`Bun.spawn`, and `Bun.serve`. Tauri packages that runtime as an external binary
+without forcing the logic into Rust or Electron's Node process. Playwright must
+launch its own Chromium either way, so bundling Electron's browser would add
+size without replacing the scanner browser.
+
+The Rust shell owns native desktop concerns only:
+
+- single-instance enforcement
+- window and tray lifecycle
+- sidecar startup and authenticated shutdown
+- random session credential generation
+- process-tree cleanup after normal or forced exit
+
+All scanning, classification, moderation, synchronization, and upload logic
+lives in the Bun sidecar.
+
+## User Interface
+
+| View | Purpose |
+| --- | --- |
+| Dashboard | Connectivity, aggregate status, failures, browser installation, and job controls |
+| Scan | Active pipeline stages, progress, images, CAPTCHA state, and pause/resume behavior |
+| Queue | Candidate review, filtering, selection, and skip removal before scanning |
+| Moderation | Venue approval/rejection and final per-image upload selection |
+| Uploads | Ready, partial, stuck, and completed CMS upload groups |
+| Settings | API token, connection test, browser mode, pacing, storage paths, and session controls |
+
+The API token field is write-only in the UI. “Test Connection” calls
+`/users/me` and reports the authenticated identity instead of merely checking
+that a token string exists.
+
+## Runtime Data
+
+The Tauri shell starts the sidecar with its working directory set to the
+platform application-data directory. On macOS this is:
+
+```text
+~/Library/Application Support/com.polymermallard.venue-scanner/
+```
+
+On Windows the equivalent directory is beneath `%APPDATA%`.
+
+| Path | Contents |
+| --- | --- |
+| `dist/scanner.db` | SQLite database in WAL mode |
+| `dist/settings.json` | Persistent settings and the API token |
+| `dist/cookies.txt` | Reusable Google session cookies |
+| `dist/session.json` | Current loopback port and bearer token; removed on quit |
+| `dist/sidecar.lock` | Exclusive process lock |
+| `dist/logs/` | Server and per-job logs; newest 20 retained |
+| `output/` | Venue folders, selected images, and `other/` exclusions |
+| `playwright-browsers/` | On-demand Chromium installation, about 180 MB |
+| `model-cache/` | CLIP model weights, about 580 MB |
+
+The control server binds only to `127.0.0.1` and requires the random session
+bearer token on every route. The persistent ChalkySticks API token is currently
+stored in plaintext in `settings.json`; native keychain storage is not yet
+implemented.
+
+## Version Matrix
+
+These are the currently declared application/runtime series:
+
+| Component | Version |
+| --- | --- |
+| Product, UI, and sidecar | `1.0.0` |
+| Tauri | v2 (`@tauri-apps/cli ^2.0.0`) |
+| Vue | `^2.7.16` |
+| Vue Router | `^3.6.5` |
+| Vite | `^5.4.0` |
+| TypeScript | `^5.0.0` |
+| Bundled Bun runtime | `^1.3.14` |
+| Playwright | `^1.40.0` |
+| Hugging Face Transformers.js | `^3.4.1` |
+| CLIP model | `Xenova/clip-vit-base-patch32`, fp32 ONNX |
+
+Use the repository lockfiles for the exact dependency resolutions of a given
+commit. Always run the sidecar through `sidecar/node_modules/.bin/bun`; a
+machine-wide Bun may be an incompatible version.
+
+## Local Development
+
+The fastest development loop runs the sidecar and web UI without Tauri:
+
+```bash
+# Terminal 1
+cd sidecar
+VENUE_SIDECAR_DEV=1 node_modules/.bin/bun src/cli.ts serve
+
+# Terminal 2
+cd ui
+yarn dev
+```
+
+The development sidecar uses port `3620` and token `dev`. Vite serves the UI at
+`http://localhost:3621` and proxies API/WebSocket traffic to the sidecar.
+
+Use Tauri development mode only for native-shell work:
+
+```bash
+yarn tauri:dev
+```
+
+The command-line interface remains available for individual stages:
+
+```text
+pull  scan  classify  approve  upload  moderate  pipeline  watch  stats  serve
+```
+
+## Building and Testing
+
+From the private repository root:
+
+```bash
+yarn install --frozen-lockfile
+yarn --cwd sidecar install --frozen-lockfile
+yarn --cwd ui install --frozen-lockfile
+yarn typecheck
+yarn test
+```
+
+Build the native package for the host operating system:
+
+```bash
+PATH="$HOME/.cargo/bin:$PATH" yarn tauri:build
+```
+
+Tauri must build on the target operating system:
+
+- macOS produces the `.app` and DMG beneath
+  `src-tauri/target/release/bundle/`.
+- Windows produces `src-tauri/target/release/bundle/nsis/*-setup.exe`.
+
+The macOS build requires the rustup toolchain. The local Homebrew Rust install
+has an LLVM incompatibility and should not be used for this project.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs for pushes to `master`, pull requests, and
+manual dispatches. Its macOS and Windows matrix performs:
+
+1. private dependency authentication
+2. frozen root, sidecar, and UI dependency installation
+3. UI and sidecar type checks
+4. all sidecar tests
+5. platform-specific sidecar staging
+6. `cargo check` for the Tauri shell
+7. an unbundled Tauri application build on Windows
+
+The sidecar imports private ChalkySticks SDK repositories. CI requires a
+fine-grained token named `GH_PRIVATE_REPO_TOKEN` with read-only Contents access
+to those repositories.
+
+Add the token in both GitHub secret stores:
+
+- **Actions:** Settings -> Secrets and variables -> Actions
+- **Dependabot:** Settings -> Secrets and variables -> Dependabot
+
+The stores are independent even when the secret names are identical.
+
+## Versioning
+
+All four version declarations should remain synchronized:
+
+```text
+package.json
+ui/package.json
+sidecar/package.json
+src-tauri/tauri.conf.json
+```
+
+The Tauri version determines the packaged application and installer version.
+Use semantic versions and matching Git tags:
+
+| Change | Example |
+| --- | --- |
+| Bug fix or internal scanner repair | `1.0.0` -> `1.0.1` |
+| Backward-compatible operator feature | `1.0.1` -> `1.1.0` |
+| Breaking storage, migration, or workflow change | `1.x` -> `2.0.0` |
+
+Before tagging, update all four declarations, commit the version change, and
+wait for the `master` CI run to pass.
+
+## Publishing a Private Windows Release
+
+The repository and its GitHub Releases are private. Only authenticated users
+with repository read access can view or download the installer.
+
+The release workflow supports two modes:
+
+| Trigger | Result |
+| --- | --- |
+| Manual `workflow_dispatch` | Builds an NSIS installer and stores a temporary Actions artifact |
+| Push of a `v*` tag | Builds the installer, stores the artifact, creates a private GitHub Release, and attaches the `.exe` |
+
+Use a tag for an official release. For example:
+
+```bash
+git switch master
+git pull --ff-only
+git status --short
+
+git tag -a v1.0.0 -m "ChalkySticks Venue Scanner v1.0.0"
+git push origin v1.0.0
+```
+
+The `Release` workflow then:
+
+1. checks out the tagged commit on `windows-latest`
+2. authenticates the private SDK dependencies
+3. installs frozen dependencies
+4. runs type checks and all tests
+5. runs `yarn tauri build`
+6. uploads `chalkysticks-venue-scanner-windows-x64`
+7. attaches `*-setup.exe` to the matching private GitHub Release
+
+Monitor and verify the release with GitHub CLI:
+
+```bash
+gh run list --repo chalkysticks/venue-scanner-desktop --workflow Release
+gh release view v1.0.0 --repo chalkysticks/venue-scanner-desktop
+gh release download v1.0.0 \
+  --repo chalkysticks/venue-scanner-desktop \
+  --pattern "*.exe"
+```
+
+The same assets are available in a browser at:
+
+```text
+https://github.com/chalkysticks/venue-scanner-desktop/releases
+```
+
+Do not treat a manual Actions artifact as the permanent release channel. Build
+artifacts expire according to repository retention settings; tagged GitHub
+Releases are the durable private distribution point.
+
+### Release checklist
+
+1. Choose the semantic version and synchronize all four version files.
+2. Review migration and storage compatibility for existing installations.
+3. Run `yarn typecheck` and `yarn test` locally.
+4. Push the version commit and require green macOS/Windows CI.
+5. Create and push the annotated matching `v*` tag.
+6. Require a green Release workflow.
+7. Download the `.exe`, calculate its SHA-256, and record it in release notes.
+8. Install it on a Windows machine and test startup, Chromium installation,
+   API authentication, one scan, moderation selection, and clean shutdown.
+9. Keep the release private until Authenticode signing and a broader
+   distribution policy are established.
+
+## macOS Distribution
+
+The macOS build is signed locally with:
+
+```text
+Developer ID Application: Polymer Mallard LLC (T93J5452EV)
+```
+
+The build script re-signs bundled `.node` and `.dylib` files because the
+hardened runtime otherwise rejects native ONNX dependencies carrying a
+different Team ID. The app also needs JIT and library-validation entitlements
+for Bun and ONNX Runtime.
+
+The DMG is not notarized, and there is no macOS release job. Do not describe the
+current DMG as generally distributable. Before private distribution to another
+Mac, add notarization credentials, automate the macOS package in the release
+workflow, and verify installation on a clean machine.
+
+## Failure Handling and Operations
+
+When a scan appears wrong, inspect evidence in this order:
+
+1. Read the newest `dist/logs/job-scan-*.log`.
+2. Inspect `scan_status`, `classify_status`, `cms_status`, `image_count`, and
+   `error_message` in `dist/scanner.db`.
+3. Distinguish `scan_status='complete'` with zero matches from a `fail:*` row.
+4. Inspect the venue folder under `output/` and its `other/` directory.
+5. Reproduce one venue against a copied database, never the live database.
+
+Important operational behavior:
+
+- browser and CAPTCHA failures are environmental and may be requeued
+- three consecutive environmental failures pause the job
+- headed CAPTCHA time is excluded from machine-stage deadlines
+- a per-venue watchdog kills the entire worker/browser process tree
+- Google aggressively throttles repeated automated sessions
+- the Chrome extension is the source of truth for Google photo navigation
+
+Never point this application at
+`prototypes/46-automated-venue-scanner/dist/scanner.db`. That database contains
+the original production records and has not been migrated. Future migration
+must use SQLite `VACUUM INTO`, merge both legacy image roots, and refuse to run
+while the older scanner holds the database.
+
+## Remaining Work
+
+- perform and verify the first real production CMS upload
+- test the NSIS installer and complete workflow on a physical Windows machine
+- add Authenticode signing for Windows
+- add macOS notarization and macOS release automation
+- store the API token in the native keychain instead of plaintext JSON
+- build the first-run wizard for Chromium and CLIP downloads
+- implement migration from the legacy scanner database and image roots
+- add disk retention for old images
+- add an application updater and signing keys
+
+## Source Locations
+
+| Concern | Location |
+| --- | --- |
+| Private repository | `chalkysticks/venue-scanner-desktop` |
+| Tauri shell | `src-tauri/` |
+| Sidecar services and control server | `sidecar/src/` |
+| Vue interface | `ui/src/` |
+| Platform staging and signing | `scripts/build-sidecar.mjs` |
+| CI workflow | `.github/workflows/ci.yml` |
+| Windows release workflow | `.github/workflows/release.yml` |
+| Dependency update policy | `.github/dependabot.yml` |
+| Detailed project handoff | `docs/HANDOFF.md` |
+| Architecture and scanner timers | `docs/ARCHITECTURE.md`, `docs/SCAN-PIPELINE.md` |

@@ -1,87 +1,129 @@
 ---
 title: 'Infrastructure Overview'
-description: 'Self-hosted inference, Docker tooling, and cloud deployment for ChalkySticks computer vision'
+description: 'Local model acquisition, private native inference, Lambda, CloudFront, and operational tooling for ChalkySticks table scanning'
 ---
 
-## What This Section Covers
+## Current Architecture
 
-ChalkySticks uses computer vision (via Roboflow) to detect pool table objects — balls, pockets, rails — and classify ball types from photos and video frames. The main API endpoint that drives this is `Data::tableScanFull`, which calls two Roboflow models back-to-back:
+ChalkySticks table scanning uses a private RF-DETR ONNX model in an on-demand
+AWS Lambda. CloudFront provides the stable `scan.chalkysticks.com` hostname.
+The production request path has no runtime dependency on Roboflow:
 
-1. **Table detection** (`my-first-project-2-qvkxb/8`) — finds Ball, Pocket, and Rail objects via RF-DETR
-2. **Ball classification** (`ball-detection-feb-2026/11`) — identifies which numbered ball each detection is (cue ball, 1-ball, 9-ball, etc.) via RF-DETR
-
-Originally these calls went directly to `serverless.roboflow.com`. We moved to self-hosted inference for three reasons:
-
-- **Downtime resilience** — Roboflow's hosted API has gone down multiple times, breaking `tableScanFull` entirely
-- **Cost** — per-inference pricing adds up for automated scans
-- **Privacy** — images and responses no longer travel through a third party
-
-This section also documents the production API edge cache. Start with [API Cache Safety](/infrastructure/api-cache-safety) before changing response scope, authentication-dependent representations, surrogate keys, or Varnish.
-
-## Architecture
-
-```
-┌─────────────┐         ┌──────────────────────────────────┐
-│ Laravel API │──POST──▶│ Roboflow Inference Sidecar       │
-│ (PHP)       │         │ (Docker, port 9001)              │
-│             │         │                                  │
-│ Services\   │         │ ┌────────────────────────────┐   │
-│ Roboflow    │         │ │ FastAPI / uvicorn           │   │
-│             │         │ │ RF-DETR model weights       │   │
-│ config/     │         │ │ cached at /tmp/cache        │   │
-│ services.php│         │ └────────────────────────────┘   │
-└─────────────┘         └──────────────────────────────────┘
+```text
+Client or Laravel API
+    -> CloudFront / scan.chalkysticks.com
+    -> Lambda Function URL
+    -> native FastAPI + ONNX Runtime
+    -> weights baked into the private ECR image
 ```
 
-The Laravel API's `Services\Roboflow` class is already URL-parameterized — it reads `ROBOFLOW_MODEL_URL` and `ROBOFLOW_BALLDETECTION_MODEL_URL` from `.env` and POSTs base64-encoded images to those URLs. **Switching from Roboflow's hosted API to the local sidecar is a two-line `.env` change with zero PHP code modifications.**
+Roboflow remains part of the explicit update process on a trusted developer
+machine:
 
-## Key Locations
+```text
+Roboflow model version
+    -> local acquisition sidecar
+    -> persistent cache + offline package manifest
+    -> vendor-compatible standalone artifact
+    -> three selected native model files
+    -> small Lambda image
+    -> ECR + CloudFormation deployment
+```
 
-| What | Where |
-|---|---|
-| Docker compose files | `bin/api-v2/docker/inference/compose.cpu.yml` and `compose.gpu.yml` |
-| Standalone Dockerfile | `bin/api-v2/docker/inference/Dockerfile` |
-| Lambda Dockerfile | `bin/api-v2/docker/inference/Dockerfile.lambda` |
-| Warmup script | `bin/api-v2/docker/inference/warmup.sh` |
-| Interactive CLI tool | `bin/api-v2/docker/tool/` (run with `./docker/tool/run`) |
-| SAM template (AWS) | `bin/api-v2/docker/aws/template.yml` |
-| Roboflow service class | `bin/api-v2/app/Services/Roboflow.php` |
-| Model URL config | `bin/api-v2/config/services.php` (lines 58-71) |
-| Env vars | `bin/api-v2/.env` (`ROBOFLOW_MODEL_URL`, `ROBOFLOW_BALLDETECTION_MODEL_URL`) |
+This separation provides:
+
+- independent, scale-to-zero inference compute
+- no Roboflow request charges or availability dependency at runtime
+- no model weights shipped to browsers
+- a stable custom HTTPS endpoint without EC2 or nginx
+- deterministic model/version rollbacks through immutable ECR tags
+
+## Primary Runbooks
+
+| Task | Documentation |
+| --- | --- |
+| Understand or operate the Lambda | [Lambda Inference Service](/infrastructure/lambda-inference) |
+| Update CloudFront, DNS, or the custom domain | [CloudFront Inference Edge](/infrastructure/cloudfront-inference) |
+| Publish a new Roboflow model version | [Roboflow Model Sync and Release](/infrastructure/model-release) |
+| Understand the 9.9 GB to 585 MB rewrite | [Native Lambda Runtime Retrospective](/infrastructure/native-runtime-retrospective) |
+| Run the acquisition sidecar locally | [Roboflow Sidecar](/infrastructure/roboflow-sidecar) |
+| Use the current menu-driven operations tool | [Inference Tool](/infrastructure/inference-tool) |
+| Operate or release the venue photo scanner | [Venue Scanner Desktop](/infrastructure/venue-scanner-desktop) |
+
+## Current Resources
+
+| Resource | Value |
+| --- | --- |
+| Active model | `balls-and-pockets-qi5jc/4` |
+| Public hostname | `https://scan.chalkysticks.com` |
+| CloudFront fallback | `https://di7v13w34zitn.cloudfront.net` |
+| Direct Lambda origin | `https://5afuy5ggk4elgsocnhfoh7mqge0vvllj.lambda-url.us-east-2.on.aws` |
+| AWS region | `us-east-2` |
+| CloudFormation stack | `chalkysticks-inference` |
+| Lambda function | `chalkysticks-inference` |
 | ECR repository | `172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection` |
+| CloudFront distribution | `EKX0VYUSUZJLV` / `di7v13w34zitn.cloudfront.net` |
+| ACM certificate region | `us-east-1` |
 
-## Three Hosting Options
+## Key Code Locations
 
-| Option | Monthly cost | Cold start | Setup |
-|---|---|---|---|
-| **Local sidecar** (Docker Compose) | $0 | None | `docker compose up -d` |
-| **AWS EC2** (t4g.medium + Docker) | ~$28 | None — always running | CloudFormation template |
-| **Standalone image** (air-gapped) | Depends on host | None if pre-warmed | `docker run` anywhere |
+| Concern | Location |
+| --- | --- |
+| Native runtime | `bin/api-v2/docker/inference/lambda_native_app.py` |
+| Native Lambda Dockerfile | `bin/api-v2/docker/inference/Dockerfile.lambda-native` |
+| CPU topology shim | `bin/api-v2/docker/inference/cpuinfo-shim.c` |
+| Acquisition warmup/manifest capture | `bin/api-v2/docker/inference/warmup.sh` |
+| Strict offline vendor provider | `bin/api-v2/docker/inference/offline_app.py` |
+| Local CPU/GPU sidecars | `bin/api-v2/docker/inference/compose.*.yml` |
+| Build/deploy tool | `bin/api-v2/docker/tool/` |
+| Lambda + CloudFront stack | `bin/api-v2/docker/aws/template.yml` |
+| API inference client | `bin/api-v2/app/Services/Roboflow.php` |
+| API model configuration | `bin/api-v2/config/services.php` and `.env` |
 
-We also explored AWS Lambda but abandoned it — see [AWS Deployment Decisions](/infrastructure/aws-deployment) for the full story.
+## What Runs Where
 
-## Quick Start
+| Component | Role | Roboflow access |
+| --- | --- | --- |
+| Local official sidecar | Acquire and compare model packages | Only when warming a new version |
+| Standalone image | Offline vendor-compatible debugging and artifact source | None |
+| Native Lambda image | Production inference | None |
+| Laravel API post-evaluation | Ball appearance, identity assignment, homography, controller response | None |
+| Browser SDK | Chroma analysis and optional local development models | Production private weights are not shipped |
 
-The fastest path to a working local sidecar:
+## Quick Health Check
+
+```bash
+curl -fsS https://scan.chalkysticks.com/ | jq
+```
+
+Expected:
+
+```json
+{
+  "status": "ok",
+  "runtime": "native-offline-rfdetr-onnx"
+}
+```
+
+If the custom domain is not active, use
+`https://di7v13w34zitn.cloudfront.net/` to isolate DNS/certificate setup from
+Lambda health.
+
+## Deployment Entry Point
 
 ```bash
 cd bin/api-v2
-
-# Start the sidecar (auto-downloads models on first boot)
-docker compose -f docker/inference/compose.cpu.yml up -d
-
-# Update .env to point at the sidecar instead of serverless.roboflow.com
-# ROBOFLOW_MODEL_URL=http://127.0.0.1:9001/my-first-project-2-qvkxb/8
-# ROBOFLOW_BALLDETECTION_MODEL_URL=http://127.0.0.1:9001/ball-detection-feb-2026/11
-
-# Restart PHP-FPM and test
-curl -F image=@/path/to/table.jpg http://localhost:8000/v3/data/table-scan-full | jq
-```
-
-Or use the interactive tool for a guided experience:
-
-```bash
 ./docker/tool/run
 ```
 
-See [Roboflow Sidecar](/infrastructure/roboflow-sidecar) for the full setup guide, and [Inference Tool](/infrastructure/inference-tool) for the CLI reference.
+The current tool owns local acquisition, cache backup, offline builds, native
+Lambda builds, ECR pushes, SAM deployment, and basic inference tests. The
+longer-term home for cross-project operations is the global `chalky` CLI; see
+[Inference Tool](/infrastructure/inference-tool) for the current boundary and
+migration candidates.
+
+## Related Infrastructure
+
+This section also documents the production API edge cache. Read
+[API Cache Safety](/infrastructure/api-cache-safety) before changing
+authentication-dependent responses, cache keys, surrogate keys, or Varnish.

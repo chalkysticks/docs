@@ -7,37 +7,37 @@ Now:
 
 	☐ Try a grey preset on dynamic image unfurl thing
 
-	☐ Add zoom / crop controls for diagrams.
-		☐ Confirm whether this can use `viewBox`.
+	☐ Add zoom / crop controls for diagrams
+		☐ Confirm whether this can use `viewBox`
 		✔ Use pinch on mobile. @done(26-06-03 14:02)
-		☐ Add zoom icon and drag-to-pan on desktop.
-		☐ Export cropped diagrams correctly.
+		☐ Add zoom icon and drag-to-pan on desktop
+		☐ Export cropped diagrams correctly
 
-	☐ Add multiple diagrams / sequences.
-		☐ Create, duplicate, reorder, and delete steps.
-		☐ Export sequence as image set or shareable URL.
+	✔ Add multiple diagrams / sequences. @done(26-08-11 16:09)
+		✔ Create, duplicate, reorder, and delete steps. @done(26-08-11 16:09)
+		✔ Export sequence as image set or shareable URL. @done(26-08-11 16:09)
 
-	☐ Fix saved Pad diagrams that load incorrectly.
-		☐ Confirm whether API is using the old diagram format.
-		☐ Confirm Trainer phone loading issue related to 3D ball errors.
+	☐ Fix saved Pad diagrams that load incorrectly
+		☐ Confirm whether API is using the old diagram format
+		☐ Confirm Trainer phone loading issue related to 3D ball errors
 
 
 Table Scanner & Inference:
 
-	☐ Let users adjust detected pocket identifiers.
-		☐ Six pocket markers should be draggable.
-		☐ Mirror projection-mapping calibration patterns.
-		☐ Save corrected table bounds with confidence.
+	☐ Let users adjust detected pocket identifiers
+		☐ Six pocket markers should be draggable
+		☐ Mirror projection-mapping calibration patterns
+		☐ Save corrected table bounds with confidence
 
-	☐ Explore multi-frame scanner capture.
-		☐ Record short video or multiple frames.
-		☐ Find the most common table result.
-		☐ Let user choose the correct result when uncertain.
+	☐ Explore multi-frame scanner capture
+		☐ Record short video or multiple frames
+		☐ Find the most common table result
+		☐ Let user choose the correct result when uncertain
 
-	☐ Explore custom overhead inference model.
-		☐ User manually sets corners.
-		☐ Preview homography.
-		☐ Support fixed cameras.
+	☐ Explore custom overhead inference model
+		☐ User manually sets corners
+		☐ Preview homography
+		☐ Support fixed cameras
 
 
 Editor Features:
@@ -64,46 +64,46 @@ Editor Features:
 
 Tools Built On Pad:
 
-	☐ Randomized Pattern Racker.
-		☐ Support 8-ball, 9-ball, and 10-ball.
-		☐ Follow legal racking requirements.
-		☐ Lock specific balls for house rules or handicaps.
-		☐ One-tap re-rack.
-		☐ Undo to previous rack.
-		☐ Rack history.
-		☐ Export rack as image or SVG.
-		☐ Push rack data to Scorekeeper, Match Log, Trainer, or Pad.
-		☐ Broadcast current rack to a public URL for events or TVs.
-		☐ Add premium ball-set themes and rack reveals.
+	☐ Randomized Pattern Racker
+		☐ Support 8-ball, 9-ball, and 10-ball
+		☐ Follow legal racking requirements
+		☐ Lock specific balls for house rules or handicaps
+		☐ One-tap re-rack
+		☐ Undo to previous rack
+		☐ Rack history
+		☐ Export rack as image or SVG
+		☐ Push rack data to Scorekeeper, Match Log, Trainer, or Pad
+		☐ Broadcast current rack to a public URL for events or TVs
+		☐ Add premium ball-set themes and rack reveals
 
-	☐ Shot clock utility.
-		☐ Presets: 15, 30, 45, and 60 seconds.
-		☐ Custom time.
-		☐ Start, pause, and reset.
-		☐ Background game timer.
-		☐ Haptics, sounds, and visual alerts.
-		☐ Chess-clock mode.
-		☐ Session memory.
-		☐ Watch-face style display themes.
-		☐ Export shot-time data.
-		☐ High-contrast and voice cue modes.
-		☐ Widget / quick launch.
-		☐ Mirror output to second screen.
+	☐ Shot clock utility
+		☐ Presets: 15, 30, 45, and 60 seconds
+		☐ Custom time
+		☐ Start, pause, and reset
+		☐ Background game timer
+		☐ Haptics, sounds, and visual alerts
+		☐ Chess-clock mode
+		☐ Session memory
+		☐ Watch-face style display themes
+		☐ Export shot-time data
+		☐ High-contrast and voice cue modes
+		☐ Widget / quick launch
+		☐ Mirror output to second screen
 
-	☐ Handicap calculator.
-		☐ APA 8-ball and 9-ball.
-		☐ BCA / BCAPL.
-		☐ FargoRate lookup.
-		☐ Custom house formats.
-		☐ Race calculation.
-		☐ Scorecard generator.
-		☐ Team matchup helper.
-		☐ Handicap editor.
-		☐ Share / export matchups.
-		☐ Director mode for events.
-		☐ League API integration.
-		☐ OCR score-sheet import.
-		☐ New-player handicap predictor.
+	☐ Handicap calculator
+		☐ APA 8-ball and 9-ball
+		☐ BCA / BCAPL
+		☐ FargoRate lookup
+		☐ Custom house formats
+		☐ Race calculation
+		☐ Scorecard generator
+		☐ Team matchup helper
+		☐ Handicap editor
+		☐ Share / export matchups
+		☐ Director mode for events
+		☐ League API integration
+		☐ OCR score-sheet import
+		☐ New-player handicap predictor
 
 
 Archive: Completed:

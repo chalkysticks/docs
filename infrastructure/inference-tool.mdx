@@ -1,163 +1,273 @@
 ---
-title: 'Inference Tool'
-description: 'Interactive Bun CLI for managing the Roboflow inference sidecar — start, stop, build, test, export, deploy'
+title: 'Inference Operations Tooling'
+description: 'Current menu-driven Docker/SAM tool and the planned migration of machine-wide inference operations into the global chalky CLI'
 ---
 
-## What It Is
+## Current Tool
 
-A Bun + TypeScript interactive CLI at `bin/api-v2/docker/tool/` that wraps every Docker, ECR, and SAM operation into a menu-driven interface. Instead of remembering `docker compose -f docker/inference/compose.cpu.yml up -d` or `docker export | docker import` incantations, you run one command and pick from the menu.
-
-## Quick Start
+The working inference operations tool is a Bun + TypeScript menu at
+`bin/api-v2/docker/tool/`:
 
 ```bash
 cd bin/api-v2
 ./docker/tool/run
 ```
 
-First run auto-installs dependencies (~5 seconds). Every subsequent run is instant.
+It currently owns:
 
+- local CPU/GPU acquisition sidecars
+- model warmup and cache inspection
+- cache export/import
+- vendor-compatible standalone builds
+- native Lambda image builds
+- local smoke and real-image tests
+- ECR pushes with immutable tags
+- SAM/CloudFormation deployment
+- frame-grabber container/Lambda operations
+- cleanup and container logs
+
+## Menu
+
+```text
+Status
+Start (CPU)
+Start (GPU)
+Stop everything
+Restart inference
+Build standalone image
+Export cache
+Import cache
+Test inference (smoke)
+Test inference (real image)
+Tail logs
+Build Lambda image
+Push to ECR
+Deploy to AWS Lambda
+Build frame-grabber image
+Build frame-grabber Lambda image
+Push frame-grabber to ECR
+Deploy frame-grabber to Lambda
+Cleanup
 ```
-🎱 ChalkySticks Inference Tool
 
-? What would you like to do?
-> ▸ Status
-  Start (CPU)
-  Start (GPU)
-  Stop everything
-  Restart inference
-  Build standalone image
-  Export cache
-  Import cache
-  Test inference (smoke)
-  Test inference (real image)
-  Tail logs
-  Build Lambda image
-  Push to ECR
-  Deploy to AWS Lambda
-  Cleanup
-  Exit
-```
-
-## Command Reference
+## Important Commands
 
 ### Status
 
-Shows container states, cache volume size, per-model presence, and standalone-image size. Read-only — never mutates anything.
+Reports container health, cache size, active model paths, manifests, and local
+image availability. It is read-only.
 
-```
-▸ Containers:
-  chalkysticks-inference         running (healthy)
-  chalkysticks-inference-warmup  exited (0)
+### Start CPU/GPU
 
-▸ Cache volume: 219 MB
-▸ Cached models:
-  OK  my-first-project-2-qvkxb/8
-  OK  ball-detection-feb-2026/11
+Starts the official acquisition server and one-shot warmup container. The
+warmup downloads the selected package and captures `model-metadata.json`.
 
-▸ Standalone image: chalkysticks/inference:latest (9.9 GB)
-```
+### Build standalone image
 
-### Start (CPU) / Start (GPU)
+Requires an offline-complete cache, including the captured package manifest,
+and produces `chalkysticks/inference:latest`. This is the large
+vendor-compatible artifact/debug image, not the Lambda runtime.
 
-Runs `docker compose up -d` with the CPU or GPU compose file, then tails the warmup container's logs so you see models downloading in real time.
+### Build Lambda image
 
-### Stop Everything
+Reads the active model and captured manifest from the standalone image, selects
+the ONNX package, resolves its content-addressed blobs, and copies only:
 
-`docker compose down` on both CPU and GPU compose files. Idempotent.
+- `weights.onnx`
+- `inference_config.json`
+- `class_names.txt`
 
-### Restart Inference
-
-`docker compose up -d --force-recreate inference` — restarts the inference container without touching the cache volume. Use when you've changed environment variables or compose settings.
-
-### Build Standalone Image
-
-Tars the live model cache volume and bakes it into `chalkysticks/inference:latest`. The result is a fully air-gapped image you can ship to any Docker host. Flow:
-
-1. Verifies both models are present in the cache
-2. Asks for confirmation (shows cache size)
-3. Tars the `chalkysticks-model-cache` volume via an ephemeral `alpine tar` container
-4. Runs `docker build` with the tarball as context
-5. Cleans up the tarball
-6. Reports final image size and shows run/save/load commands
-
-### Build Lambda Image
-
-Builds `chalkysticks/inference:lambda` from the standalone image. This involves:
-
-1. **Stripping unused dependencies** — spawns a temp container, `docker exec rm -rf` on `triton`, `jaxlib`, `debugpy` (~958 MB saved)
-2. **Flattening** — `docker export | docker import` to produce a single-layer image (necessary because `rm -rf` in a Dockerfile creates tombstone layers but doesn't actually shrink the image)
-3. **Compiling the cpuinfo shim** — a small C library that intercepts `open()` calls for `/sys/devices/system/cpu/*` which Lambda's sandbox doesn't expose
-4. **Layering the AWS Lambda Web Adapter** — the binary that bridges Lambda's event model to our FastAPI server
-
-### Export / Import Cache
-
-**Export** dumps the model cache volume to a `.tar.gz` file for backup or transfer. **Import** restores it. Import confirms before overwriting.
-
-### Test Inference (Smoke)
-
-POSTs a 1x1 transparent PNG to each known model URL and reports HTTP status + duration. Confirms the sidecar is alive without needing a real image. Reads `ROBOFLOW_API_KEY` from `bin/api-v2/.env`.
-
-```
-Smoke test: my-first-project-2-qvkxb/8
-    HTTP 200  in 0.342s
-Smoke test: ball-detection-feb-2026/11
-    HTTP 200  in 0.289s
-```
-
-### Test Inference (Real Image)
-
-Asks for an image path, lets you pick a model (or both), POSTs the real image, and prints the first 4KB of the prediction JSON.
+into the small native `linux/arm64` image. It produces
+`chalkysticks/inference:lambda` and does not include Roboflow or PyTorch.
 
 ### Push to ECR
 
-Tags the Lambda image with the configured ECR repository URI and pushes it. Reads `CHALKYSTICKS_ECR_REPO` from `.env` or prompts if not set.
+Reads `CHALKYSTICKS_ECR_REPO` from `bin/api-v2/.env`, logs in to ECR, and
+publishes both `latest` and an immutable UTC timestamp tag.
 
 ### Deploy to AWS Lambda
 
-Runs `sam build && sam deploy` with explicit parameters. Resolves the current `:latest` digest from ECR so CloudFormation always sees a real diff. No interactive prompts (we bypassed `--guided` because Bun's stdio handling fights with SAM's readline).
+The deployment command:
 
-### Tail Logs
+1. Resolves ECR `latest` to an immutable digest.
+2. Checks the optional `scan.chalkysticks.com` certificate.
+3. Runs `sam build` and non-interactive `sam deploy`.
+4. Updates Lambda and CloudFront through CloudFormation.
+5. Prints the direct, CloudFront, and custom endpoints.
 
-Pick `inference` or `warmup`, then follows the last 100 lines of that container's logs.
+If the custom-domain certificate is pending, CloudFront remains live on its
+AWS hostname and the alias is deferred until the next deployment.
 
 ### Cleanup
 
-Stops everything, deletes the cache volume, and optionally removes the standalone image. Confirms before every destructive step.
+Stops local sidecars and removes the model cache volume after confirmation.
+This is destructive to local acquired packages but does not alter Lambda, ECR,
+or Roboflow.
 
 ## Configuration
 
-All constants live in `docker/tool/src/config.ts`:
+The tool reads `bin/api-v2/.env` without sourcing it:
 
-| Constant | Value | What it controls |
-|---|---|---|
-| `KNOWN_MODELS` | `['my-first-project-2-qvkxb/8', 'ball-detection-feb-2026/11']` | Models the tool verifies in the cache and warms on startup |
-| `STANDALONE_IMAGE` | `chalkysticks/inference:latest` | Docker tag for the standalone image |
-| `LAMBDA_IMAGE` | `chalkysticks/inference:lambda` | Docker tag for the Lambda image |
-| `INFERENCE_URL` | `http://127.0.0.1:9001` | Where smoke/real tests POST to |
-| `ECR_REPO_ENV_VAR` | `CHALKYSTICKS_ECR_REPO` | Env var name for the ECR repo URI |
-| `LAMBDA_FUNCTION_NAME` | `chalkysticks-inference` | CloudFormation stack + Lambda function name |
+```dotenv
+ROBOFLOW_API_KEY=...
+ROBOFLOW_DETECTION_MODEL_URL=http://127.0.0.1:9001/balls-and-pockets-qi5jc/4
+ROBOFLOW_WARMUP_MODELS=balls-and-pockets-qi5jc/4
 
-To add a new model, push a new entry to `KNOWN_MODELS` and update `WARMUP_MODELS` in both compose files.
-
-## File Layout
-
+CHALKYSTICKS_ECR_REPO=172720370877.dkr.ecr.us-east-2.amazonaws.com/chalkysticks/roboflow-table-detection
+CHALKYSTICKS_INFERENCE_CUSTOM_DOMAIN=scan.chalkysticks.com
+CHALKYSTICKS_INFERENCE_CERTIFICATE_ARN=arn:aws:acm:us-east-1:172720370877:certificate/68e4e42c-1cd0-4b27-913a-ccce954f4245
 ```
-docker/tool/
-├── package.json         # Bun project (depends on @clack/prompts)
-├── tsconfig.json        # strict TS, ESNext, bundler resolution
-├── run                  # shell launcher (chmod +x, auto-installs deps)
+
+The active native builder requires one combined
+`ROBOFLOW_DETECTION_MODEL_URL`. Legacy dual-model variables remain fallback
+inputs for local/older workflows.
+
+## Source Layout
+
+```text
+bin/api-v2/docker/tool/
+├── run
+├── package.json
 ├── README.md
 └── src/
-    ├── index.ts         # main menu loop
-    ├── commands.ts      # every command implementation
-    ├── docker.ts        # docker / docker compose / shell helpers
-    └── config.ts        # paths, container names, image names, defaults
+    ├── index.ts       # menu and dispatch
+    ├── commands.ts    # acquisition, build, ECR, SAM, and tests
+    ├── config.ts      # paths, image/resource names, env keys
+    ├── docker.ts      # process and Docker helpers
+    ├── log.ts
+    └── prompts.ts
 ```
 
-## Adding a New Command
+Run validation after editing:
 
-1. Implement the function in `commands.ts` and `export` it
-2. Add an entry to `MENU_OPTIONS` in `index.ts` — the `value` must exactly match the exported function name
-3. Run `bun run typecheck` from `docker/tool/` to verify
+```bash
+cd bin/api-v2/docker/tool
+bun run typecheck
+```
 
-The dispatcher in `index.ts` calls `commands[choice]()` by name, so wiring is automatic.
+## Global `chalky` CLI
+
+The machine-wide CLI lives at:
+
+```text
+prototypes/53-chalky-cli
+```
+
+It is installed globally as `chalky`, discovers the ChalkySticks workspace,
+supports both interactive and scriptable commands, and already uses a safe
+execution pattern for SDK publishing: dry-run by default, with mutation
+requiring `--execute --yes`.
+
+That makes it the correct long-term frontend for cross-project inference
+operations. The local `docker/tool` should remain the implementation reference
+until its operations are extracted or wrapped without duplicating deployment
+logic.
+
+## Global `chalky inference` Commands
+
+### Available Now: read-only operations
+
+```bash
+chalky inference status
+chalky inference status --json
+chalky inference health
+chalky inference health --endpoint cloudfront
+chalky inference health --endpoint origin
+chalky inference logs --since 15m
+chalky inference certificate
+chalky inference certificate --json
+chalky inference tool
+```
+
+`scan` is an alias for `inference`. These commands do not change models or AWS
+resources. `status` combines CloudFormation, Lambda, CloudFront, and ACM state;
+`health` probes the custom, distribution, and origin endpoints concurrently;
+and `logs` reads the Lambda CloudWatch log group. The status, health, and
+certificate commands exit non-zero when unhealthy and support JSON where shown
+for automation.
+
+`chalky inference tool` is the bridge to the existing menu-driven implementation
+for local builds and deployments. It intentionally does not duplicate those
+mutating operations in the global CLI.
+
+Current `health` checks:
+
+- ACM certificate status
+- CloudFront distribution status
+- CloudFront health response
+- direct Lambda origin response
+- Lambda state and last update status
+- deployed ECR digest
+
+Direct DNS diagnostics and an optional real-image contract check remain useful
+next read-only additions.
+
+### Phase 2: explicit release stages
+
+```bash
+chalky inference model plan --model balls-and-pockets-qi5jc/5
+chalky inference model acquire --model balls-and-pockets-qi5jc/5 --execute --yes
+chalky inference build --execute --yes
+chalky inference push --execute --yes
+chalky inference deploy --execute --yes
+chalky inference release --model balls-and-pockets-qi5jc/5 --execute --yes
+```
+
+`release` should orchestrate the same stages, not introduce a second
+implementation. It should print/checkpoint:
+
+1. current deployed digest/tag
+2. requested model slug/version
+3. manifest acquisition
+4. official model tests
+5. standalone build
+6. native build
+7. parity gate
+8. ECR immutable tag/digest
+9. CloudFormation status
+10. public health/inference verification
+
+### Phase 3: rollback and lifecycle
+
+```bash
+chalky inference releases
+chalky inference rollback --tag 2026-08-02T20-40-37 --execute --yes
+chalky inference disable --execute --yes
+chalky inference enable --execute --yes
+chalky inference destroy --plan
+chalky inference destroy --execute --yes
+```
+
+Rollback and destruction should require stronger confirmation than ordinary
+deployment and print exactly which stack, function, distribution, model path,
+and ECR image will change.
+
+## CLI Design Rules
+
+1. Read-only commands must work without confirmation and support `--json`.
+2. Every mutation should be a dry run unless `--execute --yes` is present.
+3. Destructive commands should name resources explicitly and require an
+   additional typed confirmation in interactive mode.
+4. The CLI should call AWS/Docker with argument arrays, not interpolated shell
+   strings containing user input.
+5. Roboflow keys remain in local environment/config and must never appear in
+   command history or logs.
+6. Model releases should be resumable by stage; a failed deploy should not
+   require re-downloading or rebuilding a verified model.
+7. Native/vendor parity remains a hard gate for compatible-model releases.
+8. CloudFormation remains the only supported Lambda/CloudFront update path.
+9. Health checks should distinguish DNS, certificate, edge, origin, runtime,
+   and model failures instead of returning one generic red status.
+10. The CLI should record a machine-readable release receipt containing model,
+    manifest hashes, ECR digest/tag, stack update, and verification timings.
+
+## Migration Strategy
+
+The cheapest first bridge is a `chalky inference tool` command that launches
+`bin/api-v2/docker/tool/run` from the discovered workspace. Read-only native
+commands can then move into `chalky` one at a time.
+
+Before implementing the full release command, extract reusable acquisition,
+build, ECR, and SAM operations from the interactive tool so both frontends call
+the same functions. Avoid maintaining two independent versions of the model
+release algorithm.
