@@ -1,0 +1,341 @@
+---
+title: 'Projection Package'
+description: 'Physical projector calibration, table-plane mapping, and hardware coordination'
+---
+
+`@chalkysticks/sdk-projection` (v0.1.3) owns physical projector calibration and output coordination. It turns measured projector-to-table correspondences into a robust bidirectional mapping, schedules calibration targets, detects projected light in camera frames, and coordinates a dedicated fullscreen output window.
+
+The package depends on [`@chalkysticks/sdk-geometry`](/sdk/geometry) for all homography mathematics. It deliberately does **not** depend on `sdk-inference` — an application may supply table corners or semantic pocket markers from inference, manual registration, saved installation data, or any other source.
+
+## Package Boundaries
+
+| Package | Owns |
+|---------|------|
+| `sdk-geometry` | Deterministic coordinate transformation mathematics |
+| `sdk-inference` | Image and video interpretation |
+| `sdk-projection` | Physical projection behavior |
+| Applications | Composing inference and projection when they need both |
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-projection
+```
+
+## Entry Points
+
+```typescript
+import { CalibrationSolver } from '@chalkysticks/sdk-projection';
+import { CalibrationSolver } from '@chalkysticks/sdk-projection/calibration';
+import { Mapper } from '@chalkysticks/sdk-projection/mapping';
+import { StrategyFactory } from '@chalkysticks/sdk-projection/hardware';
+```
+
+Four subpath exports ship as both ESM and CommonJS: root, `/calibration`, `/hardware`, and `/mapping`. Importing only `/mapping` or `/calibration` keeps browser-only hardware code (`HTMLVideoElement`, `BroadcastChannel`, `window.open`) out of the bundle.
+
+## Top-Level Exports
+
+```typescript
+import {
+    Calibration,  // namespace: CalibrationSolver
+    Config,       // namespace: canonical table dimensions
+    Hardware,     // namespace: CameraManager, Connection, Geometry,
+                  //            ProjectedLightDetector, Protocol, Calibration strategies
+    Mapping,      // namespace: Mapper, surface coordinate functions
+
+    // Also re-exported flat from the root:
+    CalibrationSolver,
+    Mapper,
+    mapSurfaceNormalizedToTable,
+    mapTableToSurfaceNormalized,
+} from '@chalkysticks/sdk-projection';
+```
+
+`Calibration` and `Mapping` members are available both namespaced and flat. `Config` and `Hardware` are namespace-only at the root.
+
+## Calibration
+
+`CalibrationSolver` is a projector-domain adapter over `estimateHomography` from sdk-geometry. Each correspondence pairs a **projector framebuffer point** with the **canonical table point** where that light was observed.
+
+```typescript
+import { CalibrationSolver, Mapper } from '@chalkysticks/sdk-projection';
+
+const calibration = CalibrationSolver.solve(correspondences, {
+    inlierThreshold: 8,
+});
+
+const mapper = new Mapper(calibration);
+const projectorPoint = mapper.mapTableToProjector({ x: 500, y: 1_005 });
+```
+
+```typescript
+interface IProjectorCalibrationCorrespondence {
+    projectorPoint: IGeometryPoint;
+    tablePoint: IGeometryPoint;
+}
+```
+
+Internally the solver maps `projectorPoint → sourcePoint` and `tablePoint → destinationPoint`, so the fitted matrix is **projector-to-table**; the reverse direction is produced by inverting it.
+
+### Methods
+
+| Method | Purpose |
+|--------|---------|
+| `CalibrationSolver.solve(correspondences, options?)` | Robust estimate with outlier rejection. Returns both directions plus an error report |
+| `CalibrationSolver.fitHomography(correspondences)` | Exact/least-squares fit using **every** correspondence, no outlier rejection. Returns a bare `THomographyMatrix` |
+
+### Options
+
+Options pass straight through to `estimateHomography`, with one projector-specific default:
+
+| Option | Default | Notes |
+|--------|---------|-------|
+| `inlierThreshold` | `8` | Destination-space (canonical table) units — millimeters |
+| `confidence` | sdk-geometry default (`0.995`) | |
+| `maximumIterations` | sdk-geometry default (`1000`) | |
+| `minimumInlierCount` | sdk-geometry default (`4`) | |
+| `randomSeed` | sdk-geometry default | Estimation is deterministic for a given seed |
+
+<Note>
+Unlike `estimateHomography`, `inlierThreshold` is **optional** here — the projector domain has a known destination unit (millimeters on the canonical table), so a default of `8` is meaningful.
+</Note>
+
+### Result
+
+```typescript
+interface IProjectorCalibrationResult {
+    errors: number[];                    // per-correspondence error, input order
+    inlierCount: number;
+    inlierMask: boolean[];
+    iterationCount: number;
+    maximumError: number;
+    meanError: number;
+    projectorToTable: THomographyMatrix;
+    rootMeanSquareError: number;
+    tableToProjector: THomographyMatrix;
+}
+```
+
+Errors are reported in destination table units. The `errors` and `inlierMask` arrays stay aligned with the supplied correspondence order, so a host can highlight which physical samples were rejected.
+
+## Mapping
+
+`Mapper` wraps a completed calibration and exposes both directions. It takes defensive copies of both matrices at construction and returns copies from its getters, so a mapper cannot be mutated through the calibration object it was built from.
+
+```typescript
+import { Mapper } from '@chalkysticks/sdk-projection/mapping';
+
+const mapper = new Mapper(calibration);
+
+const tablePoint = mapper.mapProjectorToTable({ x: 640, y: 360 });
+const projectorPoint = mapper.mapTableToProjector({ x: 500, y: 1_005 });
+
+const forward = mapper.projectorToTable;  // copy
+const reverse = mapper.tableToProjector;  // copy
+```
+
+## Canonical Table Coordinates
+
+The canonical table plane is **portrait** and expressed in millimeters:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `TABLE_WIDTH` | `1000` | Short side, millimeters |
+| `TABLE_HEIGHT` | `2010` | Long side, millimeters |
+| `BALL_DIAMETER_RATIO` | `0.042` | Ball diameter as a fraction of the short pocket-center span |
+| `CUSHION_NOSE_INSET_RATIO` | `0.033` | Cushion-nose inset as a fraction of the short pocket-center span |
+
+These are the pocket-center spans. The visible cushion-nose cloth is inset from them by `CUSHION_NOSE_INSET_RATIO × TABLE_WIDTH` = **33 mm** on every side, giving a cloth span of 934 × 1944 mm.
+
+## Table Surface Coordinates
+
+Projection content commonly begins in **Pad-normalized cloth coordinates**, where the horizontal axis follows the table length and the vertical axis follows its width. The mapping package rotates those points into the canonical portrait table plane directly, without requiring an inference-only `ReverseProjector`:
+
+```typescript
+import { mapSurfaceNormalizedToTable, mapTableToSurfaceNormalized } from '@chalkysticks/sdk-projection/mapping';
+
+const tablePoint = mapSurfaceNormalizedToTable({ x: 0.25, y: 0.75 }, 'bottom');
+const normalizedPoint = mapTableToSurfaceNormalized(tablePoint, 'bottom');
+```
+
+The second argument is the physical head-end orientation:
+
+```typescript
+type TProjectorTableHeadEnd = 'bottom' | 'top';
+```
+
+Both functions default to `'bottom'` and are exact inverses of each other.
+
+The conversion spans the complete cushion-nose cloth and supports either physical head-end orientation. Coordinates outside the visible surface are **intentionally preserved rather than clamped**, so off-surface artwork transforms consistently instead of collapsing onto the rail.
+
+## Calibration Strategies
+
+The hardware namespace provides two target schedulers. Both implement `IProjectorHardwareScanStrategy`, and both **schedule targets only** — camera capture, output acknowledgement, difference-frame measurement, and retry timing remain controlled by the host calibration session.
+
+```typescript
+import { Hardware } from '@chalkysticks/sdk-projection';
+
+const strategy = Hardware.Calibration.StrategyFactory.create('adaptive-pocket');
+strategy.reset(context);
+
+let target = strategy.createNextTarget(state);
+
+while (target && !strategy.isSatisfied(state)) {
+    // Host projects the dot, captures frames, measures, then:
+    strategy.acceptResult({ measurement, observation, target });
+    target = strategy.createNextTarget(state);
+}
+```
+
+| Identifier | Title | Max samples | Behavior |
+|------------|-------|-------------|----------|
+| `adaptive-pocket` | Adaptive pocket refinement | 31 | One center anchor, six pocket-directed rays under a roughly aligned camera/projector prior, then up to 24 canonical refinements |
+| `dense-grid` | Dense 21 × 13 grid | 273 | Complete brute-force scan of a row-major projector grid |
+
+`StrategyFactory.create()` defaults to `'adaptive-pocket'` and throws on an unrecognized identifier.
+
+### Adaptive Pocket
+
+The bootstrap is 7 samples: 1 center anchor (projected at double the normal dot radius) followed by 6 pocket-station rays. Each ray reaches 45% of the observed center-to-pocket camera vector. After the bootstrap, refinement subdivides each of the six pocket stations into 4 quadrant children at 25% / 75% along each axis — 24 refinement targets in total.
+
+`requiresProvisionalCalibration` becomes `true` once the bootstrap sample count has been accepted, signaling to the host that a provisional homography can now steer target placement. A provisional fit needs at least 5 observations.
+
+Early completion requires **all** of: normalized RMS error at or below 0.35 ball diameters, at least 10 robust inliers, an inlier fraction of at least 0.75, all four canonical table corners mapped, and every pocket station successfully refined.
+
+### Dense Grid
+
+`dense-grid` scans all 21 × 13 = 273 grid points in row-major order. `requiresProvisionalCalibration` is always `false` — the grid is fixed in framebuffer space and never adapts. Keep it for validation runs and difficult installations where the adaptive prior cannot get a foothold.
+
+### Strategy Contract
+
+```typescript
+interface IProjectorHardwareScanStrategy {
+    acceptResult(result: IProjectorHardwareScanTargetResult): void;
+    createNextTarget(state: IProjectorHardwareScanStrategyState): IProjectorHardwareScanTarget | null;
+    isSatisfied(state: IProjectorHardwareScanStrategyState): boolean;
+    reset(context: IProjectorHardwareScanContext): void;
+    readonly detail: string;
+    readonly identifier: TProjectorHardwareScanStrategyIdentifier;
+    readonly maximumSampleCount: number;
+    readonly requiresProvisionalCalibration: boolean;
+    readonly title: string;
+}
+```
+
+Each scheduled target carries a `phase` (`'bootstrap-center'`, `'bootstrap-pocket'`, `'dense'`, `'refinement'`), a `sequence`, a `projectorPoint`, an optional `pocketStation`, an optional `targetTablePoint`, and a `dotRadius`.
+
+## Hardware
+
+<Warning>
+Everything in the `Hardware` namespace requires browser APIs — `HTMLVideoElement`, `BroadcastChannel`, `window.open`, and Canvas. Import from `/calibration` or `/mapping` instead when running headless or in Node.
+</Warning>
+
+### CameraManager
+
+Wraps a `HTMLVideoElement` and the `getUserMedia` device list for calibration capture.
+
+| Member | Purpose |
+|--------|---------|
+| `start(deviceIdentifier)` | Attach a specific video device |
+| `stop()` | Release the stream |
+| `listVideoDevices()` | Enumerate available `MediaDeviceInfo` entries |
+| `captureAveragedFrame(discardedFrameCount, sampleCount)` | Discard warm-up frames, then average N frames into one `ImageData` — noise reduction for difference measurement |
+| `captureSnapshotCanvas()` | Single frame as an `HTMLCanvasElement` |
+| `drawPreview(canvas)` | Paint the live feed into a preview canvas |
+| `deviceIdentifier` / `label` / `dimensions` / `isStarted` | State getters |
+
+### Connection
+
+Coordinates the controller page and a dedicated fullscreen projector output window over a session-scoped `BroadcastChannel`.
+
+```typescript
+import { Hardware } from '@chalkysticks/sdk-projection';
+
+const connection = new Hardware.Connection({
+    outputUrl: '/projector-output.html',
+    stateListener: (state) => console.log(state.width, state.height, state.fullscreen),
+});
+
+const outputWindow = connection.openOutput();
+
+await connection.send(ballGraphics, dotPoint, dotRadius, 'dot', playingSurfacePolygon);
+
+connection.dispose();
+```
+
+`send()` returns a promise that resolves only when the output window acknowledges that the command reached two animation frames — so a caller knows the projector is genuinely displaying the requested frame before the camera captures it. Commands time out after **5000 ms**, and `dispose()` rejects every unresolved command and closes the channel.
+
+The output window opens with features `popup=yes,width=1280,height=720` under the window name `ChalkySticksProjectorOutput` unless overridden by `windowFeatures` / `windowName`.
+
+Command modes:
+
+| Mode | Purpose |
+|------|---------|
+| `black` | Baseline dark frame for difference measurement |
+| `dot` | One calibration target |
+| `coverage` | Full projected surface fill |
+| `validation` | Closed-loop landing check |
+
+### Protocol
+
+| Function | Purpose |
+|----------|---------|
+| `createSessionIdentifier()` | RFC 4122 version 4 UUID pairing one controller with one output |
+| `createChannelName(sessionIdentifier)` | Channel name prefixed with `chalkysticks-projector-hardware` |
+| `isMessage(value)` | Type guard over `TProjectorHardwareMessage` |
+
+Three message types travel the channel: `command` (controller → output), `frame-presented` (output → controller acknowledgement), and `output-state` (output → controller geometry and fullscreen readiness).
+
+### ProjectedLightDetector
+
+Finds the strongest compact positive-light connected component between a paired black frame and illuminated frame, restricted to a registered table polygon.
+
+```typescript
+const detector = new Hardware.ProjectedLightDetector(height, {
+    differenceThreshold: 40,
+    maximumPixelFraction: 0.25,
+    minimumPixelCount: 12,
+}, tableCorners, width);
+
+const measurement = detector.measure(blackFrame, illuminatedFrame);
+```
+
+`measure()` returns `null` when no component passes the gates. Detection sums RGB channels (maximum difference 765), subtracts a **median brightness offset** computed across the frame so global exposure drift does not register as signal, then rejects components below a 0.08 fill ratio or above a 6:1 aspect ratio — sparse or streaky components are not compact projected dots.
+
+### Geometry
+
+Static helpers bridging the canonical table and the projector framebuffer:
+
+| Method | Purpose |
+|--------|---------|
+| `createCanonicalTableCorners()` | The four canonical table corners |
+| `createProjectorGrid(columnCount, height, rowCount, width)` | Row-major framebuffer grid |
+| `createBalls()` | Canonical ball layout for coverage display |
+| `createProjectorBallGraphics(mapper, markerScale)` | Ball markers mapped into framebuffer space |
+| `createProjectorPlayingSurfacePolygon(mapper, inwardAdjustmentBallDiameters)` | Playing-surface outline, inset by whole ball diameters |
+| `constrainProjectorPoint(height, point, width)` | Clamp into the framebuffer |
+| `isPointInsideProjector(height, point, width)` | Framebuffer bounds test |
+| `isPointOnTable(margin, point)` | Canonical table bounds test with margin |
+
+`PROJECTOR_HARDWARE_BALL_DIAMETER` is exported as `BALL_DIAMETER_RATIO × TABLE_WIDTH` = 42 mm.
+
+## Examples
+
+```bash
+yarn build:example && yarn example
+```
+
+Then open `http://localhost:7019/example/` for the themed example directory:
+
+| Example | Purpose |
+|---------|---------|
+| `projector-live-calibration.html` | Standalone camera/projector hardware loop with manual four-corner table registration |
+| `projector-output.html` | Clean fullscreen projector surface |
+| `projector-simulation.html` | Deterministic calibration under configurable offset, scale, rotation, keystone, noise, and dropout |
+
+The physical examples do not import `sdk-inference`. An application may optionally use inference to supply the four table corners, but calibration and projection remain independently usable.
+
+## Recent Changes
+
+- **Unreleased** — Bidirectional mapping between Pad-normalized cushion-nose cloth coordinates and the canonical physical table plane for both projector orientations.
+- **0.1.0** — Established the standalone physical projection package; extracted projector calibration, mapping, hardware communication, projected-light detection, and scan strategies from `sdk-inference`; delegated all projective transformation mathematics to `@chalkysticks/sdk-geometry`; moved the live hardware, clean output, and synthetic calibration examples into this package without an inference dependency.

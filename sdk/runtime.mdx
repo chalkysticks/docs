@@ -1,0 +1,243 @@
+---
+title: 'Runtime Package'
+description: 'Framework-neutral deferred runtime lifecycle and logical asset resolution'
+---
+
+`@chalkysticks/sdk-runtime` (v1.1.0) provides two framework-neutral primitives shared by ChalkySticks web and native clients: a **logical asset catalog** that separates asset intent from concrete format, and a **deferred runtime** base class that coordinates import, install, retry, and teardown for code loaded on demand.
+
+The package has **no runtime dependencies** — no SDK Core, no Vue, no DOM. It is pure TypeScript with ambient type declarations, and unlike some SDK packages it does ship its `types/` directory to npm, so external consumers get `IAssetCatalogEntry`, `IAssetSource`, and friends without redeclaring them.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-runtime
+```
+
+The package is ESM-first (`"type": "module"`) with a CommonJS build at `build/commonjs/index.cjs` and is marked `sideEffects: false`.
+
+## Top-Level Exports
+
+```typescript
+import {
+    AssetCatalog,          // class - isolated logical asset manager
+    assetCatalog,          // process-wide shared AssetCatalog instance (also the default export)
+    assetRef,              // resolve an external URL or a registered identifier
+    parseSvgMarkup,        // split an SVG document into defs + body
+    registerAssetEntries,  // register descriptors into the shared catalog
+    sanitizeAssetUrl,      // encode URI-unsafe characters in a generated URL
+    withResolvedArt,       // resolve an authored `art` identifier into `image`
+    DeferredRuntime,       // abstract deferred lifecycle base class
+} from '@chalkysticks/sdk-runtime';
+
+import assetCatalog from '@chalkysticks/sdk-runtime'; // default export
+```
+
+`Config.Asset` (format preference and SVG parsing constants) exists in the source tree but is **not** re-exported from the package root — it is internal.
+
+## Logical Assets
+
+The problem this solves: asset owners should not have to know which image format the current platform prefers, and applications should be able to swap a package's artwork without patching the package.
+
+Asset owners export **descriptors** keyed by a stable logical identifier. Applications choose the concrete formats they want and declare explicit replacements.
+
+```typescript
+import { AssetCatalog } from '@chalkysticks/sdk-runtime';
+
+const assets: AssetCatalog = new AssetCatalog({
+    formatPreferences: ['webp', 'jpg', 'png'],
+});
+
+assets.register(packageAssetEntries);
+assets.register(applicationAssetEntries);
+assets.override('trainer.brand.hero', 'application.brand.hero');
+
+const heroUrl: string = assets.url('trainer.brand.hero');
+const iconSource: string = assets.source('shared.icon.error');
+```
+
+The identifier expresses intent and ownership. The current platform decides whether that intent becomes AVIF, WebP, JPEG, or another registered format.
+
+### AssetCatalog API
+
+| Method | Purpose |
+|--------|---------|
+| `configure(options?)` | Apply `formatPreferences` and/or a `Record<string, string>` of `overrides` in one call |
+| `has(id)` | Whether an identifier is registered **directly** (does not follow overrides) |
+| `include(family)` | Declare a bounded logical family for a computed asset reference. Consumed by the compile-time asset loader; at runtime it only rejects empty families |
+| `override(id, replacementId)` | Replace one logical asset with another registered one. Both must already exist |
+| `register(entries)` | Register one descriptor or an array of them |
+| `reset()` | Clear all entries, overrides, and preferences. Intended for test isolation and teardown, not navigation |
+| `setFormatPreferences(formats)` | Replace the ordered platform-wide format preference |
+| `source(id, format?)` | Embedded source text for a concrete format. Defaults to `'svg'` |
+| `sources(id)` | Every concrete source registered for a logical asset |
+| `url(id, formats?)` | Best concrete URL for the current platform |
+| `formatPreferences` | Getter returning a copy of the ordered preference list |
+
+`AssetCatalog` implements the ambient `IAssetManager` interface. Note that `reset()`, `setFormatPreferences()`, and the `formatPreferences` getter are on the class but **not** part of `IAssetManager` — code typed against the interface will not see them.
+
+### Descriptors
+
+```typescript
+interface IAssetCatalogEntry {
+    id: string;
+    sources: ReadonlyArray<IAssetSource>;
+}
+
+interface IAssetSource {
+    format: string;   // 'webp', 'svg', 'mp4', …
+    source?: string;  // optional embedded text (SVG markup, etc.)
+    url: string;      // concrete resolved URL
+}
+```
+
+`register()` validates that every entry has a non-empty `id` and at least one source, and that each source has both a `format` and a `url`.
+
+### Format Resolution
+
+`url(id, formats?)` walks the preference list in order and returns the first registered source whose format matches. If none match, it falls back to `entry.sources[0].url`. Formats are normalized before comparison — trimmed, lowercased, and a leading dot stripped — so `'.WebP'` and `'webp'` are the same format.
+
+The default preference order, when no `formatPreferences` are supplied:
+
+```text
+avif, webp, jpg, jpeg, png, svg, gif, hdr, ico, ktx2,
+webm, mp4, mp3, riv, glb, gltf, bin, ttf, otf, woff, woff2
+```
+
+Duplicate formats are collapsed and empty strings dropped. An empty preference list throws.
+
+### Merging Registrations
+
+Separately compiled modules may register different but compatible views of the same owned asset — one module might need only the URL while another embeds the SVG source text. `register()` merges these:
+
+| Situation | Result |
+|-----------|--------|
+| New format contributed for an existing id | Merged in |
+| Same format, same URL, one side adds `source` | Merged; the embedded source is kept |
+| Same format, **different** URL | Throws — conflicting ownership |
+| Same format, both have `source`, contents differ | Throws — conflicting ownership |
+
+This keeps genuine ownership conflicts visible instead of letting a late registration silently win.
+
+### Overrides
+
+`override(id, replacementId)` requires that **both** identifiers already resolve. Override chains are followed transitively, and a cycle throws `Circular asset override detected for: <id>`. The override is rolled back if applying it would create a cycle, so a failed `override()` leaves the catalog unchanged.
+
+`has()` checks direct registration only and deliberately does not follow the override chain.
+
+### Shared Catalog and Helpers
+
+`assetCatalog` is a process-wide `AssetCatalog` instance shared by SDK packages and framework adapters. It is also the module's default export.
+
+```typescript
+import { assetRef, registerAssetEntries, withResolvedArt } from '@chalkysticks/sdk-runtime';
+
+registerAssetEntries(generatedEntries);
+
+// Passes external URLs through untouched; resolves everything else
+assetRef('https://cdn.example.com/hero.webp'); // returned as-is
+assetRef('trainer.brand.hero');                // resolved through the shared catalog
+
+// Fill `image` from an authored `art` identifier without mutating the record
+const resolved = withResolvedArt({ art: 'shared.icon.error' });
+```
+
+`assetRef()` passes through anything matching `blob:`, `data:`, or `http(s)://`. Empty identifiers throw. `withResolvedArt()` returns a shallow copy and is a no-op when `image` is already set or `art` is absent.
+
+`sanitizeAssetUrl()` encodes URI-unsafe characters in the filename portion of a URL only — the directory prefix is left alone, and `/`, `.`, `-`, and `_` are restored after encoding. `data:` URLs are returned byte-for-byte intact.
+
+### SVG Markup
+
+`parseSvgMarkup(rawSvg)` splits a complete SVG document into reusable definitions and visible body:
+
+```typescript
+import { parseSvgMarkup } from '@chalkysticks/sdk-runtime';
+
+const { body, defs } = parseSvgMarkup(svgSource);
+```
+
+Multiple `<defs>` blocks are supported and their contents retain source order, joined with newlines. Input without a complete root `<svg>` element throws.
+
+<Warning>
+`parseSvgMarkup()` does **not** sanitize markup. It is intended for trusted, package-owned artwork. Restricting untrusted SVG remains the consumer's responsibility.
+</Warning>
+
+## Deferred Runtimes
+
+`DeferredRuntime<TModule, TResult>` is an abstract base class for code that should be imported and installed only when it is actually needed. Subclasses supply only the import and installation details; the base class owns preload, concurrent initialization, retry, and reset.
+
+```typescript
+import { DeferredRuntime } from '@chalkysticks/sdk-runtime';
+import Vue from 'vue';
+
+/**
+ * Deferred Trainer runtime owned by the host application.
+ *
+ * @class TrainerRuntime
+ * @package Runtime
+ * @project ChalkySticks Web
+ */
+class TrainerRuntime extends DeferredRuntime<typeof import('@chalkysticks/vue2-trainer'), void> {
+    /**
+     * Import the Trainer package.
+     *
+     * @return Promise<typeof import('@chalkysticks/vue2-trainer')>
+     */
+    protected async importModule(): Promise<typeof import('@chalkysticks/vue2-trainer')> {
+        return import('@chalkysticks/vue2-trainer');
+    }
+
+    /**
+     * Install the imported Trainer plugin.
+     *
+     * @param typeof import('@chalkysticks/vue2-trainer') module
+     * @return void
+     */
+    protected installModule(module: typeof import('@chalkysticks/vue2-trainer')): void {
+        Vue.use(module.default);
+    }
+}
+```
+
+### Lifecycle API
+
+| Member | Purpose |
+|--------|---------|
+| `initialize()` | Import and install once, returning `Promise<TResult>`. Concurrent callers share the same in-flight promise |
+| `preload()` | Import the module without installing it |
+| `reset()` | Return to `idle`, dropping the module and result |
+| `isReady` | `true` once state is `ready` |
+| `result` | The installed result, or `null` before readiness |
+| `state` | Current `TDeferredRuntimeState` |
+| `importModule()` | **abstract** — import the implementation module |
+| `installModule(module)` | **abstract** — install it and return the public result |
+
+### States
+
+```typescript
+type TDeferredRuntimeState = 'failed' | 'idle' | 'installing' | 'loaded' | 'loading' | 'ready';
+```
+
+| State | Meaning |
+|-------|---------|
+| `idle` | Initial state, and the state after `reset()` |
+| `loading` | `importModule()` is in flight |
+| `loaded` | Module imported, not yet installed (the resting state after `preload()`) |
+| `installing` | `installModule()` is in flight |
+| `ready` | Installation completed; `result` is populated |
+| `failed` | Import or installation threw |
+
+### Concurrency and Retry
+
+`initialize()` returns the cached result immediately once `installedResult` is non-null. Otherwise it starts — or joins — a single shared initialization promise, which is cleared in a `finally` block so a failed attempt can be retried simply by calling `initialize()` again. `loadModule()` applies the same sharing to the import step, so `preload()` followed by `initialize()` performs exactly one import.
+
+On failure, `performInitialization()` clears both the result and the retained module before rethrowing, so a retry re-imports from scratch rather than reusing a module that failed to install.
+
+<Note>
+`reset()` throws `A deferred runtime cannot reset while work is active.` if an import or installation is still in flight. Await or discard the outstanding work before resetting.
+</Note>
+
+Because `installedResult !== null` is the readiness check, a runtime whose `installModule()` legitimately returns `null` will re-run installation on every `initialize()` call. Return a sentinel object rather than `null` when installation is expensive or has side effects.
+
+## Recent Changes
+
+- **1.0.0** — Deferred runtime lifecycle; logical asset registration, format selection, source access, and explicit overrides.

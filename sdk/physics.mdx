@@ -3,7 +3,9 @@ title: 'Physics Package'
 description: 'Standalone billiards physics simulation with boundary parsing and trajectory prediction'
 ---
 
-`@chalkysticks/sdk-physics` (v0.3.10) is a standalone billiards physics package. It owns the discrete + CCD collision engine, table boundary parsing, and trajectory prediction. The previous in-tree physics from the legacy vue2-trainer has been extracted here with game-specific logic removed; thresholds are config-driven through `IPhysicsConfig` (with a couple of `TrajectoryComputer` exceptions noted below). Requires `@chalkysticks/sdk-core` `^1.61.5` as a peer dependency (`Event.Dispatcher`, `Utility.Log`).
+`@chalkysticks/sdk-physics` (v0.5.8) is a standalone billiards physics package. It owns the discrete + CCD collision engine, table boundary parsing, cue strike modeling, and trajectory prediction. The previous in-tree physics from the legacy vue2-trainer has been extracted here with game-specific logic removed; thresholds are config-driven through `IPhysicsConfig` (with a couple of `TrajectoryComputer` exceptions noted below).
+
+`@chalkysticks/sdk-core` (`Event.Dispatcher`, `Utility.Log`) is a **peer and development-only** dependency tracking the latest ChalkySticks Git source. It is no longer installed as a runtime child dependency, and the standard browser build leaves it external so composed SDK builds share the consumer's canonical Core instance.
 
 ## Installation
 
@@ -15,22 +17,39 @@ npm install @chalkysticks/sdk-physics
 
 ```typescript
 import {
-    Boundary,    // TableBoundary, BoundaryBuilder, BoundaryFeature, LineSegment, CircularArc, SvgPathParser, BezierTessellator
+    Boundary,    // TableBoundary, BoundaryBuilder, BoundaryFeature, LineSegment, CircularArc,
+                 // IFeatureAABB, SvgCommand, SvgPathParser, BezierTessellator
     Config,      // PhysicsConfig
     Core,        // FrameTimer, TrajectoryPlayer
-    Enum,        // CollisionType, PhysicsEvent, PhysicsStepStrategy
+    Enum,        // CollisionType, EnglishInput, PhysicsEvent, PhysicsStepStrategy
     Model,       // PhysicsBody
     Simulation,  // PhysicsEngine, CollisionDetector, CollisionResolver, Forces, Integrator, ShotCalculator,
                  // TrajectoryComputer, TrajectoryPredictor, TrajectoryWorkerClient, TrajectorySearchWorkerPool
     Strategy,    // Base, Discrete, Backtrack, BacktrackPlus, SweptCCD, AdaptiveSubsteps
-    Utility,     // Math (allocation-free vec3/quat ops)
+    Utility,     // Math (allocation-free vec3/quat ops), English (input normalization)
     PhysicsSimulation,
 } from '@chalkysticks/sdk-physics';
 
 import type { IPhysicsSimulationOptions } from '@chalkysticks/sdk-physics';
 ```
 
-Within the SDK repo, interfaces (`IPhysicsBody`, `IShot`, `IPocket`, `IPrecomputedTrajectory`, …) are global ambient declarations from `types/index.d.ts` — no import needed. Note that the published npm package does not ship these ambient declarations (`files` whitelists only `build/esm` and `build/web`, and the build never emits `types/index.d.ts`), so external TypeScript consumers must currently provide their own declarations for these interfaces.
+Interfaces (`IPhysicsBody`, `IShot`, `IPocket`, `IPrecomputedTrajectory`, …) are global ambient declarations under the `ChalkyPhysics` namespace — no import needed. As of 0.5.x the published npm package **does** ship these declarations (`files` includes `types`, and `types/package.d.ts` is the declaration entry point), so external TypeScript consumers no longer need to redeclare them.
+
+### English Input
+
+`Enum.EnglishInput` names the sign convention shared with sdk-shot-planner and the cue readout UI:
+
+```typescript
+const EnglishInput = {
+    BottomDraw: 1,
+    Center: 0,
+    Left: -1,
+    Right: 1,
+    TopFollow: -1,
+} as const;
+```
+
+Positive vertical english is bottom/draw; negative is top/follow. `Utility.English` provides `clampEnglishInput()`, `resolveSideEnglish()`, and `resolveFollowDrawEnglish()` for normalizing raw UI input before building an `IShot`.
 
 ## Primary Entry Point
 
@@ -76,7 +95,9 @@ sim.update(sim.getConfig().physicsTimestep);
 | `setBodies(bodies)` | Register the bodies to simulate |
 | `shoot(body, shot)` | Apply shot impulse + spin to a body |
 | `update(deltaTime)` | Advance live simulation one step (forces → integrate → detect → resolve) |
-| `computeTrajectory(shot)` | Precompute an entire shot synchronously (`IPrecomputedTrajectory`, ~10–70ms) |
+| `computeTrajectory(shot)` | Precompute an entire shot synchronously (`IPrecomputedTrajectory`) — full renderable frames |
+| `computeTrajectoryForPlanning(shot)` | Same physics, skipping render-only quaternion integration. Path frames, spin, events, final positions, and outcomes remain complete |
+| `computeTrajectoryForSearch(shot)` | Exact outcome-only mode for high-volume search: keeps events, final states, and compact scoring metrics; omits renderable frame tracks |
 | `predictTrajectory(body, duration?, steps?)` | Aim-line prediction for one body (rails only) |
 | `predictAllTrajectories(cueBody, direction, power, duration?, steps?)` | Full prediction incl. ball-ball, `Map<TBodyId, ITrajectoryPoint[]>` |
 | `areBodiesInMotion()` | Any active body moving or being pocketed |
@@ -167,7 +188,38 @@ const computer = new Simulation.TrajectoryComputer({ physicsTimestep, pockets, t
 const trajectory = computer.compute(bodies, shot); // IPrecomputedTrajectory
 ```
 
-It clones the current body state, applies the shot impulse and spin, then advances the private simulation until every active body stops or the safety step cap is reached. The result is an `IPrecomputedTrajectory`: `frames` (per-ball packed tracks), `events`, `stationaryBalls`, `outcome` (`IShotOutcome`: `ballsPocketed`, `ballsFallenOff`, `firstBallContacted`, `totalCushionHits`, `finalBallStates`, …), `physicsTimestep`, `totalSteps`, and the originating `shot`.
+It clones the current body state, applies the shot impulse and spin, then advances the private simulation until every active body stops or the safety step cap is reached.
+
+`IPrecomputedTrajectory<TPocketIdentifier, TShot>` is generic over the consumer's pocket-identifier and shot types, so sdk-shot-planner can use its own closed enums without casting. It carries:
+
+| Field | Contents |
+|-------|----------|
+| `frames` | `Map<TTrajectoryBodyId, IPrecomputedBallTrack>` — per-ball packed tracks |
+| `stationaryBalls` | Bodies that never moved |
+| `events` | Recorded collision and pocket events with `stepIndex` |
+| `outcome` | `IShotOutcome` (see below) |
+| `bodyTravelDistances` | Total distance travelled per body |
+| `cueBallPostContactTravelDistance` | Cue travel after first contact, or `null` |
+| `searchMetrics?` | Compact metrics, present only in outcome-only search mode |
+| `physicsTimestep` / `totalSteps` / `shot` | Simulation context |
+
+`IShotOutcome` reports `ballsPocketed`, `ballsFallenOff`, `cueBallPocketed`, `firstBallContacted`, `firstContactStepIndex`, `totalCushionHits`, `ballStopSteps`, `finalBallStates`, and `totalSteps`.
+
+### Outcome-Only Modes
+
+`TrajectoryComputer.computeForPlanning()` and `computeSearch()` run the **identical** physics pipeline and produce the same events and final states — they only reduce what is recorded:
+
+| Mode | Orientation integration | Frame tracks | Use |
+|------|------------------------|--------------|-----|
+| `compute()` | Yes | Full | Animation |
+| `computeForPlanning()` | No | Full positional | Route verification and diagramming |
+| `computeSearch()` | No | None — `searchMetrics` instead | High-volume candidate search |
+
+Both temporarily disable orientation updates and restore them in a `finally` block, so a computer instance stays reusable.
+
+<Warning>
+Callers must recompute the selected winner with `compute()` before animation. `computeSearch()` results have no renderable frames, and neither reduced mode advances ball orientation.
+</Warning>
 
 `TrajectoryPlayer` (in `Core`) does not solve physics. It is a playback cursor. Each render or fixed update advances the cursor by elapsed time, picks the matching precomputed step, and writes that frame state back onto the live bodies. Collision and pocket events are dispatched at their recorded `stepIndex` so audio, rules, stats, and camera systems can react at playback time without re-running collision detection.
 
@@ -314,18 +366,35 @@ Notable groups (all on `IPhysicsConfig`):
 
 | Group | Fields |
 |-------|--------|
-| Ball | `ballDiameter`, `ballRadius`, `ballMass`, `ballInertia`, `maxJumpHeight` |
-| Table | `tableLength`, `tableWidth`, `tableHeight`, `tableHalfLength`, `tableHalfWidth`, `ballY`, `boundaryScale`, `cornerPocketWidth`, `sidePocketWidth` |
+| Ball | `ballDiameter`, `ballRadius`, `ballMass`, `ballInertia`, `maxJumpHeight`, `rackSpacing` |
+| Table | `tableLength`, `tableWidth`, `tableHeight`, `tableHalfLength`, `tableHalfWidth`, `ballY`, `boundaryScale`, `cornerPocketWidth`, `sidePocketWidth`, `footSpotDistance`, `headSpotDistance`, `pocketMaxDropBelowSurface` |
 | Rails | `railRestitution`, `railFriction`, `railSpinRetention`, `railTorqueScale`, `railNoseHeightRatio`, `railNoseOffset`, `railNoseHorizontal`, `railWallHeight`, `railTopWidth` |
-| Collision | `ballRestitution`, `ballFriction`, `throwCoefficient` (declared but not currently read by the simulation) |
-| Forces | `gravity`, `rollingFriction`, `slidingFriction`, `dragCoefficient`, `dragDensity`, `angularDragCoefficient`, `angularDragDensity` |
+| Collision | `ballRestitution`, `ballFriction` |
+| Forces | `gravity`, `rollingFriction`, `slidingFriction`, `dragCoefficient`, `dragDensity`, `angularDragCoefficient`, `angularDragDensity`, `slipTransitionClamp` |
 | Thresholds | `stoppedVelocity`, `stoppedAngular`, `stopHysteresis`, `slowRollThreshold`, `airborneSurfaceEpsilon` |
 | Strategy | `adaptiveMaxSubsteps`, `adaptiveRadiusFraction`, `ccdTimeEpsilon` |
-| Spin / swerve | `hopRestitution`, `hopMinimumThreshold`; `spinTransferRate` and the `swerve*` fields are declared but not currently read by the simulation |
-| Cue | `cueLength`, `cueMass`, `maxStrikeVelocity`, `minStrikeVelocity`, `maxTipOffset`, `miscueThreshold`, `maxElevation`, `defaultPower` |
+| Hop | `hopRestitution`, `hopMinimumThreshold` |
+| Squirt | `squirtAngleMax`, `squirtEnglishExponent` |
+| Swerve | `swerveCoefficient`, `swerveMinSpeed`, `swerveNaturalAngle`, `swerveNaturalStrength`, `swerveSpeedDamp`, `swerveSpinThreshold` |
+| Massé | `masseAngleMin`, `masseAngleFull`, `masseGrounding`, `masseFollowDrawAngleMin`, `masseFollowDrawAngleFull`, `massePowerExponent` |
+| Cue | `cueLength`, `cueMass`, `cueTipRadius`, `cueAimDistance`, `cueMaxPullback`, `maxStrikeVelocity`, `minStrikeVelocity`, `maxTipOffset`, `miscueThreshold`, `maxElevation`, `defaultElevation`, `defaultPower`, `maxSpinFollowDraw`, `maxSpinLeftRight`, `sideSpinSpeedScale`, `strikeSpinRealism` |
 | Simulation | `physicsTimestep` (1/240), `settleTimeMax`, `maxRailBounces`, `pocketCaptureSpeed` |
 
+<Note>
+Six config fields are **declared but not currently read** by the simulation: `throwCoefficient`, `spinTransferRate`, and the four `railEnglish*` fields (`railEnglishFriction`, `railEnglishRestitution`, `railEnglishSpinFullRatio`, `railEnglishSpinRetention`). Ball-ball throw comes from Coulomb friction in `CollisionResolver.applyBallBallFriction()`, and rail English response is handled through `railSpinRetention` and `railTorqueScale`.
+</Note>
+
 Rail geometry is modeled with a nose contact above the ball equator (`railNoseHeightRatio`), so cushion impulses produce physically correct torque; `railTorqueScale` scales only that spin contribution (1.0 = full, 0.0 = none). Airborne balls interact with the rail wall (`railWallHeight`) and can land and roll on the rail top (`railTopWidth`) or fall off the table.
+
+### Squirt, Swerve, and Massé
+
+Unlike earlier releases, cue-ball deflection is now modeled. `ShotCalculator` reads the `squirt*`, `swerve*`, and `masse*` config groups when converting an `IShot` into an impulse and angular velocity:
+
+- **Squirt** (cue-ball deflection off the intended line from side English) is applied as an empirical angle bounded by `squirtAngleMax`, curved by `squirtEnglishExponent`.
+- **Swerve** (the curved recovery path of a spinning cue ball) engages above `swerveSpinThreshold` and `swerveMinSpeed`, scaled by `swerveCoefficient` and damped by `swerveSpeedDamp`. `swerveNaturalAngle` and `swerveNaturalStrength` shape the natural-roll case.
+- **Massé** ramps between `masseAngleMin` and `masseAngleFull` by cue elevation, with `massePowerExponent` controlling the power response and `masseGrounding` the surface interaction. Straight up-and-down massé using top or bottom English is supported through `masseFollowDrawAngleMin` / `masseFollowDrawAngleFull`.
+
+`Forces` reads `slipTransitionClamp` when blending sliding into rolling friction.
 
 ## Events
 
@@ -346,7 +415,7 @@ sim.on(Enum.PhysicsEvent.CollisionBallBall, (e) => {
 });
 ```
 
-`TrajectoryPlayer` additionally dispatches every recorded trajectory event at its `stepIndex`, plus `playback:complete`. `PhysicsEngine` dispatches `strategy:changed` on `setStrategy()`. Spin / English effects (top, back, side) come from the shot's applied angular velocity plus the `Forces` module (table friction, drag, gravity) integrated each step; ball-ball throw comes from Coulomb friction in `CollisionResolver.applyBallBallFriction()`. Swerve is not currently modeled — the `swerve*` config fields are declared but unused.
+`TrajectoryPlayer` additionally dispatches every recorded trajectory event at its `stepIndex`, plus `playback:complete`. `PhysicsEngine` dispatches `strategy:changed` on `setStrategy()`. Spin / English effects (top, back, side) come from the shot's applied angular velocity plus the `Forces` module (table friction, drag, gravity) integrated each step; ball-ball throw comes from Coulomb friction in `CollisionResolver.applyBallBallFriction()`. Squirt and swerve are applied by `ShotCalculator` when the strike is converted into impulse and spin.
 
 ## Architecture Notes
 
@@ -357,8 +426,25 @@ sim.on(Enum.PhysicsEvent.CollisionBallBall, (e) => {
 - `Utility.Math` is allocation-free: every vec3/quat operation accepts an optional `out` parameter.
 - The engine itself is host-agnostic — no DOM, canvas, or framework deps (workers excepted).
 
+## Performance
+
+A 2026-08-14 hot-path optimization pass reduced trajectory computation cost without altering any physical coefficient or formula. It was verified against the pre-change build with an A/B harness across seven scenarios (break, hard break, two-ball direct, two-ball angled, draw, rail kick, cluster): outcomes, step counts, final ball states, and full per-frame buffer contents are **bit-identical** — exact floating-point equality, not tolerance-based comparison.
+
+Measured medians (40 iterations, after warmup):
+
+| Scenario | Old `compute` | New `compute` | New `computeSearch` |
+|----------|---------------|---------------|---------------------|
+| Break shot (16 balls) | 10.26 ms | 6.00 ms (−41%) | 5.30 ms (−48%) |
+| Draw shot | 0.88 ms | 0.72 ms (−18%) | 0.60 ms (−31%) |
+| Cluster (6 balls) | 3.41 ms | 1.98 ms (−42%) | 1.80 ms (−47%) |
+
+The main changes were scalar expansion of fixed-geometry vector math in `Forces` (the table-contact normal is always `(0, 1, 0)`), a grounded-body fast path in `applyGravity`, and constructor-time precomputation of clamped config values — safe because `PhysicsConfig` fields are `readonly`. See `doc/2026-08-14-physics-speedup.md` in the package for the full verification write-up.
+
 ## Recent Changes
 
+- **0.5.8** — `@chalkysticks/sdk-core` moved to a peer and development-only dependency tracking the latest Git source; the browser build leaves Core external so composed SDK builds share one canonical instance; dependency-graph regression coverage for manifest ranges and emitted ESM/browser artifacts.
+- **0.5.x** — Outcome-only trajectory modes (`computeForPlanning`, `computeSearch`) and hot-path optimization verified bit-identical; `IPrecomputedTrajectory` became generic and gained `bodyTravelDistances`, `cueBallPostContactTravelDistance`, and optional `searchMetrics`; ambient type declarations are now published.
+- **0.4.x** — Empirical squirt and swerve modeling in `ShotCalculator`; straight up-and-down massé using top or bottom English; predictable rail English response restored; `Enum.EnglishInput` and `Utility.English` added for shared sign conventions.
 - **0.3.10** — `BoundaryBuilder.buildFromSvg()` exposes a `bezierSegments` tessellation parameter (default 4).
 - **0.3.8–0.3.9** — `TrajectorySearchWorkerPool.initialize()` accepts an optional `{ points?, svg? }` boundary descriptor so search workers rebuild dynamic boundaries; `trajectory-search.worker.ts` source added.
 - **0.3.7** — Custom boundaries beyond SVG: `BoundaryBuilder.buildFromRawPoints()` pass-through point loops; `TrajectoryWorkerClient.initialize()` accepts a raw XZ point loop or SVG string for `tableBounds`, takes `configOverrides`, and supersedes stale in-flight workers.

@@ -1,0 +1,328 @@
+---
+title: 'Geometry Package'
+description: 'Framework-neutral planar and projective geometry — homography solving, robust estimation, and drift measurement'
+---
+
+`@chalkysticks/sdk-geometry` (v0.1.4) owns pure coordinate and projective mathematics for the SDK. It solves, estimates, applies, composes, inverts, validates, and measures two-dimensional homographies without importing browser APIs, image-analysis systems, billiards semantics, camera hardware, or projector hardware.
+
+The package surface is intentionally narrow and has **no runtime dependencies**.
+
+## Package Boundary
+
+```text
+sdk-inference ──┐
+                ├──> sdk-geometry
+sdk-projection ─┘
+
+vue2-pad ──> sdk-inference
+vue2-pad ──> sdk-projection
+```
+
+| Package | Owns |
+|---------|------|
+| `sdk-geometry` | Pure coordinate and projective mathematics |
+| `sdk-inference` | Image, video, scene, ball, table, and camera interpretation |
+| `sdk-projection` | Projector calibration, capture synchronization, projected-signal detection, physical output |
+| `vue2-pad` | Composes inference and projection without making either SDK depend on the other |
+
+Image rasters, frame differencing, connected-component detection, calibration state machines, table semantics, and rendering deliberately do **not** belong in this package.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-geometry
+```
+
+## Entry Points
+
+```typescript
+import { solveHomography } from '@chalkysticks/sdk-geometry';
+import { solveHomography } from '@chalkysticks/sdk-geometry/homography';
+```
+
+Both entry points ship as ECMAScript and CommonJS modules. A standalone browser bundle is emitted at `build/web/chalkysticks-geometry.js`. The published package includes its `types/` declarations, so ambient contracts (`IGeometryPoint`, `THomographyMatrix`, …) are available to external TypeScript consumers.
+
+## Top-Level Exports
+
+```typescript
+import {
+    // Solving
+    solveHomography,               // exact or overdetermined DLT solve
+    solveHomographyFromPointPairs, // same, from parallel source/destination arrays
+    estimateHomography,            // deterministic RANSAC + refinement
+
+    // Transformation
+    applyHomography,               // map one point through a matrix
+    composeHomographies,           // first, then second
+    invertHomography,              // reverse the mapping direction
+
+    // Measurement
+    measureHomographyErrors,       // reprojection statistics
+    compareHomographies,           // corner-displacement drift between two matrices
+
+    // Validation
+    isHomographyValid,             // non-throwing type guard
+    GeometryError,                 // typed failure with a stable `code`
+} from '@chalkysticks/sdk-geometry';
+```
+
+Internal modules — numerical constants, the symmetric eigen solver, point normalization, and the `assertGeometryPoint` / `assertHomographyMatrix` / `assertGeometryRectangle` / `assertHomographyCorrespondences` guards — are **not** re-exported. `isHomographyValid` is the public validation surface.
+
+## Matrix Convention
+
+A `THomographyMatrix` is a nine-element row-major three-by-three matrix mapping a source point into a destination point:
+
+```text
+     m0·x + m1·y + m2
+x' = ─────────────────
+     m6·x + m7·y + m8
+
+     m3·x + m4·y + m5
+y' = ─────────────────
+     m6·x + m7·y + m8
+```
+
+```typescript
+type THomographyMatrix = [number, number, number, number, number, number, number, number, number];
+```
+
+Points are homogeneous column vectors; projective division happens after multiplication.
+
+Homographies are scale-equivalent. The implementation normalizes `m8` to one when that coefficient has useful magnitude. A valid matrix **can** have `m8 = 0`; those are normalized by their largest-magnitude coefficient instead.
+
+### Direction Is Explicit
+
+Correspondences always use named `sourcePoint` and `destinationPoint` properties. This avoids ambiguous argument ordering at camera, table, image, and projector boundaries.
+
+```typescript
+interface IHomographyCorrespondence {
+    destinationPoint: IGeometryPoint;
+    sourcePoint: IGeometryPoint;
+}
+```
+
+Direction belongs in variable names too — `cameraToTable`, `tableToProjector`. Names like `homography` or `transform` alone are insufficient at integration boundaries.
+
+Typical mappings: camera pixels → normalized table coordinates; image pixels → diagram coordinates; normalized table coordinates → projector framebuffer pixels; projector framebuffer pixels → observed table coordinates.
+
+### Corner Order
+
+The solver assigns no semantic meaning to correspondence order — each relationship is explicit. When building a four-corner collection, use clockwise order for readability: top-left, top-right, bottom-right, bottom-left.
+
+<Warning>
+The same physical corner must occupy the source and destination properties of **one** correspondence. A consistent list order does not correct mismatched pairs.
+</Warning>
+
+## Solving
+
+`solveHomography` accepts four or more correspondences and uses all of them. Source and destination points are independently normalized before a homogeneous direct-linear-transform solve.
+
+```typescript
+import { applyHomography, solveHomography } from '@chalkysticks/sdk-geometry';
+
+const correspondences: IHomographyCorrespondence[] = [
+    { destinationPoint: { x: 0, y: 0 },   sourcePoint: { x: 142, y: 91 } },
+    { destinationPoint: { x: 1, y: 0 },   sourcePoint: { x: 1194, y: 138 } },
+    { destinationPoint: { x: 1, y: 0.5 }, sourcePoint: { x: 1268, y: 702 } },
+    { destinationPoint: { x: 0, y: 0.5 }, sourcePoint: { x: 93, y: 741 } },
+];
+
+const cameraToTable = solveHomography(correspondences);
+const tablePoint = applyHomography({ x: 640, y: 380 }, cameraToTable);
+```
+
+The returned matrix maps source coordinates to destination coordinates. **Inputs are never mutated.**
+
+### Solve Pipeline
+
+1. Validate every finite source and destination point.
+2. Independently center and scale both point domains so their mean radius is √2 (Hartley normalization).
+3. Build the homogeneous DLT coefficient matrix — two rows per correspondence.
+4. Recover its null-space vector from the smallest eigenvector of the symmetric normal matrix (Jacobi rotation, capped at 100 sweeps).
+5. Reject systems without the rank needed to determine one homography.
+6. Denormalize the matrix into caller coordinates.
+7. Normalize and validate the final matrix.
+
+With more than four correspondences, every correspondence contributes to the least-squares fit.
+
+### Parallel Arrays
+
+When a consumer already holds separate source and destination arrays, `solveHomographyFromPointPairs` avoids building correspondence objects by hand:
+
+```typescript
+import { solveHomographyFromPointPairs } from '@chalkysticks/sdk-geometry';
+
+const matrix = solveHomographyFromPointPairs(sourcePoints, destinationPoints);
+```
+
+The arrays must be the same length and index-aligned.
+
+## Robust Estimation
+
+`estimateHomography` wraps deterministic RANSAC around the normalized solver, followed by two all-inlier refinements.
+
+```typescript
+import { estimateHomography } from '@chalkysticks/sdk-geometry';
+
+const result: IHomographyEstimateResult = estimateHomography(measuredCorrespondences, {
+    confidence: 0.999,
+    inlierThreshold: 0.008,
+    maximumIterations: 500,
+    minimumInlierCount: 10,
+    randomSeed: 4281,
+});
+
+console.log(result.inlierCount);
+console.log(result.rootMeanSquareInlierError);
+console.log(result.matrix);
+```
+
+### Options
+
+| Option | Required | Default | Constraint |
+|--------|----------|---------|------------|
+| `inlierThreshold` | **yes** | — | Positive finite number, in destination-space units |
+| `confidence` | no | `0.995` | `0 < confidence < 1` |
+| `maximumIterations` | no | `1000` | Positive integer |
+| `minimumInlierCount` | no | `4` | Integer between 4 and the correspondence count |
+| `randomSeed` | no | `1979021807` | Safe integer |
+
+Violating any constraint throws `GeometryError` with code `invalid-options`.
+
+<Note>
+`inlierThreshold` is required precisely because it has no universal default — its correct value depends on the destination coordinate system. Camera-to-image calibration might use a few pixels; camera-to-normalized-table calibration a fraction such as `0.005`; physical calibration millimeters. Choose it from expected measurement uncertainty in the **destination** domain.
+</Note>
+
+### Determinism
+
+The same correspondences, options, and seed always produce the same result. Sampling uses a seeded linear-congruential generator (multiplier `1664525`, increment `1013904223`, normalized by 2³²) driving a partial Fisher-Yates shuffle over correspondence indices.
+
+The iteration count can end **below** `maximumIterations`: once a candidate meets `minimumInlierCount`, the required iteration target is recomputed from the measured inlier ratio and the requested confidence, and the loop stops early when that target is satisfied. Candidates that fail to reach `minimumInlierCount` never shorten sampling.
+
+When exactly four correspondences are supplied, sampling is skipped entirely — the full set is solved once.
+
+### Estimation Pipeline
+
+1. Sample four distinct correspondences using the seeded shuffle.
+2. Reject degenerate subsets. Recoverable sample failures (`degenerate-correspondences`, `invalid-matrix`, `numerical-failure`, `singular-matrix`) are skipped; anything else rethrows.
+3. Measure destination-space error for every **original** correspondence.
+4. Rank candidates by inlier count, then by mean inlier error.
+5. Reduce the remaining iteration target when the measured inlier ratio satisfies the requested confidence.
+6. Refit all selected inliers.
+7. Reclassify and refit the final inlier collection.
+
+Each of the three inlier-count checkpoints — best sampled candidate, first refinement, final matrix — throws `robust-estimation-failed` if the count drops below `minimumInlierCount`.
+
+### Result
+
+```typescript
+interface IHomographyEstimateResult {
+    correspondenceErrors: number[];      // per-input error, original order
+    inlierCount: number;
+    inlierMask: boolean[];               // membership, original order
+    iterationCount: number;              // samples evaluated before refinement
+    matrix: THomographyMatrix;
+    maximumInlierError: number;
+    meanInlierError: number;
+    rootMeanSquareInlierError: number;
+}
+```
+
+`correspondenceErrors` and `inlierMask` stay aligned with the **complete** input order, so a caller can map results back to the measurements that produced them.
+
+## Transforming, Inverting, Composing
+
+```typescript
+import { applyHomography, composeHomographies, invertHomography } from '@chalkysticks/sdk-geometry';
+
+const tablePoint = applyHomography({ x: 640, y: 380 }, cameraToTable);
+const tableToCamera = invertHomography(cameraToTable);
+const cameraToProjector = composeHomographies(cameraToTable, tableToProjector);
+```
+
+`composeHomographies(first, second)` returns a matrix that applies `first` and **then** `second`.
+
+## Measuring Quality and Drift
+
+```typescript
+import { compareHomographies, measureHomographyErrors } from '@chalkysticks/sdk-geometry';
+
+const fit = measureHomographyErrors(cameraToTable, correspondences);
+
+const drift = compareHomographies(previousCameraToTable, cameraToTable, {
+    height: 0.5,
+    width: 1,
+    x: 0,
+    y: 0,
+});
+```
+
+`measureHomographyErrors` reports Euclidean reprojection distance in destination-space units:
+
+| Field | Meaning |
+|-------|---------|
+| `correspondenceErrors` | One error per correspondence, input order |
+| `maximumError` | Largest measured error |
+| `meanError` | Arithmetic mean |
+| `rootMeanSquareError` | RMS error |
+
+`compareHomographies` exists because matrix coefficients cannot be compared directly — arbitrary scale makes coefficient differences meaningless, and they communicate nothing about displacement in a real coordinate domain. Instead it transforms the four corners of a caller-supplied region through both matrices and measures how far each corner moved:
+
+| Field | Meaning |
+|-------|---------|
+| `cornerDisplacements` | Top-left, top-right, bottom-right, bottom-left |
+| `maximumCornerDisplacement` | Largest displacement |
+| `meanCornerDisplacement` | Arithmetic mean |
+| `normalizedMeanCornerDisplacement` | Mean divided by the region diagonal |
+
+This is the right primitive for calibration-drift gates and homography stabilization diagnostics.
+
+## Failures
+
+Public operations throw `GeometryError` for invalid or numerically unusable inputs. Its `code` is a stable `TGeometryErrorCode` suitable for programmatic recovery:
+
+| Code | Condition |
+|------|-----------|
+| `degenerate-correspondences` | Collinear or numerically collapsed point sets |
+| `insufficient-correspondences` | Fewer than four correspondences |
+| `invalid-correspondence` | A correspondence missing finite source or destination coordinates |
+| `invalid-matrix` | Non-finite matrix coefficients |
+| `invalid-options` | Estimation options outside their accepted range |
+| `invalid-point` | Non-finite `x` or `y` |
+| `invalid-region` | Region without positive finite width and height |
+| `numerical-failure` | Eigen decomposition or denormalization failed |
+| `point-at-infinity` | The homogeneous denominator vanished during `applyHomography` |
+| `robust-estimation-failed` | Too few inliers survived sampling or refinement |
+| `singular-matrix` | Matrix could not be inverted |
+
+Conditions that cannot determine a homography — fewer than four correspondences, repeated copies of too few independent points, collinear source points, collinear destination points, numerically collapsed coordinate domains — throw rather than returning a plausible-looking matrix.
+
+### Points at Infinity
+
+A valid projective transformation can map some finite source points to infinity. `applyHomography` detects a vanishing homogeneous denominator and throws `point-at-infinity`. Whether that means a bad calibration, an out-of-domain query, or a legitimate projective boundary is a decision only the caller can make.
+
+### Non-Throwing Checks
+
+```typescript
+import { isHomographyValid } from '@chalkysticks/sdk-geometry';
+
+if (isHomographyValid(candidate)) {
+    // candidate is narrowed to THomographyMatrix
+}
+```
+
+`isHomographyValid` is a type guard that verifies finiteness and invertibility without throwing.
+
+## Development
+
+```bash
+yarn test
+yarn example
+```
+
+After building, open `http://localhost:7018/example/` for a deterministic camera-to-table transformation example. The test suite includes package-import and package-types checks that verify both entry points resolve under ESM and CommonJS.
+
+## Recent Changes
+
+- **0.1.2** — Parallel point-pair homography solving for inference and projection consumers; unacceptable robust-estimation candidates no longer end deterministic sampling early; complete source-entry documentation metadata.
+- **0.1.0** — Established the framework-neutral planar and projective geometry package: normalized homography solving, deterministic robust estimation, point transformation, composition, inversion, comparison, validation, and reprojection measurements, with browser, ESM, and CommonJS builds.

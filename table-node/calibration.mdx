@@ -1,0 +1,122 @@
+---
+title: 'Camera & Projector Calibration'
+description: 'Hosted four-corner table registration, measured-light projector solving, and profile invalidation'
+---
+
+Calibration happens in two stages and **must** happen in that order: the camera learns where the table is, then the camera observes projected light to learn where the projector is.
+
+Both stages are driven from `/setup` on the trusted admin LAN. `/diagnostics` is read-only.
+
+## Physical Calibration Flow
+
+1. `/setup` blacks the projector, allows the optical output to settle, and requests a fresh frame from the selected Pi-owned UVC camera.
+2. The host POSTs the encoded JPEG bytes directly to `https://scan.chalkysticks.com/scan?confidence=0.4&overlap=0.3` — the same hosted ChalkyScan endpoint and thresholds used by ChalkySticks Pad.
+3. The host requires **six valid `Pocket` detections**, scores every two-rail layout, and refuses incomplete or degenerate geometry instead of saving a guess.
+4. The four corner pockets are normalized to the captured frame, persisted with inference and model diagnostics, and displayed over that same preview frame.
+5. The loopback output then projects measured dots; paired camera captures solve and persist the projector-to-table mapping.
+
+<Warning>
+Changing the camera, table, projector position, or output resolution **invalidates the relevant downstream calibration** and requires this sequence again.
+</Warning>
+
+## Before Calibrating
+
+Secure the projector and camera to the final overhead structure **before** calibration — any later movement invalidates the geometry.
+
+- Aim the camera so the full playing surface, rails, and pockets remain visible with no light fixture or mount obscuring a ball.
+- Aim the projector for full table coverage without relying on aggressive optical keystone correction, which reduces usable resolution.
+- Turn on the projector and select its HDMI input **before** booting the Pi, so display detection sees the intended output mode.
+- Keep the projector at one fixed mode.
+
+<Warning>
+If HDMI was disconnected during boot, reconnect it and restart the desktop output session when necessary. **Never save calibration against a fallback resolution.**
+</Warning>
+
+## Select and Verify Hardware
+
+In Camera Setup, choose the Pi-attached camera reported through the host — not the tablet's own camera, and not a temporary `/dev/videoN` number. One camera may expose several `/dev/video*` endpoints, so use the setup interface for authoritative selection and preview.
+
+Verify live preview, capture resolution, frame rate, focus, exposure, white balance, and the physical head end of the table.
+
+<Note>
+Lock exposure and white balance where possible. Automatic changes during a projected scene reduce scan reliability.
+</Note>
+
+In Output Setup, choose the HDMI display, verify its reported resolution and refresh rate, and confirm no desktop panel or cursor appears on the projector.
+
+`v4l2-ctl --list-devices` remains an operating-system diagnostic when `v4l-utils` is installed, but the Node host owns the selected Linux device and the camera bytes.
+
+## Stage 1 — Camera and Table
+
+Start with the projector black and the table empty, evenly lit, and free of cues, racks, drinks, or hands.
+
+1. Open `/setup` and inspect the current overhead preview.
+2. Reject any frame that crops or obscures one of the four corner pockets. **Side pockets are optional.**
+3. Press **Auto-calibrate table**.
+4. Verify four numbered corner markers land on the corner pockets.
+5. Retain the recorded model, confidence, and inference timestamp.
+
+If hosted calibration refuses the frame or places a marker incorrectly, correct the camera or lighting and retry. Use the manual top-left, top-right, bottom-right, bottom-left fallback **only after visual verification**.
+
+Then put sample balls near the rails and center, run a camera-only test, and confirm detections land on the same physical positions without manual rotation in Pad.
+
+<Note>
+**Auto-calibrate table** requires venue internet access to the configured HTTPS scan URL. The manual four-corner fallback remains fully local and offline.
+</Note>
+
+## Stage 2 — Projector
+
+Run projector calibration **after** camera calibration, because the camera observes the projected control points and computes the projector-to-table transform.
+
+1. Start with the sparse dot pattern and allow the camera exposure to settle.
+2. Use the denser fallback pattern if glare or cloth color hides individual points.
+3. Inspect coverage, reprojection error, clipped edges, and any rejected points — do not accept a transform solely because the pattern completed.
+4. Use the setup nudge controls for small alignment corrections. If a correction is large enough to indicate a mount or orientation problem, rerun calibration instead.
+
+The underlying mathematics is [`@chalkysticks/sdk-projection`](/sdk/projection), which delegates homography solving to [`@chalkysticks/sdk-geometry`](/sdk/geometry). Errors are reported in canonical table units.
+
+## Calibration Profiles
+
+Save calibration as **one profile** bound to:
+
+- Camera identity
+- Camera resolution
+- Display identity
+- Display resolution
+- Table geometry
+- Head-end orientation
+
+<Warning>
+Treat any mismatch in those profile inputs as a reason to recalibrate rather than silently stretching an old transform.
+</Warning>
+
+The hardware profile — camera selection, camera corners, hosted model diagnostics, projector calibration — is persisted under `TABLE_NODE_DATA_DIRECTORY` (fixed at `/var/lib/chalkysticks-table-node` on packaged appliances), separate from the device identity record.
+
+## Acceptance Test
+
+After both stages, verify end to end:
+
+1. From Pad, select the claimed table and send a diagram containing balls **and at least one guide**, so both scene layers can be checked.
+2. Confirm the Node acknowledges the durable `projection.present` command, renders it inside the rails, reports warnings when appropriate, and completes the command in API history.
+3. Send `projection.clear` and confirm the output becomes fully black and the API records `{ "cleared": true }`.
+4. Arrange several known balls, request `scan.capture`, and confirm the projector blanks **before** exposure instead of contaminating the image.
+5. Confirm the Node uploads the unrotated original image, returns `table.surface.normalized.v1` ball coordinates, restores the previous projection, and completes the command.
+6. Confirm Pad shows the captured image and places balls directly from normalized coordinates without running its local image-rotation path.
+7. Unplug venue internet briefly, confirm the local projector surface stays available, reconnect, and verify heartbeat plus REST command polling recover without a reboot.
+8. Reboot the Pi and confirm systemd restarts the host, labwc restarts Chromium, the same table identity returns online, and the persisted calibration still aligns the verification guide.
+
+Record the hostname, table public identifier, venue network method, camera and projector models, calibration date, software version, and installer name before leaving.
+
+## Calibration Troubleshooting
+
+| Symptom | Check |
+|---------|-------|
+| Auto-calibration finds fewer than four corner pockets | Re-aim the camera so all four corner pockets are visible, remove occlusions and glare, refresh the preview, retry. Side pockets are optional |
+| Auto-calibration cannot reach ChalkyScan | Verify venue internet, DNS, system time, and `TABLE_NODE_SCAN_URL`. Manual corner registration remains available offline |
+| Camera capture fails | Inspect `/dev/video*`, USB topology, camera selection, and the `ffmpeg` diagnostics. Chromium does not own camera permission |
+| Scan image looks shifted | Check camera mount, exposure, camera/table calibration, and projector blanking. Do **not** rotate coordinates again in Pad |
+| Camera numbering changes between boots | Select by stable hardware metadata and USB topology rather than `/dev/video0` |
+| Bright projection pollutes scans | Blank output, wait for exposure stabilization, capture, and restore in one serialized command |
+| Sunlight or bar lighting changes | Lock camera exposure where practical, and schedule quick calibration verification at different operating times |
+| Projector or camera moved after calibration | Use locking mounts and tamper marks; rerun the complete acceptance test after any movement |
+| HDMI starts at the wrong resolution | Power the projector before the Pi, then recalibrate after selecting the final fixed mode |

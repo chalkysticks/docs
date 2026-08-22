@@ -1,0 +1,472 @@
+---
+title: 'Shot Planner Package'
+description: 'Framework-free billiards shot planning — physics-verified route search, scoring, and run-out ranking'
+---
+
+`@chalkysticks/sdk-shot-planner` (v0.7.4) owns shot-search geometry, policy, physics-backed route verification, and world-space plan results. It is shared by ChalkySticks inference, trainer, and diagram clients.
+
+It deliberately owns **no** Vue components, game rules, inference homography, or pad rendering. It depends on [`@chalkysticks/sdk-core`](/sdk/core/index) (event dispatcher) and [`@chalkysticks/sdk-physics`](/sdk/physics) (the simulation authority).
+
+## Architecture
+
+| Namespace | Owns |
+|-----------|------|
+| `Geometry` | Pure ghost-ball and mirror-image calculations |
+| `Enum` | Closed route, geometry, pocket, rail, and path domains |
+| `Event` | Collision and live planning-progress event names |
+| `Policy` | Shared aim, power, scoring, and strike-response contracts |
+| `Table` | Regulation table boundary and capture-pocket factory |
+| `Analysis` | Validates declared direct, bank, and kick event sequences; neutral table reads |
+| `Planner` | Executes the physics-backed search in canonical world space |
+| `Skill` | Fargo rating conversion and human execution modeling |
+| `Worker` | Distributed search host and pool |
+
+Consumer adapters translate detections, game rules, and diagram coordinates:
+
+- `sdk-inference` owns camera/table coordinate conversion and composes the full world-space planner.
+- `vue2-trainer` imports shared geometry and policy from the package root through compatibility facades. Its workers, rules, scoring, and shot execution remain unchanged.
+- `vue2-pad` lazy-loads the root planner, adapts editable table balls into world space, and diagrams only verified paths using native pad primitives.
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-shot-planner
+```
+
+Ships as ESM and CommonJS from a single root entry point.
+
+## Top-Level Exports
+
+Every public runtime import comes from the package root, available both namespaced and flat:
+
+```typescript
+import {
+    // Namespaces
+    Analysis, Enum, Event, Geometry, Planner, Policy, Skill, Table, Worker,
+
+    // Flat (same symbols)
+    ShotPlanner, SearchWorkerPool, SearchWorkerHost,
+    BankKick, RouteAnalyzer, TableRead,
+    ScoringPolicy, SearchPolicy, PowerModel, RunOutPreferencePolicy, RunOutRules,
+    ExecutionModel, RatingConverter, SkillProfile,
+    Standard, BoundarySvg,
+} from '@chalkysticks/sdk-shot-planner';
+```
+
+Shared contracts live in the root `types/` directory rather than alongside their implementations, under the global `ShotPlanning` namespace (`ShotPlanning.IPlannedShot`, `ShotPlanning.IRunOutOptions`, …).
+
+<Warning>
+Five deprecated aliases remain from the pre-rename public API and will be removed once trainer, vue2-pad, and sdk-inference all consume the new names: `ShotRouteAnalyzer` → `RouteAnalyzer`, `BankKickGeometry` → `BankKick`, `SdkPhysicsShotPlanner` → `ShotPlanner`, `ShotSearchPolicy` → `SearchPolicy`, `StandardTableBoundarySvg` → `BoundarySvg`, `StandardTable` → `Standard`.
+</Warning>
+
+## Planning One Shot
+
+```typescript
+import { Enum, ShotPlanner } from '@chalkysticks/sdk-shot-planner';
+
+const planner = new ShotPlanner();
+
+planner.setTableState({ balls });
+
+const plan = planner.planShot({
+    pocketIdentifier: Enum.PocketIdentifier.BottomLeft,
+    targetBallIdentifier: '7',
+});
+```
+
+`plan.paths` contains only simulation-verified, event-derived cue and target routes. A failed nominated request remains useful as a diagnostic, but has `verified: false` and no drawable paths.
+
+`findBestShot()` searches every legal target and pocket instead of a nominated one.
+
+### Planner Options
+
+```typescript
+interface IShotPlannerOptions {
+    allowBankShots?: boolean;
+    allowComboShots?: boolean;
+    allowJumpShots?: boolean;
+    allowKickShots?: boolean;
+    allowMasseShots?: boolean;
+    boundarySvg?: string;
+    maximumPlanningMilliseconds?: number;
+    maximumSimulations?: number;
+    physicsConfig?: Partial<IPhysicsConfig>;
+    pockets?: IPocket[];
+    robustness?: Partial<IShotRobustnessOptions> | false;
+    scoringWeights?: Partial<IShotScoringWeights>;
+    searchQuality?: 'fine' | 'standard';
+}
+```
+
+### Core Methods
+
+| Method | Purpose |
+|--------|---------|
+| `setTableState(tableState)` | Install the current ball positions |
+| `planShot(request)` | Plan one nominated target/pocket. Returns `IPlannedShot \| null` |
+| `findBestShot(…)` | Search all legal targets and pockets |
+| `planRunOut(options?)` | Greedy multi-shot chain. Returns `TRunOutStep[]` |
+| `planRunOutStep(…)` | One step of that chain |
+| `planSafety(…)` | Defensive shot recommendation |
+| `refineShot(plan, power, english)` | Re-simulate one plan at a new power and English |
+| `scoreRunOutPlan(plan, options?)` | Score an existing plan under run-out weights |
+| `collectRunOutCandidates(…)` | Verified candidates before ranking |
+| `reshapeRunOutPlan(…)` | Re-shape an existing chain |
+| `simulateAttempt(plan, fargoRating, random?)` | One simulated human attempt |
+| `estimateMakeProbability(plan, fargoRating, trials?, seed?)` | Monte-Carlo make probability (defaults: 25 trials, seed 1) |
+| `getBallIdentifiers()` / `getPockets()` / `getPhysicsConfig()` | State queries |
+| `getTrace()` | Current search phase, elapsed time, simulation counts, budget exhaustion |
+| `createShotSearchCells(request)` / `evaluateShotSearchCells(…)` / `finalizeShotSearchCell(…)` | Distributable search primitives used by the worker pool |
+| `ShotPlanner.resolveLegalTargetsForRemaining(remaining, options)` | **static** — legal targets under the declared ordering |
+
+`ShotPlanner` extends `Event.Dispatcher` from sdk-core.
+
+## Verification Contract
+
+Every route must satisfy physics outcome truth **and** its declared event pattern:
+
+| Route | Requirement |
+|-------|-------------|
+| `direct` | Cue contacts the target before any rail; target reaches the nominated pocket without an object-ball bank |
+| `bank` | Target has exactly the declared effective rail contact before capture |
+| `kick` | Cue has exactly the declared rail contact before first target contact |
+
+Repeated substep rail events collapse into one physical contact, and trailing pocket-jaw contacts are not misclassified as banks. Incidental collisions after the legal first contact do not erase an otherwise valid make.
+
+`Analysis.RouteAnalyzer` implements this: `validateDeclaredRoute()`, `countPostContactCueRailContacts()`, `collectDistinctRailEvents()`, `stripTrailingPocketJawEvents()`, and `getDrawableTargetRailEvents()`.
+
+## The Planned Shot
+
+```typescript
+interface IPlannedShot {
+    aimAngleDegrees: number;
+    comboFirstBallIdentifier?: string | null;
+    cueBall: IPlannedShotPoint;
+    cueTravelDistance: number | null;
+    feasibility: IPlannedShotFeasibility;
+    finalBallStates: IPlannedShotBallState[];
+    ghostBall: IPlannedShotPoint;
+    guides: IPlannedShotGuide[];
+    outcome: IPlannedShotOutcome;
+    paths: IPlannedShotPath[];
+    pocketIdentifier: string;
+    postContactCueRailCount: number;
+    power: number;
+    railIdentifier: string | null;
+    robustness: IPlannedShotRobustness;
+    score: number;
+    scoreBreakdown: IPlannedShotScoreBreakdown;
+    shot: IShot;
+    shotType: TPlannedShotType;
+    targetBall: IPlannedShotPoint;
+    targetBallIdentifier: string;
+    verified: boolean;
+}
+```
+
+Every planned shot exposes `scoreBreakdown`; every run-out step exposes `runOutScore` and `runOutScoreBreakdown`.
+
+## Scoring Is a Pipeline
+
+<Note>
+There is no single universal score. The planner runs a pipeline of geometry ordering, physics verification, nominal shot scoring, optional robustness filtering, run-out ranking, safety scoring, and Fargo-based human execution simulation. Keep those layers separate when adjusting behavior.
+</Note>
+
+| Score | Where | Purpose | Fargo-aware? |
+|-------|-------|---------|--------------|
+| Heuristic cost | Internal candidate field | Search order and budget allocation | No |
+| Nominal trajectory score | `IPlannedShot.score` | Compare simulated aim/power outcomes | No |
+| Robustness probability | `plan.robustness.makeProbability` | Fixed local sensitivity check | No |
+| Run-out score | `IRunOutStep.runOutScore` | Compare verified run-out candidates | Only in `leave` / `lookahead` modes |
+| Safety score | `ISafetyPlan.score` | Compare defensive outcomes | Partially — higher tiers unlock at Fargo 500 / 650 |
+| Estimated human make probability | `estimateMakeProbability(…)` | Simulate execution errors for a rating | Yes |
+| Confidence | `ExecutionModel.calculateConfidence(…)` | Informational score/skill normalization | Yes, but nothing selects on it |
+
+### Terminology
+
+- **Candidate** — one declared route to one ball and pocket (direct, combo, bank, or kick).
+- **Simulation cell** — one candidate tried with a specific aim offset, power, and English value.
+- **Verified** — physics produced the nominated pocket and the collision events match the declared route, without a scratch or ball leaving the table.
+- **Nominal** — the exact planned strike, before human execution error.
+- **Robust** — the nominal strike also survives enough fixed nearby perturbations.
+- **Leave** — the quality of the cue-ball rest position for the next legal ball.
+
+### Nominal Shot Weights
+
+Nominal shot weights are **planner construction** options:
+
+```typescript
+const planner = new ShotPlanner({
+    scoringWeights: {
+        kickPenalty: 18,
+        pocketDifficultyPenalty: 18,
+        routeDistancePenalty: 16,
+    },
+});
+```
+
+`Policy.ScoringPolicy.DefaultShotWeights`:
+
+| Weight | Default | Weight | Default |
+|--------|---------|--------|---------|
+| `bankPenalty` | `15` | `nonRouteBallMovementPenalty` | `4` |
+| `comboPenalty` | `7` | `nonRouteBallPenalty` | `2` |
+| `cushionPenalty` | `2` | `pocketDifficultyPenalty` | `15` |
+| `cueTravelPenalty` | `8` | `postContactCueRailAllowance` | `1` |
+| `cutAnglePenalty` | `8` | `postContactCueRailPenalty` | `8` |
+| `jumpPenalty` | `25` | `powerPenalty` | `10` |
+| `kickPenalty` | `20` | `routeDistancePenalty` | `12` |
+| `massePenalty` | `30` | `routeDistanceSaturationTableLengths` | `2` |
+
+Distance and cut penalties are bounded, geometry-derived execution costs — not additional truth gates. Nominal scoring accounts for cut angle, declared route distance, side-pocket difficulty, and shot family.
+
+`IPlannedShotScoreBreakdown` reports every signed component: `cushionPenalty`, `cueTravelPenalty`, `cutAnglePenalty`, `familyPenalty`, `foulPenalty`, `nearMissPenalty`, `nonRouteBallMovementPenalty`, `nonRouteBallPenalty`, `pocketDifficultyPenalty`, `pocketResult`, `postContactCueRailPenalty`, `powerPenalty`, `routeDistancePenalty`, `scratchPenalty`, and `total`.
+
+## Run-Out Planning
+
+Run-out strategy weights are **per-pattern** options, so a consumer can tune pattern play independently of nominal scoring:
+
+```typescript
+import { Event, RunOutPreferencePolicy, ShotPlanner } from '@chalkysticks/sdk-shot-planner';
+
+planner.on(Event.Planning.Progress, (event) => {
+    console.log(event.data.message, event.data.percentage);
+});
+
+const steps = planner.planRunOut({
+    allowBankShots: false,
+    allowKickShots: false,
+    positionAwareness: 'leave',
+    preferenceProfile: RunOutPreferencePolicy.ReviewedExpertProfileIdentifier,
+    scoringWeights: {
+        cueTravel: 14,
+        futureBallAccessibility: 16,
+    },
+});
+```
+
+### Options
+
+```typescript
+interface IRunOutOptions {
+    allowBankShots?: boolean;
+    allowComboShots?: boolean;
+    allowJumpShots?: boolean;
+    allowKickShots?: boolean;
+    allowMasseShots?: boolean;
+    cueControl?: Partial<IPlayerCueControl>;
+    fargoRating?: number;
+    finalBall?: string;
+    maximumBacktracks?: number;
+    maximumShots?: number;
+    order?: 'any' | 'lowest-first';
+    positionAwareness?: 'leave' | 'lookahead' | 'none';
+    preferenceProfile?: IRunOutPreferenceProfile | TRunOutPreferenceProfileIdentifier;
+    scoringWeights?: Partial<IRunOutScoringWeights>;
+    targetGroup?: string[];
+}
+```
+
+Ordering is declarative so it survives the worker boundary: `order: 'lowest-first'` plays nine-ball rotation; `targetGroup` + `finalBall` plays an eight-ball group.
+
+`positionAwareness: 'leave'` ranks each step's verified candidates by make quality **plus** the cue ball's leave on the next legal target, looking ahead with the shared Fargo skill model. `fargoRating` scales that lookahead — both evaluation depth and position weight — and defaults to expert play (700) when omitted.
+
+`cueControl` sets hard cue-tip travel limits. Positive vertical English is bottom/draw and negative is top/follow, matching sdk-physics and `ChalkyUiCueReadout`.
+
+### Family Exclusions Are Hard Constraints
+
+Disabled banks or kicks are **never generated or simulated**. Their reserved simulation budget is reassigned to direct aim/power refinement and position shaping — without raising the planner's global simulation ceiling.
+
+### Run-Out Weights
+
+`Policy.ScoringPolicy.DefaultRunOutWeights`:
+
+| Weight | Default | Meaning |
+|--------|---------|---------|
+| `nominal` | `1` | Weight of the underlying nominal score |
+| `leave` | `1` | Cue-ball rest quality for the next target |
+| `lookahead` | `24` | Verified-next-shot bonus |
+| `directPreference` | `20` | Bias toward direct routes |
+| `cueTravel` | `12` | Bounded full cue-route travel |
+| `cueTravelSaturationTableLengths` | `1` | Travel curve saturation point |
+| `futureBallAccessibility` | `12` | Remaining-ball accessibility |
+| `postContactCueRailAllowance` | `1` | Free post-contact rails before penalty |
+| `postContactCueRailPenalty` | `8` | Penalty per rail beyond the allowance |
+
+### Steps and Recovery
+
+```typescript
+type TRunOutStep = IRunOutStep | IRunOutRecoveryStep;
+```
+
+An `IRunOutStep` (`kind: 'pot'`) carries the `plan`, its `runOutScore` and `runOutScoreBreakdown`, and the table states before and after.
+
+An `IRunOutRecoveryStep` (`kind: 'recovery'`) is a terminal defensive step appended when no make verifies even after budget escalation and backtracking — the run-out realistically ends on this safety or escape, so the chain stops there instead of silently truncating.
+
+### Preference Profile
+
+The reviewed preference profile is an optional **bounded** layer over the stabilized core. Omitting `preferenceProfile` preserves core behavior exactly.
+
+When the profile is active, `runOutScoreBreakdown.preferenceAdjustment` shows its exact contribution and `preferenceProfileIdentifier` records the version used. The shipped identifier is `'reviewed-expert-2026-08-14'`, exposed as `RunOutPreferencePolicy.ReviewedExpertProfileIdentifier`.
+
+The profile scores normalized, explainable features after physics verification: `cueTravelControl`, `cutEase`, `nextShotQuality`, `pocketEase`, and `powerComfort`. The same option and totals are preserved across synchronous and worker planning.
+
+<Note>
+Supplying `preferenceProfile` without `positionAwareness` enables leave-aware candidate comparison. An explicit `positionAwareness: 'none'` preserves first-make planning and therefore does **not** apply profile ranking.
+</Note>
+
+## Progress Events
+
+Both the synchronous planner and the worker pool emit `Event.Planning.Progress` (`'planning:progress'`):
+
+```typescript
+interface IShotPlanningProgress {
+    elapsedMilliseconds: number;
+    message: string;
+    percentage: number;
+    phase: TShotPlanningPhase;
+    simulationsCompleted: number;
+    simulationsMaximum: number;
+    requestId?: number;
+    shotIndex?: number;
+    targetBallIdentifier?: string;
+    targetsCompleted?: number;
+    targetsTotal?: number;
+}
+```
+
+Phases: `starting`, `candidate-generation`, `direct-broad-search`, `direct-refinement`, `indirect-search`, `combo-search`, `elevated-search`, `position-shaping`, `lookahead`, `robustness`, `run-out-step`, `complete`.
+
+The worker pool forwards the same stream and adds worker request, target, and step context.
+
+## Worker Pool
+
+```typescript
+import { SearchWorkerPool } from '@chalkysticks/sdk-shot-planner';
+
+const pool = new SearchWorkerPool({
+    createWorker,
+    parallelRunOutTargets: true,
+    size: 6,
+});
+```
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `createWorker` | **required** | Factory returning an `IWorkerLike` (a browser `Worker` fits) |
+| `size` | `3` | Worker count |
+| `searchCellBatchSize` | `6` | Cells dispatched per job |
+| `jobTimeoutMilliseconds` | `30000` | Per-job timeout |
+| `parallelRunOutTargets` | `false` | Per-target bounded search instead of one global budget |
+| `plannerOptions` | — | Planner options replicated onto every worker |
+
+| Method | Purpose |
+|--------|---------|
+| `planShot(…)` / `planShotBatch(…)` / `planShotSplit(…)` / `planShotSharded(…)` | Distributed single-shot planning |
+| `findBestShot(…)` | Distributed best-shot search |
+| `planRunOut(…)` | Distributed run-out chain |
+| `planSafety(…)` | Distributed safety search |
+| `getMetrics()` / `resetMetrics()` | Scheduler measurements — queue depth, completed/failed/cancelled jobs, simulations |
+| `cancelPendingJobs()` / `dispose()` | Lifecycle |
+
+The pool's unspecified quality mode searches `standard` first and retries `fine` only when no continuation verifies.
+
+Worker-backed leave and lookahead planning preserves the synchronous planner's **single global simulation budget** by default. `parallelRunOutTargets: true` grants each simultaneously legal target its own bounded search, then merges and shapes the resulting candidates globally.
+
+<Warning>
+`parallelRunOutTargets` can select a **different route** than the exact-budget planner. Disabling the option restores the established global-budget route sequence.
+</Warning>
+
+## Skill and Fargo
+
+`Skill.RatingConverter` converts between rating systems:
+
+| Method | Purpose |
+|--------|---------|
+| `fargoToApaSl(fargo, gameType?)` / `apaSlToFargo(skillLevel, gameType?)` | APA skill level (`'eight-ball'` or `'nine-ball'`) |
+| `fargoToAbcd(fargo)` / `abcdToFargo(abcd)` | A/B/C/D letter grades |
+| `fargoToLegacySkillLevel(fargo)` / `legacySkillLevelToFargo(skillLevel)` | Legacy ChalkySticks levels |
+| `fargoToDescription(fargo)` | Human-readable label |
+
+`Skill.ExecutionModel` applies human error to a nominal strike: `applyAimError()`, `applyPowerVariance()`, `applyEnglishVariance()`, `calculateShotDifficulty()`, `calculateConfidence()`, and `createSeededRandom()` for reproducible trials.
+
+<Note>
+The Fargo rating is passed to run-out planning and attempt simulation, **not** to `findBestShot()`. That distinction is a current architectural limitation, not an example shortcut.
+</Note>
+
+## Table Read
+
+`Analysis.TableRead` produces a **skill-neutral** reading of one table position, always from the seat of the player about to shoot. Every field is a measurement, never a preference — nothing is Fargo-weighted and nothing assumes intent, so the same numbers describe a masterful lock-up and an accidental one identically.
+
+```typescript
+const read = new TableRead(geometry).read(ballStates, legalIdentifiers);
+```
+
+| Field | Meaning |
+|-------|---------|
+| `bestDirectQuality` / `bestTargetIdentifier` | Best makeable pot, 0 (nothing) to 1 (hanger) |
+| `blockedRatio` | Fraction of legal balls with no clear cue path |
+| `clusterCount` | Non-cue balls within three ball diameters of the cue |
+| `cueToNearestLegal` | Distance to the nearest legal ball, normalized by table length |
+| `cueRailProximity` | How pinned the cue ball is, 0 (open) to 1 (frozen) |
+| `escapeRoutes` | Distinct rails offering a clear one-rail path to a legal ball |
+| `isSnookered` | True when no legal ball has a clear direct cue path |
+| `legalBallCount` / `viableShotCount` | Balls considered, and those above the viability floor |
+| `nearestBlockerDiameters` / `nearestBlockerIdentifier` | Distance to the ball obstructing the straight-on route, in ball diameters |
+| `visibleFraction` | How much of the best legal ball the cue can actually reach, 0 to 1 |
+
+`nearestBlockerDiameters` is what separates being *hampered* from merely being *far away* — a blocker frozen to the cue ball leaves no bridge and no room to swerve, while the same ball at the other end of the table blocks the same line and costs almost nothing. It is read from the straight-on approach specifically, never the nearest blocker across every approach angle.
+
+`visibleFraction` is sampled across the contact hemisphere (9 samples over 80°) rather than tested on the center line alone, because "they can hit part of it" is a distinct position from both a clear shot and a true snooker.
+
+## Enums
+
+```typescript
+Enum.PocketIdentifier      // bottomLeft, bottomRight, middleLeft, middleRight, topLeft, topRight
+Enum.RailIdentifier        // rail-bottom, rail-left, rail-right, rail-top
+Enum.ShotType              // bank, combo, direct, jump, kick, masse
+Enum.PlannedShotPointKind  // contact, end, pocket, rail, start
+Enum.ShotGeometryStatus    // clear, cue-path-blocked, impossible, target-path-blocked, very-thin
+
+Event.Planning             // planning:progress
+Event.Collision            // collision:ball-ball, collision:ball-pocket, collision:ball-rail
+```
+
+## Browser Example
+
+The primary example is an interactive run-out scoring lab. It generates full verified run-outs from the package's root web bundle, switches between the stabilized core and reviewed expert profile, compares the active planner winner with an editable score, and diagrams every route:
+
+```bash
+yarn build
+yarn example
+```
+
+Open `http://localhost:7016/example/`. Fargo, route-family gates, nominal/direct/leave/cue-travel weights, and the travel-distance curve are all editable in the page.
+
+<Note>
+The package README still points at port `8093`; the `example` script actually serves on **`7016`**.
+</Note>
+
+For repeatable console-based experiments, `example/scoring/` uses the same fixtures and separates production totals from editable recalculations:
+
+| Script | Runs |
+|--------|------|
+| `yarn example:scoring` | `run-out-breakdown.mjs` |
+| `yarn example:scoring:rank` | `rank-candidates.mjs` |
+| `yarn example:scoring:modes` | `compare-modes.mjs` |
+| `yarn example:scoring:travel` | `tune-cue-travel.mjs` |
+| `yarn example:scoring:reviews` | `evaluate-shot-reviews.mjs` |
+| `yarn example:elevated` | `elevated-demo.mjs` |
+
+## Scoring Documentation
+
+The package's own `docs/` directory separates the layers in depth:
+
+| Document | Covers |
+|----------|--------|
+| `shot-search-and-scoring.md` | Candidate generation, heuristic ordering, physics truth, `IPlannedShot.score`, selection |
+| `run-out-ranking.md` | Leave-aware totals, direct preference, lookahead, Fargo weighting |
+| `fargo-and-player-skill.md` | Skill curves, thresholds, rating conversion, execution errors, limitations |
+| `related-scoring-systems.md` | Robustness trials, safety scoring, make probability, search policy, power seeding |
+| `changing-scoring.md` | Extension points, score budgets, diagnostics, tests, cue-ball-travel component |
+| `evaluated-preference-layer.md` | Stabilized core manifests, per-shot feedback replay, bounded fitting, promotion safeguards |

@@ -1,0 +1,169 @@
+---
+title: 'Command Line'
+description: 'The table-node CLI — manufacturing, bundling, deployment, configuration, diagnostics, and logs'
+---
+
+The `table-node` command builds releases, deploys them over SSH, manages the installed service, and runs the same diagnostic sequence on a laptop or Raspberry Pi.
+
+<Note>
+It **never** reads or prints the persisted device bearer credential.
+</Note>
+
+Two contexts use it:
+
+| Context | Invocation |
+|---------|-----------|
+| Development machine | `yarn cli <command>` from the repository |
+| Installed appliance | `sudo table-node <command>` (`/usr/local/bin/table-node`, created by the Pi installer) |
+
+Every mutating command supports `--dry-run`. `doctor`, `status`, and `config get` are read-only. Add `--json` to diagnostics, status, bundle, deployment, and configuration commands when machine-readable output is useful.
+
+## Manufacturing
+
+```bash
+yarn cli flash
+yarn cli flash --dry-run
+```
+
+Creates a complete self-provisioning boot drive from macOS. See [Deployment & Hardware](/table-node/deployment) for the full sequence, pinned checksums, Wi-Fi options, and non-interactive flags.
+
+```bash
+yarn cli drive-status --drive /dev/disk9
+```
+
+Safely mounts the labeled `bootfs` partition of a flashed drive, prints its public status and the last 200 provisioning log lines, and ejects. Use this when first boot does not reach the claim screen.
+
+## Bundling a Release
+
+```bash
+yarn install
+yarn build
+yarn cli bundle --skip-build
+```
+
+Writes a versioned archive and SHA-256 sidecar under the ignored `release/` directory. Without `--skip-build`, it runs the complete production build first.
+
+```bash
+yarn cli bundle --dry-run
+```
+
+Previews either path without building or writing files.
+
+## Deploying
+
+```bash
+yarn cli deploy \
+	--api-url http://192.168.1.88:8000/v3 \
+	--host chalky-table-10.local \
+	--user chalkysticks
+```
+
+Builds the release, opens SSH, verifies Pi prerequisites, transfers the archive and checksum, verifies the checksum on the Pi, runs the privileged installer, sets the API URL, restarts the service, and runs post-install diagnostics.
+
+Add `--dry-run` to inspect every stage without connecting. Add `--bundle release/chalkysticks-table-node-0.1.0.tar.gz` to deploy an already-built archive.
+
+The repository also ships a shortcut script:
+
+```bash
+yarn redeploy   # deploy --host 192.168.1.182 --user chalkysticks
+```
+
+## Installed Commands
+
+```bash
+sudo table-node doctor
+sudo table-node status --json
+sudo table-node config get
+sudo table-node config set api-url http://192.168.1.88:8000/v3
+sudo table-node logs --follow
+sudo table-node restart
+```
+
+### Configuration
+
+`config set` updates **one value atomically while preserving comments and unrelated settings**. Supported keys:
+
+| Key | Purpose |
+|-----|---------|
+| `api-url` | ChalkySticks API base |
+| `heartbeat-interval-ms` | Heartbeat cadence |
+| `log-format` | `text` or `json` |
+| `poll-interval-ms` | Command poll cadence |
+| `port` | Host port |
+| `scan-timeout-ms` | Hosted scan timeout |
+| `scan-url` | Hosted ChalkyScan endpoint |
+| `simulation` | Simulation vs hardware mode |
+
+```bash
+sudo table-node config set log-format json
+sudo table-node config set scan-timeout-ms 30000
+sudo table-node config set scan-url 'https://scan.chalkysticks.com/scan?confidence=0.4&overlap=0.3'
+```
+
+<Warning>
+Restart the service after manual configuration changes: `sudo table-node restart`.
+</Warning>
+
+### Wi-Fi
+
+`wifi` joins the appliance to a wireless network through NetworkManager. Run it with no options for the wizard — it scans, lists visible networks strongest-signal first, and prompts for the selection and password **without echoing the password**:
+
+```bash
+sudo table-node wifi
+```
+
+For unattended use, pass `--wifi-ssid`, read the password from a file with `--wifi-password-file`, and optionally set the regulatory domain with `--wifi-country`:
+
+```bash
+sudo table-node wifi --wifi-ssid VenueGuest --wifi-password-file /root/wifi-password.txt
+sudo table-node wifi --wifi-country US --wifi-ssid VenueGuest --wifi-password-file /root/wifi-password.txt --json
+```
+
+The command reports the connected device and its address, and **exits nonzero when the radio does not reach a connected state**. Ethernet-only installations never need it; flash-time Wi-Fi uses the same options on `flash`.
+
+## Diagnostics
+
+```bash
+sudo table-node doctor
+```
+
+`doctor` verifies:
+
+- Node.js 22 or newer and the target operating system
+- Raspberry Pi firmware power integrity, including active **and historical** throttling
+- Compiled CLI, host, and kiosk assets
+- Environment configuration, API health, and hosted ChalkyScan DNS/TLS/route reachability
+- The sanitized local host snapshot
+- The systemd service, Chromium, labwc, and the kiosk launcher
+- Linux camera devices and connected DRM/HDMI displays
+- Available disk capacity
+
+Warnings identify hardware checks expected to be absent during laptop development. **Failures return a non-zero process status**, so the command can be used by deployment scripts or monitoring.
+
+<Warning>
+`doctor` fails immediately when firmware reports current undervoltage or throttling. Replace the power supply or cable before investigating application or HDMI symptoms.
+</Warning>
+
+## Logs
+
+```bash
+sudo table-node logs
+sudo table-node logs --follow
+```
+
+The host emits ISO-8601 timestamps in text mode, or one JSON record per line with `TABLE_NODE_LOG_FORMAT=json` (`config set log-format json`). Both formats intentionally reduce errors to safe messages instead of serializing HTTP request headers, API credentials, or the device token. Installed logs are retained by journald.
+
+## Repository Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `yarn dev` | Host (`7010`) and Vue dev server (`7011`) concurrently |
+| `yarn dev:host` | Host only, with watch |
+| `yarn dev:view` | Vue dev server only |
+| `yarn build` | CLI, host, and view — all three build artifacts |
+| `yarn serve` | Run the compiled host from `build/host/index.js` |
+| `yarn typecheck` | CLI, host, and view type checks |
+| `yarn test` | Typecheck, unit tests, and a full build |
+| `yarn test:cli` / `test:host` / `test:view` | Individual suites |
+| `yarn cli` | The CLI through `tsx` |
+| `yarn cli:ui` | The terminal UI through `bun` |

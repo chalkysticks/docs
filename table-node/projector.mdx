@@ -1,0 +1,147 @@
+---
+title: 'Projector Output'
+description: 'The kiosk output client, scene rendering, capture blanking, and Pad integration'
+---
+
+The output client is the browser surface that actually drives the projector. It runs fullscreen in Chromium on the Raspberry Pi, loaded from loopback so it survives a venue internet outage.
+
+## Responsibilities
+
+| Concern | Owner |
+|---------|-------|
+| Claim-code onboarding overlay | Output client |
+| Black idle output | Output client |
+| Portable scene rendering | Output client |
+| Measured-light calibration patterns | Output client |
+| Calibrated warping | Output client |
+| Capture-safe blanking | Output client |
+| Camera discovery and capture | **Node host**, not the browser |
+| Device bearer credential | **Node host**, not the browser |
+
+The loopback projector browser owns only output pixels and the SDK calibration math. The device bearer remains in the host, and the browser reaches the host exclusively through same-origin `/local/v1/*` routes.
+
+<Note>
+The remote setup browser never enumerates its own tablet or laptop camera. Linux camera discovery and capture belong to the Node host — Chromium does not own camera permission on the appliance.
+</Note>
+
+## Output States
+
+| State | What is projected |
+|-------|-------------------|
+| Unclaimed | The short-lived claim code overlay |
+| Claimed and idle | Black |
+| After `projection.clear` | Black |
+| During `projection.present` | The rendered scene |
+| During `scan.capture` | Black (blanked before exposure) |
+| During projector calibration | Paired black and dot frames |
+
+<Warning>
+**Black is the safe state, not evidence of failure.** A claimed Node is black whenever it is idle or has been cleared. Inspect the snapshot, browser console, and command status before treating black output as a problem.
+</Warning>
+
+If the output shows only the faded Table Node brand, inspect `runtime.state.last_error` — a renderer contract error such as an unknown `ballSetIdentifier` fails the command and the current build returns the projector to black. Use `chalkysticks-pool` for the standard ChalkySticks pool-ball catalog.
+
+## Route Boundary
+
+The projector route intentionally has no cursor and no local setup navigation:
+
+- `http://127.0.0.1:7010/output` — loopback only, the real projector surface.
+- Remote attempts to open `/output` **redirect to `/setup`**.
+- `/diagnostics` is read-only; `/setup` owns commissioning controls.
+
+Chromium is launched by the labwc autostart entry, and the kiosk launcher waits for `/local/v1/snapshot` before opening the output. A slow host start shows the desktop briefly and then the output, rather than a browser error page.
+
+## Scene Payload
+
+Scenes arrive as `projection.present` command payloads and are normalized in the `table.surface.normalized.v1` coordinate space:
+
+```typescript
+interface IPoolTableProjectionPresentPayload {
+    high_contrast: boolean;
+    layers: IPoolTableProjectionLayers;   // balls, cues, lines, shapes, stickers, text
+    preset: PoolTableProjectionPreset;    // 'setup' | 'overlay'
+    scene: IDiagramProjectionScene;
+    source?: IPoolTableProjectionSource | null;
+}
+```
+
+The result reports `{ presented, warnings }`. Rendering happens inside the rails, and warnings are surfaced rather than silently swallowed.
+
+`projection.clear` takes an empty payload and returns `{ cleared: true }`.
+
+## Capture Blanking
+
+A hardware `scan.capture` is serialized against projection so the projected image cannot contaminate the exposure:
+
+1. The Node blanks the projector.
+2. The optical output is allowed to settle.
+3. The host captures an original, unrotated JPEG from the selected UVC camera.
+4. The image is uploaded privately and canonical API inference is requested.
+5. The previous projection is restored.
+
+The command completes with a capture reference, `table.surface.normalized.v1` ball coordinates, an orientation-uncertainty flag, and warnings.
+
+<Warning>
+Pad must place balls **directly** from the returned normalized coordinates. Do not run a local image-rotation path — the coordinates are already canonical. If a scan image looks shifted, check the camera mount, exposure, camera/table calibration, and projector blanking rather than rotating again downstream.
+</Warning>
+
+## Pad Integration
+
+<Note>
+This section describes the **planned** Pad implementation. The runnable Table Node slice is claimed and controlled through the API or Postman collection until the Table Control screens land in ChalkySticks Pad.
+</Note>
+
+The smallest coherent Pad change keeps the current Project sidebar action, places a menu-first Table Control screen in front of projection choices, and preserves the existing local projector setup wizard unchanged.
+
+### Existing Integration Points
+
+| Concern | File or service |
+|---------|-----------------|
+| Project sidebar button | `src/App/View/Navigation.vue` |
+| Project orchestration and working table | `src/App/Scene/Diagram.vue` |
+| Local projector wizard | `src/App/View/Modal/ProjectionSetup.vue` |
+| Menu-card visual pattern | `src/App/View/Modal/ScanSource.vue` |
+| Local projection session | `src/App/Service/Projection/Session.ts` |
+| Scene serialization | `ChalkySticks.Pad.Projection.createDiagramProjectionScene(tableManager.exportTableState())` |
+| Local scan placement | `src/App/Service/TableScanner.ts`, `src/App/Service/Scan/Detection.ts` |
+| Projection rollout flag | `src/Config/Feature.ts` |
+| Projection capability | `PadProjectionWorkspace` / `pad.projection_workspace` |
+
+<Warning>
+The API capability already requires Pro access, but `projection_workspace` currently defaults to `EnabledForAdmins` in Pad. Opening Table Control to ordinary Pro users requires intentionally changing that rollout default or setting the corresponding host/CMS feature override — **changing only the capability does not expose the button.**
+</Warning>
+
+### Menu-First Experience
+
+Selecting Project opens one Projection Control modal whose first screen uses the same large option cards and modal framing as Scan a Table:
+
+1. **Control a Table** — owned, organization, and explicitly requested nearby inventory; remembers the last selected accessible table.
+2. **Claim a Table** — accepts the short-lived code shown by an unclaimed Node, then asks for name, personal or organization ownership, venue, and optional location.
+3. **Project from This Device** — opens the existing `ProjectionSetup.vue` local-output wizard for a browser connected directly to a projector.
+
+Once a remote table is selected, the modal header shows name, venue, online state, busy/locked state, camera/projector availability, and current projection summary. The first release then offers **Project this diagram** (`projection.present`), **Clear projection** (`projection.clear`), **Scan table into Pad** (`scan.capture`, followed until completion), and **Change table**.
+
+The default inventory does not request location permission. Choosing Nearby asks for browser geolocation, explains why it is needed, passes the coordinates to the API, and offers venue or city search when permission is unavailable. Discovery never bypasses ownership and organization policy.
+
+<Note>
+Opening or selecting a table **never** acquires a controller lock. A lock is an explicit session action reserved for drills or other work that should reject interruption.
+</Note>
+
+### Data Access
+
+Add [`@chalkysticks/sdk-table-control`](/sdk/table-control) as a direct Pad dependency and use its established model, collection, and factory surface. Configure it through the same ChalkySticks API base and bearer-token provider already used by the Pad SDK — do not add a separate fetch client, concatenate `/v3` manually, or store controller credentials in the modal.
+
+REST is sufficient for the first vertical slice: load accessible or nearby tables with the pool-table collection, claim through the pool-table model, create each idempotent command through the command factory, and poll the command model until completed, failed, or expired. Subscribe to table state and command updates through the SDK's Ably integration later for lower latency, retaining polling as recovery.
+
+## Runtime Expectations
+
+- Commands move through queued, acknowledged, and completed or failed states. Repeated delivery of one public identifier never repeats a completed physical action.
+- A controller lock prevents ordinary interruption while a drill or session is active, but opening a table detail screen does not acquire one.
+- Super administrators can inspect all registered tables and command history; owners and organization roles only see and control tables allowed by API policy.
+- Loss of the API delays new remote commands but does **not** crash the output client, erase the persisted device identity, or clear the current browser output.
+- Camera loss marks camera capability unavailable and fails scan commands clearly, without disabling clear commands.
+- Projector loss marks projector capability unavailable, keeps the host reachable, and fails presentation commands clearly, without losing the pending calibration profile.
+
+## HTTPS and HTTP
+
+An HTTPS Pad cannot call an HTTP Node directly. Keep device control travelling through the HTTPS API; use the local HTTP interface only for commissioning on the LAN.

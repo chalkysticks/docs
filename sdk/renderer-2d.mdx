@@ -1,0 +1,431 @@
+---
+title: 'Renderer 2D Package'
+description: 'Framework-neutral Canvas, SVG, WebGL, and raster rendering for top-down billiards scenes'
+---
+
+`@chalkysticks/sdk-renderer-2d` (v0.2.0) turns canonical table-world state into pixels or portable image output. It renders authored or procedural tables, ordered Pad surface elements, paths, ghost balls, a cue, and physically rotating billiard balls.
+
+The host application retains ownership of physics, shot planning, playback time, interaction, rules, and UI. The core package intentionally contains **no** request-animation-frame loop, billiards rules, DOM controls, Vue components, physics stepping, shot selection, or first-person rendering.
+
+## Package Boundaries
+
+| Entry point | Owns |
+|-------------|------|
+| `@chalkysticks/sdk-renderer-2d` | Renderer, scene contracts, coordinate projection, animation timeline, rolling-track generation |
+| `@chalkysticks/sdk-renderer-2d/pad` | Accepts the structural output of `sdk-pad` without depending on Pad or Vue at runtime |
+| `@chalkysticks/sdk-renderer-2d/physics` | Converts the structural subset of `sdk-physics` bodies used for rendering |
+| `@chalkysticks/sdk-renderer-2d/shot-planner` | Converts verified planner geometry into guides and a ghost-ball marker |
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-renderer-2d
+```
+
+Add optional peers only for the integrations the host actually uses:
+
+```bash
+npm install @chalkysticks/sdk-physics @chalkysticks/sdk-shot-planner
+```
+
+`@chalkysticks/sdk-runtime` is a hard dependency (asset resolution). `@chalkysticks/sdk-physics` (`^0.5.7`) and `@chalkysticks/sdk-shot-planner` (`^0.7.3`) are peers used only by their respective adapter entry points.
+
+<Note>
+All four entry points are **ESM-only** — the package declares `import`/`default` conditions but no `require`. There is no CommonJS build.
+</Note>
+
+## Top-Level Exports
+
+The root re-exports every core module flat:
+
+```typescript
+import {
+    // Renderer
+    CanvasRenderer, SvgRenderer, RasterRenderer,
+
+    // Scene construction and validation
+    createStandardTable, createTableFromSvg, cloneRendererScene,
+    validateRendererScene, validateRendererTable,
+
+    // Animation
+    SceneTimeline, createRollingAnimationTrack,
+
+    // Assets and ball catalogs
+    TableArtworkCatalog, BallSetCatalog, BallStyleRegistry,
+    createStandardBallSets, createStandardBallStyles,
+    FlatBallStyle, ShadedBallStyle, ChalkyClassicBallStyle,
+
+    // Layers
+    TableLayer, SurfaceLayer, GuideLayer, CueLayer, BallLayer,
+    CanvasBallRenderer, WebGLBallRenderer,
+
+    // Projection
+    OrthographicTableProjector,
+
+    // Geometry
+    createIdentityQuaternion, createQuaternionFromAxisAngle,
+    multiplyQuaternions, normalizeQuaternion, slerpQuaternions,
+
+    // Config
+    Ball, Table, TABLE_STYLE, STANDARD_TABLE_DEFINITIONS,
+} from '@chalkysticks/sdk-renderer-2d';
+```
+
+Adapters live behind their own subpaths and are **not** re-exported from the root:
+
+```typescript
+import { PadDiagramSceneAdapter } from '@chalkysticks/sdk-renderer-2d/pad';
+import { PhysicsBodySceneAdapter } from '@chalkysticks/sdk-renderer-2d/physics';
+import { ShotPlannerSceneAdapter } from '@chalkysticks/sdk-renderer-2d/shot-planner';
+```
+
+## The Scene
+
+Everything the renderers accept is one plain `IRenderer2DScene`. It carries no behavior and no framework types:
+
+```typescript
+interface IRenderer2DScene {
+    balls: IRenderer2DBall[];
+    guides: IRenderer2DGuidePath[];
+    surface: IRenderer2DSurfaceRenderable[];
+    table: IRenderer2DTable;
+    ballSetIdentifier?: string;
+    ballShadowLevel?: TRenderer2DBallShadowLevel;
+    ballStyleIdentifier?: string;
+    cue?: IRenderer2DCue;
+    ghostBall?: IRenderer2DGhostBall;
+}
+```
+
+| Member | Purpose |
+|--------|---------|
+| `balls` | Visible balls in canonical world coordinates, each with `position`, `orientation` (quaternion), `radius`, `scale`, `opacity`, `type`, `visible` |
+| `guides` | World-space paths for aim, prediction, or authored instruction — `points`, `color`, `width`, `style`, `dashLength`, optional `arrowhead` |
+| `surface` | Ordered Pad surface elements: `decal`, `line`, `shape`, or `text`, each with a `layerOrder` |
+| `table` | Table geometry and optional artwork |
+| `cue` | Procedural cue behind the active cue ball — `direction`, `length`, `pullback`, `width`, and butt/shaft/tip colors |
+| `ghostBall` | Planning marker rendered above guide paths |
+
+Surface elements support four kinds (`decal`, `line`, `shape`, `text`) and four analytic shapes (`circle`, `ellipse`, `rectangle`, `triangle`). Line styles are `solid`, `dashed`, or `dotted`; arrowheads may be placed at `start`, `end`, `both`, or `none`.
+
+## Render to Canvas
+
+```typescript
+import { CanvasRenderer, createIdentityQuaternion, createStandardTable } from '@chalkysticks/sdk-renderer-2d';
+
+const table = createStandardTable();
+const renderer = new CanvasRenderer(canvas, {
+    ballMode: 'automatic',
+});
+
+renderer.resize({
+    height: 720,
+    width: 1280,
+});
+
+const result = renderer.render({
+    ballSetIdentifier: 'generic-pool',
+    balls: [
+        {
+            identifier: 'cue',
+            opacity: 1,
+            orientation: createIdentityQuaternion(),
+            position: { x: 0.6, y: table.ballRadius, z: 0 },
+            radius: table.ballRadius,
+            scale: 1,
+            type: 'cue',
+            visible: true,
+        },
+    ],
+    guides: [],
+    surface: [],
+    table,
+});
+
+console.log(result.ballMode);  // 'webgl' or 'canvas'
+console.log(result.warnings);  // explicit diagnostics, never silent
+```
+
+| Method | Purpose |
+|--------|---------|
+| `render(scene)` | Draw one frame; returns `IRenderer2DRenderResult` with the selected `ballMode` and any `warnings` |
+| `resize(options)` | Set logical size and optional `pixelRatio` |
+| `getProjector()` | The active `IRenderer2DProjector` — useful for hit-testing via `unprojectPoint` |
+| `dispose()` | Release every layer resource exactly once |
+
+The renderer defaults to a 300 × 300 viewport and resolves `pixelRatio` from `window.devicePixelRatio` when not supplied. Backing-store dimensions are `round(logical × pixelRatio)`, floored at 1.
+
+### Ball Modes
+
+| Mode | Behavior |
+|------|----------|
+| `automatic` | Try the instanced WebGL2 sphere renderer; fall back to Canvas and report an explicit warning when it does |
+| `webgl` | Request WebGL2 directly. A failed request **still** falls back safely and reports why |
+| `canvas` | Use the 2D Canvas ball renderer |
+
+`WebGLBallRenderer` exposes `supported` and an actionable `failureMessage`, so a host can surface *why* the GPU path was unavailable rather than silently degrading.
+
+## Portable Output
+
+`SvgRenderer` produces deterministic, self-contained markup from the same scene. `RasterRenderer` runs that SVG path through the browser to produce PNG, WebP, or JPEG blobs — keeping table placement and ball appearances consistent between vector and raster output.
+
+```typescript
+import { RasterRenderer, SvgRenderer } from '@chalkysticks/sdk-renderer-2d';
+
+const svgRenderer = new SvgRenderer();
+const svgResult = svgRenderer.render(scene, {
+    height: 720,
+    width: 1280,
+});
+
+const rasterRenderer = new RasterRenderer();
+const pngResult = await rasterRenderer.render(scene, {
+    format: 'png',
+    height: 720,
+    pixelRatio: 2,
+    width: 1280,
+});
+```
+
+`IRenderer2DRasterRenderResult` returns the `blob`, its `mimeType`, final `width` / `height`, the intermediate `svg` source, and `warnings`. Supported formats are `png`, `webp`, and `jpeg`, with an optional `quality`.
+
+SVG output remains browser-independent **unless** a scene references external catalog artwork. Provide `artworkResolver` when artwork is not already embedded as SVG or a data URL. Raster encoding always requires browser image and Canvas APIs.
+
+<Note>
+The two renderers take different resolver shapes. `TRenderer2DSvgArtworkResolver` returns `string | null` (markup or a data URL); `TRenderer2DCanvasArtworkResolver` returns `CanvasImageSource | null` (a decoded image). Unresolved artwork produces a warning and a procedural fallback — never a silently missing element.
+</Note>
+
+## Standard Tables
+
+The package ships vector artwork and extracted physical geometry for four pool tables plus a pocketless carom billiards table.
+
+| Identifier | Label | Playing surface | Default ball set |
+|------------|-------|-----------------|------------------|
+| `six-foot` | Six-foot Pool | 1.6764 m | `generic-pool` |
+| `seven-foot` | Seven-foot Pool | 1.9812 m | `generic-pool` |
+| `eight-foot` | Eight-foot Pool | 2.2352 m | `generic-pool` |
+| `nine-foot` | Nine-foot Pool | 2.54 m | `generic-pool` |
+| `billiards-ten-foot` | Ten-foot Billiards | 2.84 m | `generic-billiards` |
+
+`TableArtworkCatalog` exposes stable metadata — including the asset identifier the host resolves through its own asset loader — and converts resolved SVG source into table geometry and portable artwork:
+
+```typescript
+import { TableArtworkCatalog } from '@chalkysticks/sdk-renderer-2d';
+
+const catalog = new TableArtworkCatalog();
+const definition = catalog.getDefinition('nine-foot');
+const source = await resolveAssetSource(definition.assetIdentifier);
+const extracted = catalog.create(definition.identifier, source);
+
+scene.ballSetIdentifier = definition.ballSetIdentifier;
+scene.table = extracted.table;
+```
+
+| Method | Purpose |
+|--------|---------|
+| `getDefinition(identifier)` | One `IRenderer2DStandardTableDefinition` |
+| `getDefinitions()` | All five definitions |
+| `create(identifier, source, options?)` | Extract geometry and portable artwork from resolved SVG |
+
+Asset identifiers are namespaced under the `renderer-2d.table` logical family (`STANDARD_TABLE_ARTWORK_FAMILY`), resolved through [sdk-runtime](/sdk/runtime)'s asset catalog.
+
+For a procedural table with no artwork, `createStandardTable(options?)` builds geometry directly. `createTableFromSvg(source, options?)` handles arbitrary authored SVG.
+
+## Ball Sets and Styles
+
+Ball appearances are **data-driven** — no renderer code or fixed texture atlas is tied to a particular visual brand. Sets and styles can be replaced or extended through the `ballSets` and `ballStyles` renderer options.
+
+| Ball set | Family |
+|----------|--------|
+| `chalkysticks-pool` | pool (default) |
+| `cyclop-pool` | pool |
+| `generic-pool` | pool |
+| `generic-snooker` | snooker |
+| `generic-billiards` | billiards |
+| `generic` | generic |
+
+| Ball style | Behavior |
+|------------|----------|
+| `shaded` | Radial-gradient sphere shading (default) |
+| `flat` | Flat fills, no gradient |
+| `chalky-classic` | Extends `flat` with the classic ChalkySticks treatment |
+
+Ball patterns are `cue`, `solid`, `stripe`, or `ghost`. Labels can be placed `upright` or `rolling`. Shadow levels are `full`, `soft`, or `off`.
+
+Relevant `Config.Ball` constants:
+
+| Constant | Value |
+|----------|-------|
+| `DEFAULT_BALL_SET_IDENTIFIER` | `'chalkysticks-pool'` |
+| `DEFAULT_BALL_STYLE_IDENTIFIER` | `'shaded'` |
+| `FALLBACK_BALL_COLOR` | `'#8d96a3'` |
+| `MAXIMUM_ATLAS_SCALE` | `4` |
+| `MAXIMUM_BALL_SET_APPEARANCES` | `16` |
+| `MINIMUM_LABEL_FONT_SIZE` | `7` |
+
+## Layer Order
+
+The built-in pipeline has explicit, stable order. Layers are sorted by their numeric `order`, so a custom layer can be slotted anywhere:
+
+| Order | Layer | Draws |
+|-------|-------|-------|
+| `100` | `TableLayer` | Table and cloth |
+| `200` | `SurfaceLayer` | Pad surface elements and decals |
+| `300` | `GuideLayer` | Aim, route, and trajectory guides |
+| `400` | `CueLayer` | Cue |
+| `500` | `BallLayer` | Ball shadows and balls |
+
+Passing `IRenderer2DRendererOptions.layers` **replaces** the built-in pipeline entirely. Custom renderers continue to use the same projector and backing-pixel viewport.
+
+```typescript
+interface IRenderer2DLayer {
+    dispose(): void;
+    identifier: string;
+    order: number;
+    render(frame: IRenderer2DRenderFrame): void;
+    resize(viewport: IRenderer2DViewport): void;
+}
+```
+
+Each layer receives an immutable `IRenderer2DRenderFrame` carrying the `canvas`, 2D `context`, `projector`, `scene`, `viewport`, optional `artworkResolver`, and the shared `warnings` array.
+
+## Projection
+
+`OrthographicTableProjector` maps between the Y-up billiards world and canvas pixels:
+
+| Method | Purpose |
+|--------|---------|
+| `configure(table, viewport)` | Fit the table into the viewport |
+| `projectPoint(worldPoint)` | World → pixels |
+| `unprojectPoint(point)` | Pixels → world (hit-testing) |
+| `projectRadius(radius)` | Scale a world radius into pixels |
+| `getScale()` | Current world-to-pixel scale |
+| `getTableRectangle()` | Table bounds in pixels |
+
+Supply a custom `IRenderer2DProjector` through renderer options to change the fit.
+
+## Animation
+
+`SceneTimeline` pairs one scene with an `IRenderer2DAnimation` and samples it at any time. Sampling is **immutable and stateless** — it clones the scene rather than mutating it, so play, pause, seek, thumbnails, export, and deterministic tests all share one representation.
+
+```typescript
+import { SceneTimeline } from '@chalkysticks/sdk-renderer-2d';
+
+const timeline = new SceneTimeline(scene, animation);
+
+renderer.render(timeline.sample(playbackTime));
+renderer.render(timeline.sample(playbackTime, { loop: true }));
+
+const duration = timeline.getDuration();
+```
+
+```typescript
+interface IRenderer2DAnimation {
+    duration: number;
+    tracks: IRenderer2DAnimationTrack[];  // { ballIdentifier, keyframes }
+}
+
+interface IRenderer2DAnimationKeyframe {
+    position: IRenderer2DWorldPoint;
+    time: number;
+    opacity?: number;
+    orientation?: IRenderer2DQuaternion;
+    visible?: boolean;
+}
+```
+
+Every track's `ballIdentifier` must match a ball in the scene; the constructor rejects tracks that do not.
+
+### Rolling Tracks
+
+`createRollingAnimationTrack()` generates orientation keyframes from positions alone — useful when authored Pad data contains no rotation:
+
+```typescript
+import { createRollingAnimationTrack } from '@chalkysticks/sdk-renderer-2d';
+
+const track = createRollingAnimationTrack({
+    ballIdentifier: '7',
+    points: [{ position, time }, /* … */],
+    radius: table.ballRadius,
+});
+```
+
+Orientation accumulates as a quaternion from traveled distance divided by ball radius, which gives shader balls natural visible rotation.
+
+## Adapters
+
+### Pad
+
+```typescript
+import { SceneTimeline } from '@chalkysticks/sdk-renderer-2d';
+import { PadDiagramSceneAdapter } from '@chalkysticks/sdk-renderer-2d/pad';
+
+const adapter = new PadDiagramSceneAdapter({ table });
+const adapted = adapter.adapt(padProjectionScene);
+const animation = adapter.createPlaybackAnimation(trajectories);
+const timeline = new SceneTimeline(adapted.scene, animation);
+
+renderer.render(timeline.sample(playbackTime));
+```
+
+Pad ball positions and trajectories use **normalized ball-safe** coordinates, while surface elements use the **full normalized cushion-nose** surface. The adapter converts both domains into centered physical table units with the correct ball-radius edge inset.
+
+SVG, image, and catalog artwork require an `artworkResolver` — asset loading remains an application concern. Unresolved artwork produces diagnostics rather than disappearing silently.
+
+### Physics
+
+```typescript
+import { PhysicsBodySceneAdapter } from '@chalkysticks/sdk-renderer-2d/physics';
+
+const adapter = new PhysicsBodySceneAdapter();
+const nextScene = adapter.apply(scene, bodies);
+const balls = adapter.createBalls(bodies);
+```
+
+The adapter consumes only the structural subset of `sdk-physics` bodies needed for rendering (`IRenderer2DPhysicsBody`), so [sdk-physics](/sdk/physics) remains the simulation authority while this package owns the visual scene.
+
+### Shot Planner
+
+```typescript
+import { ShotPlannerSceneAdapter } from '@chalkysticks/sdk-renderer-2d/shot-planner';
+
+const adapter = new ShotPlannerSceneAdapter();
+const nextScene = adapter.apply(scene, plannedShot);
+```
+
+Converts verified [shot-planner](/sdk/shot-planner) geometry into guide paths and a ghost-ball marker.
+
+## Quaternion Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `createIdentityQuaternion()` | Unrotated orientation |
+| `createQuaternionFromAxisAngle(axis, angle)` | Build from an axis and radians |
+| `multiplyQuaternions(left, right)` | Compose rotations |
+| `normalizeQuaternion(quaternion)` | Renormalize after accumulation |
+| `slerpQuaternions(start, end, progress)` | Spherical interpolation for keyframe sampling |
+
+## Examples and Verification
+
+```bash
+yarn build
+yarn example
+```
+
+Open `http://localhost:7017/example/` for the example index:
+
+| Example | Shows |
+|---------|-------|
+| `animated-pad-playback` | Deterministic Pad playback |
+| `simple-trainer` | Fixed-step `sdk-physics` integration, aiming, pull-back power, English selection |
+| `table-sizes` | All five package-owned standard vector tables |
+| `svg-output` | Self-contained vector output and source inspection |
+| `raster-output` | PNG and WebP rasterization at selectable pixel densities |
+| `ball-styles` | Pool, snooker, billiards, and generic ball-set selection |
+| `ball-rotation` | Live WebGL quaternion rotation across ball patterns |
+
+`yarn test` runs all static, unit, build, and package-import checks.
+
+## Recent Changes
+
+- **0.1.0** — Established the framework-neutral two-dimensional billiards renderer; deterministic scene animation and Pad projection adapters; simple trainer and animated Pad playback examples.

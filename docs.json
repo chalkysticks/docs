@@ -77,9 +77,19 @@
             ]
           },
           {
-            "group": "Physics",
+            "group": "Simulation & Rendering",
             "pages": [
-              "sdk/physics"
+              "sdk/physics",
+              "sdk/shot-planner",
+              "sdk/renderer-2d"
+            ]
+          },
+          {
+            "group": "Vision & Geometry",
+            "pages": [
+              "sdk/geometry",
+              "sdk/projection",
+              "sdk/table-scanner"
             ]
           },
           {
@@ -96,14 +106,10 @@
             ]
           },
           {
-            "group": "Table Scanner",
-            "pages": [
-              "sdk/table-scanner"
-            ]
-          },
-          {
             "group": "Packages",
             "pages": [
+              "sdk/runtime",
+              "sdk/table-control",
               "sdk/venues",
               "sdk/players",
               "sdk/tv",
@@ -244,6 +250,31 @@
             "group": "Reference",
             "pages": [
               "pad/events"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Table Node",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "table-node/index"
+            ]
+          },
+          {
+            "group": "Hardware & Setup",
+            "pages": [
+              "table-node/projector",
+              "table-node/calibration"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "table-node/deployment",
+              "table-node/cli"
             ]
           }
         ]

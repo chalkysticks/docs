@@ -1,0 +1,297 @@
+---
+title: 'Deployment & Hardware'
+description: 'USB manufacturing, Raspberry Pi installation, field commissioning, and hardening'
+---
+
+The normal path for a fresh Table Node is a self-provisioning USB drive built on a Mac. Existing appliances are updated over SSH with `yarn cli deploy`.
+
+## Recommended Hardware
+
+- Raspberry Pi 4 with **4 GB or more** memory
+- Official-quality 5.1V/3A USB-C power supply
+- High-endurance 32 GB or larger microSD card, or a USB SSD for permanent venues
+- Micro-HDMI-to-HDMI cable with strain relief
+- UVC USB camera or supported Raspberry Pi camera with a **rigid overhead mount**
+- Projector capable of a fixed native resolution and black idle output
+- Ethernet where possible; optional USB Wi-Fi adapter for future setup-hotspot fallback
+- Ventilated case and fan when installed near a warm ceiling or projector
+
+Use Raspberry Pi OS Desktop 64-bit. The desktop image supplies the Wayland/labwc session used for the Chromium kiosk, while systemd supervises the Node host independently.
+
+## Manufacturing a Drive
+
+```bash
+yarn cli flash
+```
+
+The CLI selects only a safe external whole disk, requires an exact erase confirmation, verifies pinned Raspberry Pi OS and Node.js artifacts, embeds the application, and ejects a ready drive. The Raspberry Pi does not need a keyboard, mouse, SSH session, Node.js installation, or a live connection to the development laptop while it installs.
+
+### One-Time Mac Requirements
+
+- macOS with `xz` installed via `brew install xz`
+- This repository with `yarn install` already completed
+- An OpenSSH public key at `~/.ssh/id_rsa.pub` or `~/.ssh/id_ed25519.pub`
+- A blank 16 GB or larger USB drive, USB SSD, or microSD card in a reader
+- Internet access on the first run so the pinned OS image and Node.js archive can be cached (an existing Raspberry Pi Imager cache is reused when its SHA-256 digest matches)
+
+### Sequence
+
+1. Insert the blank target drive.
+2. Double-click `deploy/macos/Make Table Node.command`, or run `yarn cli flash`.
+3. Wait for the manufacturer to verify Mac prerequisites.
+4. Enter a unique hostname such as `chalky-table-02`.
+5. Select the external drive by its displayed device, model, and capacity.
+6. Type the exact disk-specific `ERASE diskN` confirmation.
+7. Enter the Mac administrator password once when the raw-disk transaction requests it.
+8. Wait for `Drive ready`.
+9. Put the drive into a Raspberry Pi 4 with Ethernet and HDMI, and power it on.
+10. Wait through automatic first boot and reboot; Chromium opens the output and displays a fresh claim code.
+
+Preview the complete plan with zero processes or filesystem mutations:
+
+```bash
+yarn cli flash --dry-run
+```
+
+<Note>
+Every new operating-system image creates a new device identifier and claim code. A claimed Table Node credential is **never** cloned.
+</Note>
+
+### Write Verification
+
+The installer verifies or creates a persistent expanded-image cache, calculates independent SHA-256 digests for its protected body and partition-table prefix, and runs the complete raw-disk transaction under **one** `sudo` authorization:
+
+1. Unmount the selected disk.
+2. Clear the prefix so macOS cannot auto-mount an incomplete filesystem.
+3. Write the OS body with live byte and throughput progress.
+4. Read the body back from the physical drive with the same live progress.
+5. Reject any SHA-256 mismatch.
+6. Only then write and read-verify the partition-table prefix.
+7. Mount `BOOTFS`, install cloud-init and the offline payload, synchronize, and eject.
+
+This order verifies every original image byte **before** macOS can update FAT metadata.
+
+### Drive Constraints
+
+The CLI accepts only `/dev/diskN` whole devices that macOS reports as physical, external, non-internal, and at least 8 GB. The target is revalidated and the confirmation is checked immediately before imaging.
+
+The Pi 4 must support USB mass-storage boot. For an older Pi 4 whose EEPROM has never received USB-boot support, use the same command with a microSD card in a USB reader, or update the Pi bootloader once before treating a USB drive as the production medium.
+
+### Ethernet and Optional Wi-Fi
+
+Ethernet is the default commissioning path and needs no installer option. To preconfigure Wi-Fi without putting the password in shell history:
+
+```bash
+chmod 600 /private/tmp/chalkysticks-wifi-password
+yarn cli flash \
+	--wifi-country US \
+	--wifi-password-file /private/tmp/chalkysticks-wifi-password \
+	--wifi-ssid 'Amsterdam Billiards'
+```
+
+Delete the temporary password file after the drive is ready. `--wifi-country` accepts a two-letter ISO 3166-1 country and defaults to `US`; provisioning applies it before unattended Wi-Fi use so Raspberry Pi OS does not leave the radio blocked. The Table Node payload and CLI results do not print the network configuration.
+
+### Non-Interactive Invocation
+
+Automation can provide every operator choice, but the exact disk-specific confirmation remains mandatory:
+
+```bash
+yarn cli flash \
+	--api-url http://192.168.1.88:8000/v3 \
+	--confirm-erase 'ERASE disk9' \
+	--drive /dev/disk9 \
+	--hostname chalky-table-02 \
+	--ssh-key ~/.ssh/id_rsa.pub \
+	--timezone America/New_York \
+	--wifi-country US
+```
+
+## What Happens on First Boot
+
+The drive contains the checksummed release, pinned Node.js ARM64 runtime, cloud-init configuration, and a retrying first-boot systemd service. First boot:
+
+1. Creates the locked `chalkysticks` desktop account and installs the SSH public key.
+2. Enables SSH and verifies both archives.
+3. Applies the Wi-Fi regulatory country.
+4. Installs Node.js and Table Node.
+5. Disables desktop screen blanking.
+6. Configures the API URL and simulation mode.
+7. Enables graphical autologin, starts the host service, records success, and reboots.
+
+The next boot enters a labwc session that applies `asset/wallpaper.png` before the kiosk supervisor requires Chromium to report projector readiness. Early boot branding is disabled by default and only installed when the installer runs with `TABLE_NODE_BOOT_BRANDING=1`.
+
+The installation itself is **offline**. API registration begins when the Pi reaches `TABLE_NODE_API_URL`; if the API or network is unavailable, the host keeps retrying rather than losing installation state.
+
+## First-Boot Recovery
+
+The boot volume always contains `chalkysticks-provisioning/status.txt`. During provisioning it also receives `chalkysticks-provisioning/provisioning.log`; the same complete log is retained on the Pi at `/var/log/chalkysticks-first-boot.log`.
+
+If the claim screen does not appear, power down the Pi, reinsert the drive into the Mac, find its whole device with `diskutil list external physical`, and run:
+
+```bash
+yarn cli drive-status --drive /dev/disk9
+```
+
+This safely mounts the labeled `bootfs` partition, prints status and the latest 200 log lines, and ejects the drive.
+
+<Note>
+A failed first-boot service **automatically retries every 30 seconds** while the Pi remains powered. Reflashing is unnecessary until the log identifies an unrecoverable operating-system or hardware problem.
+</Note>
+
+## Pinned Manufacturing Inputs
+
+| Artifact | Value |
+|----------|-------|
+| Raspberry Pi OS Desktop ARM64 | `2026-06-18-raspios-trixie-arm64.img.xz` |
+| OS compressed SHA-256 | `123287c05f27b0eebd8f65456f6369b8f6635fa50a3d440a4f9f6223bf58c8e2` |
+| OS expanded SHA-256 | `81361b0be9719ceb9aad0f6def4cf882e68b929d0bb595d0433576edd91f3d19` |
+| Node.js ARM64 | `v22.23.2` |
+| Node.js archive SHA-256 | `fff4078c5def658577f92c88db7db3bc0072924bfb93fe52c1e744a54e94abb8` |
+
+The CLI rejects a local `--image` whose digest differs from the pinned image. Updating either dependency is an explicit source change with a corresponding checksum change and test pass, which keeps a venue fleet reproducible.
+
+## Updating an Existing Appliance
+
+```bash
+yarn cli deploy \
+	--api-url http://192.168.1.88:8000/v3 \
+	--host chalky-table-10.local \
+	--user chalkysticks
+```
+
+This builds the release, opens SSH, verifies the Pi prerequisites, transfers the archive and checksum, verifies the checksum on the Pi, runs the privileged installer, sets the API URL, restarts the service, and runs post-install diagnostics. SSH and `sudo` may prompt for authority.
+
+Inspect every planned stage without connecting:
+
+```bash
+yarn cli deploy --dry-run --host chalky-table-10.local --user chalkysticks --api-url http://192.168.1.88:8000/v3
+```
+
+Deploy an already-built archive with `--bundle release/chalkysticks-table-node-0.1.0.tar.gz`.
+
+### What the Installer Does
+
+`deploy/raspberry-pi/install.sh` copies the release to `/opt/chalkysticks/table-node`, creates the fixed data directory `/var/lib/chalkysticks-table-node`, installs `/etc/chalkysticks/table-node.env` **only when it does not already exist**, enables `table-node.service`, and adds the kiosk launcher to the deployment user's labwc autostart.
+
+<Note>
+The packaged service intentionally does **not** expose a custom data-directory setting. Its systemd write boundary and kiosk profile both depend on that fixed path.
+</Note>
+
+### Production Environment
+
+```dotenv
+NODE_ENV=production
+TABLE_NODE_API_URL=http://192.168.1.88:8000/v3
+TABLE_NODE_PORT=7010
+TABLE_NODE_SCAN_TIMEOUT_MS=30000
+TABLE_NODE_SCAN_URL='https://scan.chalkysticks.com/scan?confidence=0.4&overlap=0.3'
+TABLE_NODE_SIMULATION=false
+```
+
+Replace the HTTP development address with the deployed HTTPS API before leaving an unattended installation.
+
+## Verify the Service
+
+```bash
+systemctl status table-node
+journalctl --follow --unit=table-node
+curl --fail http://127.0.0.1:7010/local/v1/snapshot
+sudo table-node doctor
+```
+
+Log into the desktop once and confirm Chromium opens `http://127.0.0.1:7010/output` fullscreen. From another device on the LAN, open `http://<hostname>.local:7010/setup`. If `.local` resolution is unavailable, use `hostname -I` on the Pi or inspect the router's DHCP leases.
+
+## Field Commissioning
+
+### Before the Venue
+
+1. Run `yarn cli flash` on a blank 16 GB or larger drive.
+2. Enter a unique hostname such as `chalky-table-10`, select the drive, type the exact `ERASE diskN` confirmation, and enter the Mac administrator password.
+3. Use Ethernet by default, or provide `--wifi-ssid` with `--wifi-password-file`.
+4. Boot the Pi and let the offline first-boot payload install and reboot into the kiosk.
+5. Confirm the fresh claim code on the bench and claim the table, preserving `/var/lib/chalkysticks-table-node` so the appliance does not create a new identity at the venue.
+6. Label the Pi, power supply, HDMI cable, camera cable, and table number as one kit.
+7. Carry a short Ethernet cable, spare HDMI cable, keyboard, mouse, microSD card, USB card reader, and a second Wi-Fi adapter when the venue network is uncertain.
+
+### Mount and Power Order
+
+Connect the camera, HDMI, and Ethernet, and **only then** the power supply. Turn on the projector and select its HDMI input before booting the Pi. See [Calibration](/table-node/calibration) for the geometry sequence that follows.
+
+### Registration and Claim
+
+The Node creates or loads one persistent device identifier and calls `POST /v3/table-node/register`. On a transient failure it keeps the local output safe and retries after approximately 1, 2, 4, 8, 16, then 30 seconds — **it does not create another identity**.
+
+A new registration stores its device bearer credential locally and displays a short-lived claim code without logging the credential. If the claim code expires, the authenticated Node automatically rotates it and displays the replacement.
+
+<Warning>
+Use the rotated code rather than deleting the device data. A new table appearing after every boot means the packaged `/var/lib/chalkysticks-table-node` directory has lost permissions or persistence — restore it rather than repeatedly claiming new registrations.
+</Warning>
+
+Confirm the API receives a heartbeat every 15 seconds and marks the table offline after roughly 45 seconds without one.
+
+## Networking
+
+NetworkManager is the supported networking layer on current Raspberry Pi OS. Use Ethernet for a venue appliance whenever possible — captive portals, guest-client isolation, credential rotation, and crowded wireless channels cause avoidable service calls.
+
+<Warning>
+Do not expect one built-in Wi-Fi radio to maintain a reliable venue connection **and** an onboarding hotspot simultaneously. Use Ethernet or a second adapter for that future fallback mode. Captive portals and guest-client isolation are deployment blockers, not application authentication mechanisms.
+</Warning>
+
+If configured Wi-Fi fails, the current release requires local network correction through the desktop or SSH. A later onboarding release should expose a temporary `ChalkySticks-Table-XXXX` hotspot without erasing saved networks.
+
+## Hardening After Commissioning
+
+- Replace password SSH with keys and disable password login.
+- Keep the status-only setup route on a trusted venue network, then add local setup-PIN enforcement when the interactive hardware setup stage lands.
+- Do not expose port `7010` to the public internet.
+- Keep `/etc/chalkysticks/table-node.env` and `/var/lib/chalkysticks-table-node` readable only by the service account.
+- Keep the installer-enforced screen-blanking removal and browser integration suppression enabled on every projector appliance.
+- After updates and calibration are proven, consider Raspberry Pi's read-only overlay filesystem to reduce SD-card corruption from hard power loss.
+- Monitor temperature, undervoltage, free storage, last heartbeat, camera availability, projector availability, and software version from API health data.
+
+## Recovery Order
+
+1. Check power and projector input.
+2. Check `table-node.service` and its journal.
+3. Check `curl http://127.0.0.1:7010/local/v1/snapshot`.
+4. Check the desktop session and Chromium process.
+5. Check camera presence and HDMI mode.
+6. Check LAN reachability to `TABLE_NODE_API_URL`.
+7. Restart the service, then the desktop session, and reboot only after the narrower checks fail.
+
+<Warning>
+**Never remove the data directory as a generic repair.** It contains the installed device identity and the Chromium kiosk profile.
+</Warning>
+
+## Field Pitfalls
+
+| Pitfall | Prevention or recovery |
+|---------|------------------------|
+| Power adapter browns out under camera load | Use the official 5V/3A-class Pi 4 supply and inspect undervoltage warnings |
+| Venue Wi-Fi has a captive portal | Use Ethernet or a managed private network |
+| Guest Wi-Fi isolates devices | Device control still travels through the cloud API, but local setup requires an admin LAN or Ethernet |
+| Laptop API unreachable from Pi | Bind Laravel to `0.0.0.0`, keep the laptop awake, allow port `8000`, verify the address is still assigned |
+| `.local` hostname does not resolve | Read the DHCP lease, or connect a display and inspect the NetworkManager address |
+| SD card corruption after hard power loss | Quality card, controlled shutdown, read-only overlay filesystem once commissioning is stable |
+| HDMI blinks, or local HTTP and SSH stall | Run `table-node doctor` or `vcgencmd get_throttled`; replace the power supply or cable before application debugging |
+
+<Warning>
+`table-node doctor` **fails immediately** when Raspberry Pi firmware reports current undervoltage or throttling, and warns when either occurred earlier during the boot. Use a dedicated 5.1V/3A supply with a reliable cable before investigating application or HDMI symptoms.
+</Warning>
+
+## Manual Preparation Fallback
+
+Manual OS preparation remains an engineering fallback for unsupported images or operating-system investigation:
+
+1. In Raspberry Pi Imager, choose the current Raspberry Pi OS Desktop 64-bit image.
+2. Use Imager customization to set hostname, user, timezone, keyboard, Wi-Fi country and credentials, and SSH key access before writing.
+3. Boot with the projector powered and connected so the desktop chooses the intended HDMI mode.
+4. Apply OS updates and install Chromium, `curl`, and optional camera diagnostics such as `v4l-utils`.
+5. Install Node.js 22 or newer system-wide for ARM64. Avoid an interactive-shell-only version manager — systemd must resolve the same binary.
+6. Configure desktop autologin for the deployment user, because labwc starts the projector browser inside that user's graphical session.
+
+Then transfer `build/host/index.js`, `build/public/`, `build/cli/index.js`, and `deploy/raspberry-pi/` over SSH or USB and run `sudo ./deploy/raspberry-pi/install.sh`.
+
+<Note>
+Bookworm and later use NetworkManager by default, and current Desktop images use Wayland with labwc. The deployment therefore uses systemd for the host and `~/.config/labwc/autostart` for Chromium, rather than an X11 `DISPLAY=:0` service.
+</Note>

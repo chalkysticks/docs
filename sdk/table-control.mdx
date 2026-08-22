@@ -1,0 +1,344 @@
+---
+title: 'Table Control Package'
+description: 'Typed API resources for discovering, claiming, locking, and controlling installed pool tables'
+---
+
+`@chalkysticks/sdk-table-control` (v0.1.3) provides typed ChalkySticks API resources for discovering, claiming, locking, and controlling installed pool tables — the controller-side counterpart to the [Table Node](/table-node/index) device software.
+
+It follows the standard ChalkySticks SDK resource architecture:
+
+| Namespace | Owns |
+|-----------|------|
+| `Model` | Individual API resources and resource actions |
+| `Collection` | Paginated resource lists and query filters |
+| `Factory` | Creates resources using SDK Core configuration |
+| `Service` | Subscribes to server-published state invalidations through the shared SDK Extras Ably connection |
+| `Enum` | Closed status, activity, command, and role domains |
+| `Core` | Re-exported `@chalkysticks/sdk-core` |
+
+<Note>
+**Commands are always persisted through the API.** Realtime is subscribe-only and acts purely as an invalidation signal; REST responses remain authoritative. Both services throw if you attempt to publish to a channel.
+</Note>
+
+## Installation
+
+```bash
+npm install @chalkysticks/sdk-table-control
+```
+
+Depends on [`@chalkysticks/sdk-core`](/sdk/core/index) and `@chalkysticks/sdk-pad`; [`@chalkysticks/sdk-extras`](/sdk/extras) is a peer used for the shared Ably connection. Ships as ESM and CommonJS.
+
+## Two Credential Domains
+
+This package serves two very different callers, and they never share a credential:
+
+| Caller | Credential | Auth call |
+|--------|-----------|-----------|
+| **Controller** (pad, app, CMS) | The signed-in user | `.auth()` |
+| **Table Node** (the installed device) | A device registration token | `.setToken(deviceToken)` |
+
+<Warning>
+The installed Table Node uses a separate device credential and **never** calls `auth()` — that is reserved for current-user credentials. The host persists the one-time registration token, applies it explicitly with `setToken()`, and then derives command resources that inherit the same base URL and bearer header.
+</Warning>
+
+## Claiming a Table
+
+An authenticated controller can claim a new Table Node directly from the one-time code displayed by its projector. It does **not** need to discover or know the private unclaimed table UUID first.
+
+```typescript
+import { Factory } from '@chalkysticks/sdk-table-control';
+
+const table = Factory.PoolTable.model({
+    baseUrl: apiUrl,
+});
+
+await table.claim({
+    claim_code: displayedClaimCode,
+    name: 'Amsterdam Billiards - Table 10',
+    organization_id: organizationId,
+});
+```
+
+`claim()` requires both `claim_code` and `name` (it throws `TypeError` otherwise). When the model has no public id yet, it posts to the collection-level claim-by-code route; when it does, it posts to that table's own claim action.
+
+## Discovering and Controlling
+
+```typescript
+import { Enum, Factory, Service } from '@chalkysticks/sdk-table-control';
+
+const tables = Factory.PoolTable.collection().nearby(40.7648, -73.9833, 2);
+await tables.auth().fetch();
+
+const table = tables.first();
+
+if (table) {
+    await table.acquireLock('chalkysticks-pad');
+
+    await table.createCommand({
+        client_id: 'chalkysticks-pad',
+        idempotency_key: crypto.randomUUID(),
+        payload: {
+            high_contrast: false,
+            layers: {
+                balls: true,
+                cues: true,
+                lines: true,
+                shapes: true,
+                stickers: true,
+                text: true,
+            },
+            preset: Enum.PoolTableProjectionPreset.Setup,
+            scene: {
+                ballSetIdentifier: 'chalkysticks-pool',
+                balls: [],
+                renderables: [],
+                tableSize: 'nine-foot',
+                tableType: 'pool',
+                warnings: [],
+            },
+        },
+        type: Enum.PoolTableCommandType.ProjectionPresent,
+    });
+
+    await Service.PoolTable.instance.watch(table.getPublicId());
+}
+```
+
+### PoolTable Model
+
+| Method | Purpose |
+|--------|---------|
+| `claim(request)` | Claim by one-time code |
+| `acquireLock(clientId)` | Acquire or renew the controller lock |
+| `releaseLock(clientId, force?)` | Release it |
+| `createCommand(request)` | Create a durable command; returns a `PoolTableCommand` |
+| `getCapabilities()` | Hardware capability record |
+| `getPublicId()` | Stable public table UUID used by every action route |
+| `getState()` | Current `IPoolTableState` |
+| `getStatus()` | `PoolTableStatus` |
+| `isLocked()` / `isOnline()` | State predicates |
+| `toAttributes()` | `Partial<IPoolTableAttributes>` |
+
+Resource URLs use the public UUID while retaining the numeric id.
+
+`client_id` is validated at no more than **128** characters; command errors at 5000; idempotency keys at 128.
+
+### PoolTable Collection Filters
+
+```typescript
+Factory.PoolTable.collection()
+    .nearby(latitude, longitude, distance?)
+    .atVenue(venueId)
+    .forOrganization(organizationId)
+    .status(Enum.PoolTableStatus.Active)
+    .online(true)
+    .locked(false)
+    .search(query);
+```
+
+### Command Collection Filters
+
+```typescript
+Factory.PoolTableCommand.collection()
+    .forPoolTable(publicId)
+    .status(Enum.PoolTableCommandStatus.Pending)
+    .type(Enum.PoolTableCommandType.ProjectionPresent);
+```
+
+## Commands
+
+```typescript
+enum PoolTableCommandType {
+    AdvertisementPresent = 'advertisement.present',
+    AttractStart         = 'attract.start',
+    AttractStop          = 'attract.stop',
+    ModeEnter            = 'mode.enter',
+    ModeExit             = 'mode.exit',
+    ProjectionClear      = 'projection.clear',
+    ProjectionPresent    = 'projection.present',
+    ScanCapture          = 'scan.capture',
+}
+
+enum PoolTableCommandStatus {
+    Pending = 'pending',
+    Acknowledged = 'acknowledged',
+    Completed = 'completed',
+    Failed = 'failed',
+    Expired = 'expired',
+}
+```
+
+Three command shapes are typed end to end:
+
+| Type | Payload | Result |
+|------|---------|--------|
+| `projection.present` | `IPoolTableProjectionPresentPayload` — `preset`, `high_contrast`, `layers`, `scene`, optional `source` | `{ presented, warnings }` |
+| `projection.clear` | `{}` | `{ cleared }` |
+| `scan.capture` | `{}` | `{ balls, capture, coordinate_space, orientation_uncertain, warnings }` |
+
+`PoolTableCommand` exposes `getPayload()`, `getResult()`, `getStatus()`, `getType()`, `getPublicId()`, `isTerminal()`, and `toAttributes()`.
+
+Projection presets are `setup` and `overlay`. Scan results are always reported in the `table.surface.normalized.v1` coordinate space.
+
+## Table State
+
+```typescript
+interface IPoolTableState {
+    active_command_id: string | null;
+    activity: PoolTableActivity;              // idle | projecting | scanning
+    busy: boolean;
+    camera: PoolTableHardwareStatus;          // available | error | unavailable
+    interruptible: boolean;
+    last_error: string | null;
+    projection: IPoolTableProjectionState | null;
+    projector: PoolTableHardwareStatus;
+}
+```
+
+Other closed domains:
+
+| Enum | Values |
+|------|--------|
+| `PoolTableStatus` | `active`, `disabled`, `unclaimed` |
+| `PoolTableDiscoverability` | `nearby`, `organization`, `private` |
+| `OrganizationRole` | `owner`, `administrator`, `manager`, `operator`, `viewer` |
+
+## Table Node Device Resources
+
+The device registers once, persists the returned token, and thereafter authenticates with it explicitly.
+
+```typescript
+import { Enum, Factory } from '@chalkysticks/sdk-table-control';
+
+const node = Factory.TableNode.model({
+    baseUrl: apiUrl,
+});
+
+const registration = await node.register({
+    device_identifier: deviceIdentifier,
+    software_version: '0.1.0',
+});
+
+// Persist this one-time value in the host credential store before continuing.
+node.setToken(registration.device_token as string);
+
+await node.heartbeat({
+    state: {
+        active_command_id: null,
+        activity: Enum.PoolTableActivity.Idle,
+        busy: false,
+        camera: Enum.PoolTableHardwareStatus.Available,
+        interruptible: true,
+        last_error: null,
+        projection: null,
+        projector: Enum.PoolTableHardwareStatus.Available,
+    },
+});
+
+const commands = node.getCommands();
+
+await commands.fetch();
+
+for (const command of commands.models) {
+    await command.acknowledge();
+}
+```
+
+### TableNode Model
+
+| Method | Purpose |
+|--------|---------|
+| `register(request)` | First-boot registration. Returns `device_token`, `claim_code`, `claim_expires_at`, and `pool_table` |
+| `resume(request)` | Later boots with the persisted token |
+| `heartbeat(request)` | Health beat. Returns `pending_command_ids` and current `pool_table` |
+| `rotateClaimCode()` | New one-time claim authority for an unclaimed node |
+| `createAblyTokenRequest()` | Device-scoped Ably token request |
+| `getCommands()` | Device command collection |
+| `getCommand(publicId)` | One device command |
+| `poolTable` | Getter for the associated `PoolTable` |
+
+<Warning>
+A successful `resume()` intentionally returns `device_token: null` — it does **not** replace the stored credential. Keep persisting the token from the original `register()` call.
+</Warning>
+
+Table Node realtime uses `Service.TableNode` with the device-scoped `/v3/table-node/ably-token` response, while REST heartbeat and command polling remain the recovery path.
+
+### TableNodeCommand
+
+The device-side command lifecycle is recoverable — every transition is persisted.
+
+| Method | Purpose |
+|--------|---------|
+| `acknowledge(state?)` | Claim the command and optionally report state |
+| `complete(result, state?)` | Finish successfully |
+| `fail(error, state?)` | Report failure (error text capped at 5000 characters) |
+| `createCaptureUpload(request)` | Begin a scan capture upload |
+| `uploadCapture(file, request)` | Upload in one call |
+| `uploadCaptureBytes(authorization, file)` | Upload raw bytes against a pre-authorized session |
+| `completeCaptureUpload(sessionIdentifier)` | Finalize the upload |
+| `analyzeCapture()` | Request analysis of the uploaded capture |
+| `getPayload()` / `getResult()` / `getStatus()` / `getType()` / `getPublicId()` / `isTerminal()` | State queries |
+
+Device endpoints live under `table-node` and `table-node/commands`.
+
+## Realtime
+
+Realtime is an **invalidation signal**, not a transport. Both services are subscribe-only and reject publication.
+
+```typescript
+import { Service } from '@chalkysticks/sdk-table-control';
+
+await Service.PoolTable.instance.watch(publicId);
+await Service.PoolTable.instance.unwatch(publicId);
+```
+
+<Warning>
+The application must initialize the shared SDK Extras Ably connection with its authenticated `/v3/ably-token` callback **before** calling `watch()`.
+</Warning>
+
+| Service | Channel namespace | Events |
+|---------|-------------------|--------|
+| `Service.PoolTable` | `cs:pool-table:state:` | `state.updated` → `IPoolTableStateUpdatedEvent`; `command.updated` → `IPoolTableCommandUpdatedEvent` |
+| `Service.TableNode` | `cs:pool-table:device:` | `command.available` → `ITableNodeCommandAvailableEvent` |
+
+Payloads are deliberately compact — an id, a status, a type — because the REST response is the authority. Treat an event as "re-fetch this", never as the new state itself.
+
+```typescript
+interface IPoolTableStateUpdatedEvent {
+    is_locked: boolean;
+    is_online: boolean;
+    public_id: string;
+    state: IPoolTableState;
+}
+
+interface ITableNodeCommandAvailableEvent {
+    command_id: string;
+    expires_at: string;
+    type: PoolTableCommandType;
+}
+```
+
+Both services are singletons accessed through `.instance`.
+
+## Organizations
+
+Tables can be owned by an organization, and membership roles gate what a member may do.
+
+```typescript
+const memberships = Factory.OrganizationMembership.collection();
+await memberships.auth().fetch();
+
+const membership = memberships.first();
+
+membership?.canControlTables();
+membership?.canManageTables();
+membership?.canManageMembers();
+membership?.hasOwnerRole();
+```
+
+`Organization` exposes `getDatabaseId()`, `getSlug()`, `isActive()`, and `toAttributes()`. Its collection supports `.active(true)` and `.search(query)`.
+
+## Recent Changes
+
+- **Unreleased** — Authenticated collection-level Table Node claiming by displayed one-time code; CommonJS output and conditional package exports for Node hosts and browser bundlers; Table Node registration, resumption, heartbeat, claim-code, and Ably token actions; device-authenticated recoverable command lifecycle and scan capture uploads; subscribe-only Table Node command availability notifications.
+- **0.1.0** — Organization, membership, pool-table, and command API resources; subscribe-only pool-table realtime state notifications.
