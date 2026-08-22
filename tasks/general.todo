@@ -339,18 +339,19 @@ Copy from YouTube / live matches
 
 	☐ Re-style the play menu for mobile
 
-	☐ Allow natural sequences from Pad, like next shot next shot kinda like
+
+	✔ Allow natural sequences from Pad, like next shot next shot kinda like @done(26-08-21 22:06)
 	  in Runout, but with regular diagrams so you can setup a table, then
 	  shoot the whole thing. Essentially a much simpler sequencer. We dont have
 	  to save all the diagrams, we just have to save the layouts. Then we can
 	  save all the diagrams later if we like it.
+
 
 	☐ Make the rules editor more graphic like a big hero for "9-ball"
 	  and it says like "Lowest first", etc
 
 	  We'll have a few like Play Modes, then a Custom utility
 	  What we have now is essentially all custom
-
 
 
 	☐ You Versus Raymond (EverybodyVsRaymond.com)
@@ -378,7 +379,6 @@ Copy from YouTube / live matches
 		Report back stats like railbird
 		Note: foundation shipped as sdk-inference camera-survey.mjs + Detection.ClothQuad
 
-
 	✔ Unhomography. Turn pattern into a real table picture @done(26-08-14 15:07)
 
 
@@ -389,4 +389,44 @@ Copy from YouTube / live matches
 		  around for us.
 
 
-	☐ If we have matchroom live events, we should air them on tv first
+	✔ If we have matchroom live events, we should air them on tv first @done(26-08-15 20:12)
+
+
+	☐ Create a universal media library for the users so they can save
+	  plenty of images, videos, layouts, etc that we can analyze for them
+
+
+	☐ When our tracker is more reliable, lets have the runout
+	  planner learn from videos
+
+
+	☐ We could have the runout planner learn from Trainer too
+
+
+	☐ Rebound game:
+	https://www.reddit.com/r/nostalgia/comments/1vtgx94/before_video_games_ruined_friendships_we_had/#lightbox
+
+		☐ Maybe a version of crossfire where it's turned based and two players shoot balls at each other
+
+		☐ Snake (roll over things to eat them)
+			Could project moving enemies
+
+		☐ Pacman where you pocket balls to "eat fruit" and there are gates you can go through to avoid enemies
+
+		☐ Skee-ball
+
+		☐ Also games for more experienced players like.. draw shot challenge, maybe something
+			to learn from SLS here, like three tricks and best two scores count.
+
+
+	☐ Custom sidecar app for phones and/or Raspberry Pi that does projection work?
+		It could open a server so you can wirelessly send it an image to project
+		or it could broadcast what it seems on the table.
+		like a ChalkySticks agent that runs on whatever is connected to a project
+
+		Imagine yourself walking around with a tablet (like NFL sidelines) and you
+		can easily just grab an image from Table 8 and send it to Table 2.. or project
+		a diagram from your tablet to multiple tables.
+
+		Getting these projectors over tables and hooking it up to ChalkySticks turns
+		every pool table into a TV. Advertisements, announcements, games, news, etc

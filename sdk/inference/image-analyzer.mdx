@@ -3,7 +3,7 @@ title: 'ImageAnalyzer'
 description: 'Main orchestrator class that drives the full inference pipeline'
 ---
 
-`ImageAnalyzer` is the primary entry point for the inference SDK. It owns the source element, drives the per-frame pipeline (`requestVideoFrameCallback`), and dispatches processed results as events.
+`ImageAnalyzer` is the lower-level orchestrator for the inference pipeline. It owns the source element, drives per-frame processing (`requestVideoFrameCallback`), and dispatches processed results as events. Application-level camera and video integrations should prefer `Scan.live()`, whose `LiveScanner` facade remains stable while the internal processor evolves.
 
 ## Import
 
@@ -66,6 +66,10 @@ await analyzer.process(videoElement, true);
 Accepts `File | Blob | ArrayBuffer | Uint8Array | HTMLImageElement | HTMLVideoElement`. A source argument is required on every call — `process()` throws immediately when called without one, even if an element was set previously (the remembered element is only used internally by the continuous loop). Continuous mode skips frames while a previous inference is still running rather than queueing.
 
 Returns `Promise<Inference.IPrediction[]>` (raw predictions; empty array in continuous mode — subscribe to the `frame` event instead).
+
+In continuous mode, `setMinimumVideoFrameIntervalMilliseconds()` can cap the
+accepted source-frame cadence. `Scan.LiveScanner.setFramesPerSecond()` provides
+the product-level version of this control and defaults to one frame per second.
 
 ### `processDetections(predictions, dimensions, options)`
 
@@ -173,6 +177,26 @@ const snapshot = analyzer.getDebugSnapshot();
 Joins per-track lifecycle data from `BallTracker` with identity-ledger data from `BallIdentityStabilizer` — this feeds the camera-aware-inference example's debug panel.
 
 ## Example: Live Video
+
+For new application code, use the stable scanner facade:
+
+```typescript
+import { Scan } from '@chalkysticks/sdk-inference';
+
+const scanner = Scan.live(document.querySelector('video')!, {
+	framesPerSecond: 'maximum',
+});
+
+scanner.on('frame', (event) => {
+	updateTableDiagram(event.data.transformedData?.balls ?? []);
+});
+
+// later
+await scanner.dispose();
+```
+
+Direct `ImageAnalyzer` use remains available for integrations that need
+lower-level pipeline control:
 
 ```typescript
 import { Core } from '@chalkysticks/sdk-inference';

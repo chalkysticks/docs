@@ -28,31 +28,33 @@ console.log('Balls:', result.balls);
 console.log('Model:', result.views[0]?.frame.inference?.scan?.model);
 ```
 
-Use `Core.ImageAnalyzer` when you need direct control of a continuous pipeline:
+Use `Scan.live()` for a stable continuous camera/video pipeline. It computes
+table-space positions by default and can change cadence without restarting the
+source or warmed engine:
 
 ```typescript
-import { Core } from '@chalkysticks/sdk-inference';
+import * as Scan from '@chalkysticks/sdk-inference/scan';
 
-const analyzer = new Core.ImageAnalyzer({
-    autoTransform: true,
+const scanner = Scan.live(videoElement, {
+    framesPerSecond: 'maximum',
 });
 
-analyzer.on('frame', (e) => {
+scanner.on('frame', (e) => {
     const frame: Inference.IProcessedFrame = e.data;
 
-    console.log('Balls:', frame.balls);
-    console.log('Pockets:', frame.pockets);
-    console.log('Camera:', frame.cameraType);
     console.log('Table-space:', frame.transformedData?.balls);
 });
 
-// Continuous video (frame-synced via requestVideoFrameCallback)
-await analyzer.process(videoElement, true);
+scanner.setFramesPerSecond(1);
 
 // ...later
-analyzer.stop();
-analyzer.dispose();
+scanner.stop();
+await scanner.dispose();
 ```
+
+`Core.ImageAnalyzer` remains the lower-level processor for advanced camera,
+geometry, and diagnostic access. `Scan.sweep()` is separate: it accumulates
+independent camera angles and fuses a mostly static table state.
 
 ## Architecture (v1.15)
 
@@ -112,7 +114,7 @@ import {
 
 | Namespace | Key Exports |
 |-----------|-------------|
-| `Scan` | `infer`, `fromImage`, `fromImages`, `fromVideo`, `live`, `open`, `createHostedEngine`, `health` |
+| `Scan` | `infer`, `fromImage`, `fromImages`, `fromVideo`, `live`, `sweep`, `open`, `createHostedEngine`, `health` |
 | `Input.Engine` | `ChalkyScan`, `ChalkyScanError`, `YOLOLite`, `Roboflow`, `Remote` |
 | `Core` | `ImageAnalyzer`, `CameraStateMemory` |
 | `Detection` | `BallDetector`, `PocketDetector`, `PocketInference`, `CushionDetector`, `CameraTypeDetector`, `OrientationDetector`, `CameraFingerprint`, `CameraIndex`, strategy classes |

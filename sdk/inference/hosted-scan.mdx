@@ -29,26 +29,33 @@ view that produced the fused state.
 
 ## Multiple inputs
 
-The same front door covers each supported capture flow:
+The same front door covers each supported capture flow. `sweep()` is the
+multi-view camera flow: it periodically captures independent views and fuses
+them while the camera moves around a mostly static table.
 
 ```typescript
 const stills = await Scan.fromImages([leftPhoto, centerPhoto, rightPhoto]);
 const clip = await Scan.fromVideo(videoFile);
 
-const live = Scan.live(cameraVideo, {
+const sweep = Scan.sweep(cameraVideo, {
     durationMilliseconds: 10_000,
     intervalMilliseconds: 700,
 });
 
-live.on('result', (event) => render(event.data));
+sweep.on('result', (event) => render(event.data));
 
-const final = await live.stop();
-await live.dispose();
+const final = await sweep.stop();
+await sweep.dispose();
 ```
 
 Multiple views are independently evaluated, aligned, and fused. Cross-view
 voting can recover occluded balls, resolve identity disagreements, and reject
 redundant or geometrically inconsistent frames.
+
+Use `Scan.live()` instead when one video source should continuously report
+current ball positions and motion. The live scanner defaults to one frame per
+second for hosted inference and accepts `framesPerSecond: 'maximum'` when
+maximum sustainable throughput is required.
 
 ## Configure the hosted client
 

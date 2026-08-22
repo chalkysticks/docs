@@ -1,157 +1,111 @@
 ---
-title: 'Process a video stream'
-description: 'Continuously scan video frames with tracking and stabilization'
+title: 'Process a Video Stream'
+description: 'Continuously scan a camera or video source for current ball positions'
 ---
 
-## Basic Continuous Processing
+Use `Scan.live()` as the stable product-level entry point for a camera or
+playing video. It returns a `Scan.LiveScanner` immediately, starts processing,
+and emits canonical `Inference.IProcessedFrame` results through its `frame`
+event.
+
+## Continuous Live Scanning
 
 ```typescript
-import { Core } from '@chalkysticks/sdk-inference';
+import * as ChalkySticks from '@chalkysticks/sdk-inference';
 
-const analyzer = new Core.ImageAnalyzer();
-const video = document.getElementById('gameVideo') as HTMLVideoElement;
+const video = document.querySelector<HTMLVideoElement>('video');
 
-analyzer.setElement(video);
-
-analyzer.on('frame', (frameData) => {
-    // Called after each processed frame
-    const positions = analyzer.getTransformedPositions();
-
-    updateBallOverlay(positions.balls);
-    updateCameraLabel(positions.cameraType);
-});
-
-// Start when video plays
-video.addEventListener('play', async () => {
-    await analyzer.processDetections();
-});
-
-// Stop when video pauses
-video.addEventListener('pause', () => {
-    analyzer.stop();
-});
-```
-
-## Tracking Ball Identity Across Frames
-
-`ImageAnalyzer` uses `BallTracker` internally, so each ball maintains a stable `trackId` between frames:
-
-```typescript
-analyzer.on('frame', (frameData) => {
-    const positions = analyzer.getTransformedPositions();
-
-    positions.balls.forEach((ball) => {
-        // trackId stays consistent as the ball moves
-        console.log(`Track #${ball.trackId}: ${ball.label} at (${ball.x}, ${ball.y})`);
-    });
-});
-```
-
-This is what enables smooth animations — you can interpolate a ball's position between frames using its `trackId` as the join key.
-
-## Reacting to Camera Changes
-
-```typescript
-let lastCameraType = 'unknown';
-
-analyzer.on('frame', (frameData) => {
-    const positions = analyzer.getTransformedPositions();
-
-    if (positions.cameraType !== lastCameraType) {
-        console.log(`Camera changed: ${lastCameraType} → ${positions.cameraType}`);
-        lastCameraType = positions.cameraType;
-
-        // Maybe switch overlays, adjust UI, etc.
-    }
-});
-```
-
-The camera type is already stabilized — it will not flicker between frames on borderline angles.
-
-## Manual Reset
-
-If the physical camera moves to a new angle mid-stream:
-
-```typescript
-// Force re-evaluation of camera type
-analyzer.resetCameraType();
-```
-
-## Full Example: Video Player with Overlay
-
-```typescript
-import { Core } from '@chalkysticks/sdk-inference';
-
-export default class InferencePlayer {
-    private analyzer: Core.ImageAnalyzer;
-    private video: HTMLVideoElement;
-    private canvas: HTMLCanvasElement;
-
-    constructor(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
-        this.analyzer = new Core.ImageAnalyzer();
-        this.canvas = canvas;
-        this.video = video;
-
-        this.analyzer.setElement(this.video);
-        this.analyzer.on('frame', () => this.render());
-
-        this.video.addEventListener('play', () => this.start());
-        this.video.addEventListener('pause', () => this.stop());
-        this.video.addEventListener('ended', () => this.stop());
-    }
-
-    async start(): Promise<void> {
-        await this.analyzer.processDetections();
-    }
-
-    stop(): void {
-        this.analyzer.stop();
-    }
-
-    render(): void {
-        const positions = this.analyzer.getTransformedPositions();
-        const ctx = this.canvas.getContext('2d');
-
-        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-        positions.balls.forEach((ball) => {
-            const x = ball.x * this.canvas.width;
-            const y = ball.y * this.canvas.height;
-
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.fillStyle = this.getBallColor(ball.number);
-            ctx.fill();
-            ctx.stroke();
-        });
-    }
-
-    getBallColor(ballNumber: number): string {
-        const colors: Record<number, string> = {
-            0: '#ffffff',
-            1: '#ffd700',
-            2: '#0000ff',
-            3: '#ff0000',
-            4: '#800080',
-            5: '#ff8c00',
-            6: '#008000',
-            7: '#800000',
-            8: '#000000',
-        };
-
-        return colors[ballNumber] || '#888888';
-    }
-
-    dispose(): void {
-        this.analyzer.stop();
-        this.analyzer.dispose();
-    }
+if (!video) {
+	throw new Error('A video element is required');
 }
+
+const scanner = ChalkySticks.Scan.live(video, {
+	framesPerSecond: 'maximum',
+});
+
+scanner.on('frame', (event) => {
+	const frame: Inference.IProcessedFrame = event.data;
+	const balls = frame.transformedData?.balls ?? [];
+
+	renderProjection(balls);
+});
+
+scanner.on('error', (event) => {
+	console.error('Live scan failed', event.data);
+});
+
+// Later, when the projection mode closes:
+await scanner.dispose();
 ```
 
-## Performance Notes
+`Scan.live()` always enables canonical table-space transformation. Read
+`frame.transformedData.balls` when projection coordinates are required, and
+read `frame.balls` when source-image coordinates are more useful.
 
-- Each frame runs the full pipeline (detection → homography → tracking → stabilization)
-- Inference runs in Web Workers via inferencejs, so it does not block the main thread
-- The frame rate adapts to the device — faster GPUs process more frames per second
-- If inference takes longer than the frame interval, frames are dropped (not queued)
+## Camera Input
+
+The scanner consumes an existing `HTMLVideoElement`, so camera acquisition and
+permission remain with the application:
+
+```typescript
+const stream = await navigator.mediaDevices.getUserMedia({
+	audio: false,
+	video: {
+		facingMode: 'environment',
+	},
+});
+
+video.srcObject = stream;
+await video.play();
+
+const scanner = ChalkySticks.Scan.live(video);
+```
+
+Stop the stream tracks separately after disposing the scanner because the
+application, not the SDK, owns the camera stream.
+
+## Cadence
+
+Live scanning defaults to one processed frame per second. This keeps hosted
+inference predictable when a caller does not select a throughput policy.
+
+```typescript
+const scanner = ChalkySticks.Scan.live(video); // 1 FPS
+
+scanner.setFramesPerSecond(5); // cap accepted source frames at 5 FPS
+scanner.setFramesPerSecond('maximum'); // process newest frames as fast as inference completes
+
+console.log(scanner.getFramesPerSecond());
+```
+
+Slow inference never creates a frame backlog. While one frame is in flight,
+newer source frames are skipped. The next eligible source frame is processed
+when the engine becomes available.
+
+## Engine Selection
+
+Without an explicit engine, the scanner uses the SDK's stable hosted scan
+engine. An advanced integration can inject any `Inference.IInferenceEngine`:
+
+```typescript
+const engine = ChalkySticks.Scan.createHostedEngine({
+	maximumConcurrentRequests: 1,
+});
+const scanner = ChalkySticks.Scan.live(video, {
+	engine,
+	framesPerSecond: 'maximum',
+});
+```
+
+An injected engine remains owned by the caller and is not disposed with the
+scanner. This makes it possible to keep a model warm across scanner instances.
+
+## Lower-Level Processing
+
+Use `Core.ImageAnalyzer` directly only when an integration needs control over
+the internal processing pipeline. `Scan.LiveScanner` is the compatibility
+boundary intended for application code while detection techniques evolve.
+
+`Scan.sweep()` is a different workflow: it captures interval-spaced views of a
+mostly static table and fuses them into one multi-view result. It is not the
+continuous projection scanner.
