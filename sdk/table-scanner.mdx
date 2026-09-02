@@ -3,7 +3,7 @@ title: 'Table Scanner Package'
 description: 'Pluggable browser-side image classifier for pool table photos'
 ---
 
-`@chalkysticks/sdk-table-scanner` (v1.1.4) is a browser-side classifier that decides whether a still image contains a pool table. It uses a pluggable strategy pattern so callers can swap between ONNX Runtime Web and Google Teachable Machine (TensorFlow.js) backends without changing call sites. ML runtimes load lazily — either injected from a CDN or dynamically imported from optional peer dependencies.
+`@chalkysticks/sdk-table-scanner` (v1.1.11) is a browser-side classifier that decides whether a still image contains a pool table. It uses a pluggable strategy pattern so callers can swap between ONNX Runtime Web, Google Teachable Machine (TensorFlow.js), and a hosted backend without changing call sites. Local ML runtimes load lazily — either injected from a CDN or dynamically imported from optional peer dependencies. The hosted backend uploads the image to the ChalkySticks inference service instead and downloads nothing.
 
 ## Installation
 
@@ -15,7 +15,7 @@ npm install onnxruntime-web                       # ONNX backend
 npm install @teachablemachine/image @tensorflow/tfjs  # Teachable Machine backend
 ```
 
-With the default `loadingMethod: 'cdn'`, no ML peer dependencies are needed — the scanner injects `<script>` tags on first load.
+With the default `loadingMethod: 'cdn'`, no ML peer dependencies are needed — the scanner injects `<script>` tags on first load. The hosted backend needs no peer dependencies in either mode.
 
 ## Quick Start
 
@@ -43,14 +43,14 @@ The model auto-loads on the first `classify()` call; call `load()` up front to p
 ```typescript
 import {
     Core,       // TableScanner
-    Config,     // Environment, Model
+    Config,     // Environment, Hosted, Model
     Enum,       // ClassifierBackend, ClassLabel
-    Strategy,   // Base, OnnxClassifier, TeachableMachineClassifier
+    Strategy,   // Base, HostedClassifier, OnnxClassifier, TeachableMachineClassifier
     Utility,    // Canvas, Loader, Softmax
 } from '@chalkysticks/sdk-table-scanner';
 
 // Convenience flat exports (same classes):
-import { TableScanner, Base, OnnxClassifier, TeachableMachineClassifier } from '@chalkysticks/sdk-table-scanner';
+import { TableScanner, Base, HostedClassifier, OnnxClassifier, TeachableMachineClassifier } from '@chalkysticks/sdk-table-scanner';
 ```
 
 ## Core: TableScanner
@@ -61,10 +61,11 @@ import { TableScanner, Base, OnnxClassifier, TeachableMachineClassifier } from '
 
 | Option | Type | Default | Purpose |
 |--------|------|---------|---------|
-| `backend` | `'onnx' \| 'teachable-machine'` | `'onnx'` | Which strategy to build |
-| `confidenceThreshold` | `number` | `0.66` | Threshold used when building classification results; forwarded to both the ONNX and Teachable Machine strategies |
-| `loadingMethod` | `'cdn' \| 'local'` | `'cdn'` | Inject runtime via `<script>` tag vs dynamic `import()` of peer dep |
-| `modelVersion` | `string` | `'latest'` | Version segment in the model CDN URL |
+| `backend` | `'hosted' \| 'onnx' \| 'teachable-machine'` | `'onnx'` | Which strategy to build |
+| `confidenceThreshold` | `number` | `0.66` | Threshold used when building classification results; forwarded to every strategy, and sent to the hosted service so its verdict matches |
+| `hostedBaseUrl` | `string` | `'https://scan.chalkysticks.com'` | Base URL of the inference service used by the hosted backend |
+| `loadingMethod` | `'cdn' \| 'local'` | `'cdn'` | Inject runtime via `<script>` tag vs dynamic `import()` of peer dep (local backends only) |
+| `modelVersion` | `string` | `'latest'` | Version segment in the model CDN URL (local backends only) |
 
 ### Methods
 
@@ -75,6 +76,7 @@ import { TableScanner, Base, OnnxClassifier, TeachableMachineClassifier } from '
 | `dispose` | `() => void` | Releases the strategy and its resources |
 | `setBackend` | `(backend: ClassifierBackend) => this` | Disposes current strategy, builds the new one |
 | `setConfidenceThreshold` | `(threshold: number) => this` | Updates scanner config and propagates to the active strategy immediately — takes effect on the next `classify()` without a rebuild |
+| `setHostedBaseUrl` | `(baseUrl: string) => this` | Updates the hosted service URL; rebuilds the strategy when the hosted backend is active |
 | `setModelVersion` | `(version: string) => this` | Rebuilds the strategy with new model URLs |
 | `setStrategy` | `(strategy: IClassifierStrategy) => this` | Inject a custom/test strategy instance |
 | `isReady` | `get: boolean` | `true` once the strategy's model is loaded |
@@ -105,7 +107,8 @@ scanner.on('classify:complete', (e) => {
 interface IClassificationResult {
     className: string;              // top prediction label
     confidence: number;             // probability of the pool-table class
-    isPoolTable: boolean;           // confidence >= the strategy's threshold (ONNX: always 0.66)
+    isPoolTable: boolean;           // confidence >= the strategy's threshold
+    model?: IClassificationModel;   // { name, version }; set by the hosted backend
     predictions: IClassPrediction[]; // all classes: { className, probability }
     timestamp: number;              // Date.now() at result build
 }
@@ -153,6 +156,34 @@ scanner.setBackend(Enum.ClassifierBackend.TeachableMachine);
 
 Config keys (`Partial<ITeachableMachineClassifierConfig>`): `cdnUrl`, `confidenceThreshold`, `loadingMethod`, `metadataUrl`, `modelUrl`, `poolTableClassName`.
 
+### HostedClassifier
+
+Uploads the image to `POST /classify` on the ChalkySticks inference service (`scan.chalkysticks.com`, deployed from `bin/api-v2/docker/inference`) and maps the snake_case response onto `IClassificationResult`. The service bakes the same ONNX release the `OnnxClassifier` downloads, so hosted and local confidences agree for the same photo. `load()` only marks the strategy ready; nothing is downloaded.
+
+Browser sources are drawn to a canvas at their intrinsic size and encoded as JPEG before upload. Two extra methods sit beside the strategy contract:
+
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `classifyBlob` | `(blob: Blob) => Promise<IClassificationResult>` | Uploads a `File`/`Blob` as-is, no re-encode; works in Node |
+| `health` | `() => Promise<IHostedHealthResponse>` | `GET /` — service status plus baked detector and classifier versions |
+
+```typescript
+import { HostedClassifier } from '@chalkysticks/sdk-table-scanner';
+
+const hosted = new HostedClassifier({
+    baseUrl: 'https://scan.chalkysticks.com',
+    confidenceThreshold: 0.66,
+    timeoutMilliseconds: 15_000,
+});
+
+const health = await hosted.health();       // health.classifier.version
+const result = await hosted.classifyBlob(file);
+
+result.model;                                // { name: 'pool_table_classifier', version: '2026-03-26-…' }
+```
+
+Config keys (`Partial<IHostedClassifierConfig>`): `baseUrl`, `confidenceThreshold`, `imageQuality`, `imageType`, `timeoutMilliseconds`. Non-2xx responses reject with `HTTP <status>: <service detail>`; a stalled request rejects after the timeout.
+
 ## Configuration
 
 `Config.Model` holds CDN locations, model constants, and URL builders:
@@ -169,6 +200,18 @@ Config keys (`Partial<ITeachableMachineClassifierConfig>`): `cdnUrl`, `confidenc
 
 URL builders: `getOnnxModelUrl(version?)`, `getOnnxMetadataUrl(version?)`, `getTeachableMachineModelUrl(version?)`, `getTeachableMachineMetadataUrl(version?)`.
 
+`Config.Hosted` holds the inference service location and upload defaults:
+
+| Constant | Value |
+|----------|-------|
+| `BaseUrl` | `https://scan.chalkysticks.com` |
+| `ClassifyPath` / `HealthPath` | `'/classify'` / `'/'` |
+| `ImageType` / `ImageQuality` | `'image/jpeg'` / `0.9` |
+| `BinaryContentType` | `'application/octet-stream'` (untyped blobs) |
+| `TimeoutMilliseconds` | `15000` |
+
+URL builders: `getClassifyUrl(baseUrl?, threshold?)`, `getHealthUrl(baseUrl?)`, `normalizeBaseUrl(baseUrl?)`.
+
 `Config.Environment` exposes capability flags: `isBrowser`, `hasWebAssembly`, `hasOffscreenCanvas`.
 
 ## Utilities
@@ -183,11 +226,12 @@ URL builders: `getOnnxModelUrl(version?)`, `getOnnxMetadataUrl(version?)`, `getT
 
 | Enum | Members |
 |------|---------|
-| `ClassifierBackend` | `Onnx = 'onnx'`, `TeachableMachine = 'teachable-machine'` |
+| `ClassifierBackend` | `Hosted = 'hosted'`, `Onnx = 'onnx'`, `TeachableMachine = 'teachable-machine'` |
 | `ClassLabel` | `PoolTable = 'pool_table'`, `NotPoolTable = 'not_pool_table'` |
 
 ## Recent Changes
 
+- Unreleased — hosted backend: `Enum.ClassifierBackend.Hosted`, `Strategy.HostedClassifier` (`classifyBlob()`, `health()`), `Config.Hosted`, `ITableScannerConfig.hostedBaseUrl`, `setHostedBaseUrl()`, and optional `IClassificationResult.model`; examples `hosted-classify.html` and `hosted-live-gate.html`, and `compare-backends.html` runs all three backends
 - Unreleased — `confidenceThreshold` now applies to the ONNX backend (it previously always used `Config.Model.DefaultConfidenceThreshold`), and `setConfidenceThreshold()` propagates to the active strategy immediately instead of waiting for a rebuild
 - 1.1.2 — `@chalkysticks/sdk-core` normalized to a semver peer dependency (`^1.61.5`); ONNX and Teachable Machine runtimes remain optional peers (1.1.3 normalized the sdk-core devDependency spec; 1.1.4 shipped a rebuilt web bundle only)
 - 1.1.0 — `DefaultConfidenceThreshold` lowered from `0.9` to `0.66`; `OnnxClassifier` preprocessing rewritten around `createImageBitmap()` with a reused tensor buffer
