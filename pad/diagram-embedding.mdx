@@ -178,6 +178,8 @@ The message shape is:
 interface DiagramChangeMessage {
 	type: 'chalky:diagram-change';
 	dsl: string;
+	revision: number;
+	tableState: ITableState;
 	config: {
 		balls: Array<{ type: string; x: number; y: number }>;
 		editable: boolean;
@@ -193,6 +195,58 @@ interface DiagramChangeMessage {
 
 Always validate `event.origin` and, when there are multiple frames, verify
 `event.source` before consuming a message.
+
+## Replacing state from the parent
+
+Both modes accept a complete table state from the parent page, so one iframe
+can follow an application's model without reloading. Read mode regenerates its
+image from the new layout; editable mode imports the state into the live table.
+
+After mounting, the iframe announces its canonical state with revision `0`:
+
+```typescript
+interface DiagramReadyMessage {
+	type: 'chalky:diagram-ready';
+	config: DiagramChangeMessage['config'];
+	dsl: string;
+	revision: number;
+	tableState: ITableState;
+}
+```
+
+Send a `chalky:diagram-set-state` command that targets the revision you last
+received. The command carries a complete `ITableState` (the same shape the
+`state=` parameter accepts, without the envelope):
+
+```javascript
+frame.contentWindow.postMessage(
+	{
+		requestId: 'plan-42',
+		revision: lastRevision,
+		tableState: nextTableState,
+		type: 'chalky:diagram-set-state',
+	},
+	'https://www.chalkysticks.com',
+);
+```
+
+The iframe answers with one of two messages, each carrying your `requestId`:
+
+- `chalky:diagram-state-applied` when the state was accepted. The revision
+  advances by one, the iframe URL now carries the canonical DSL, and
+  `tableState` echoes the applied state. In read mode the acknowledgement
+  arrives before the regenerated image finishes painting.
+- `chalky:diagram-state-rejected` when the command was stale, incomplete, or
+  could not be applied. The revision does not change, `error` explains why, and
+  `tableState` is the iframe's authoritative state so you can resynchronize.
+
+Both revision and `requestId` are required. A command whose revision does not
+match the iframe's current revision is rejected, which keeps concurrent parents
+and user edits from silently overwriting each other.
+
+Add `parentOrigin=https://your.site` to the iframe URL to restrict both
+directions to that exact origin. Without it, the iframe accepts commands from
+its parent window at any origin and posts messages with a `*` target.
 
 ## Parsing the DSL in an application
 
