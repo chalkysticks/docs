@@ -1,0 +1,217 @@
+---
+title: 'Stateless Rack Embeds'
+description: 'Draw a legal rack for any game from a compact URL DSL'
+---
+
+## Overview
+
+The stateless rack embed turns a query string into a rack diagram. It does not
+create an account-owned diagram, save to the API, or require an id:
+
+```text
+https://www.chalkysticks.com/rack/embed
+```
+
+Use it for rules explainers, articles, league documentation, and anywhere a
+question like "how do we rack for eight-ball" deserves a picture instead of a
+paragraph.
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/rack/embed?strategy=EightBall&amp;seed=1234"
+	style="aspect-ratio: 121 / 138; border: 0; width: 320px"
+	title="How to rack for eight-ball"
+></iframe>
+```
+
+The rack is a pure function of the query string: no state, no network, and
+nothing to talk back to. A partner sizes the frame with CSS and never runs any
+script of ours.
+
+<Note>
+	Every rack the embed draws obeys its game's real racking rules — an
+	eight-ball rack gets a solid at the apex, the eight on the centre spot, and
+	one of each group in the back corners. The rules come from
+	[`ChalkySticks.Game.Rack`](/sdk/game/racking), the same module the 3D trainer
+	racks from, so the picture and the table agree.
+</Note>
+
+This is separate from the [Pad diagram embed](/pad/diagram-embedding) and the
+[Trainer embed](/trainer/embedding). Diagram embeds show or edit an arbitrary 2D
+layout; trainer embeds run a playable 3D drill. A rack embed draws one opening
+rack and nothing else, so `balls=type:x,y`, `flow`, `lines`, and `zones` do not
+apply here.
+
+## Complete DSL
+
+```text
+strategy=EightBall&seed=1234&balls=1,-,-,-,8&set=chalkysticks-classic&style=shaded&rotate=90&mirror=1&cue=1&outline=0&labels=1&bg=%233a7bbf
+```
+
+Unlike the Pad diagram DSL, positions are **ordinal, not spatial** — rack slots
+are numbered from the apex rather than placed at coordinates, because the game's
+rules decide where a slot is.
+
+## Query parameters
+
+| Parameter | Syntax and behavior |
+| --- | --- |
+| `strategy` | `EightBall` (default), `NineBall`, `TenBall`, `ThreeBall`, `OneBall`, `Rotation`, `StraightPool`, `DrillLine`. |
+| `seed` | Any string. The same seed always draws the same rack. |
+| `balls` | Comma-separated ball numbers by position, apex first, where `-` leaves a position to the solver. |
+| `pattern` | `triangle`, `diamond`, or `line` — a bare shape with no racking rules. |
+| `rows` | Row count for `pattern`. |
+| `set` | Ball set identifier. Default `chalkysticks-pool`. |
+| `style` | `flat`, `shaded`, `chalky-classic`, or `trainer`. |
+| `rotate` | `0`, `90`, `180`, `270`. Anything else snaps to the nearest quarter turn. |
+| `mirror` | `1` to flip the rack across its long axis. |
+| `cue` | `1` to draw a cue ball in front of the apex. |
+| `outline` | `0` to hide the rack frame. |
+| `labels` | `1` to number each position. |
+| `bg` | Backdrop fill; any CSS colour, URL-encoded. Transparent when omitted. |
+| `title` | Accessible description. Generated from the rack when omitted. |
+| `ref` | Partner identifier reported to analytics. |
+
+### seed
+
+<Warning>
+	**Omitting `seed` means the rack changes on every load.** That is what you
+	want for a "rack it again" demo, and emphatically not what you want for a
+	screenshot, a shared link, or a figure in an article. Pass any string.
+</Warning>
+
+```text
+?strategy=EightBall&seed=1234
+```
+
+The same seed produces the same rack on every client and on the server. It is
+stable across releases as long as `Solver.SOLVER_VERSION` does not change.
+
+### balls
+
+Positions are numbered from the apex, then row by row, and within a row from one
+side to the other. **Position numbers never move**, whatever the rack is rotated
+or mirrored to — so a position named in a URL means the same position forever.
+
+```text
+?strategy=NineBall&balls=1,-,-,-,9
+```
+
+That pins the one at the apex and the nine on the centre spot, and lets the
+solver fill the remaining seven legally. Add `labels=1` while you are working
+out which ordinal you want.
+
+A hand-placed ball outranks the rule for its slot, so this is also how you draw
+an *illegal* rack on purpose — useful for a "don't do this" figure.
+
+### set and style
+
+Sets that name their balls by colour rather than by number — snooker and carom —
+get their own colours in rack order rather than a row of grey discs.
+
+```text
+?strategy=TenBall&set=snooker-flat&outline=0
+```
+
+Available sets: `chalkysticks-pool`, `chalkysticks-classic`,
+`chalkysticks-shaded`, `chalkysticks-trainer`, `cyclop-pool`, `generic-pool`,
+`snooker-flat`, `snooker-shaded`, `billiards-flat`, `billiards-shaded`.
+
+### rotate and mirror
+
+```text
+?strategy=NineBall&rotate=90
+```
+
+Rotation is quarter turns only, and the aspect ratio follows the rack — a
+diamond stood on end is taller than it is wide.
+
+`mirror=1` flips the rack across its long axis. On an eight-ball rack this moves
+the corner groups, so it is a **different legal rack**, not the same one seen
+from behind.
+
+### bg
+
+The diagram is transparent by default, so the host page's own background shows
+through. Pass a URL-encoded CSS colour to paint one:
+
+```text
+?strategy=EightBall&bg=%233a7bbf
+```
+
+## Sizing the frame
+
+The diagram writes no width or height, only a `viewBox`, so the frame's own box
+decides the shape. Give the iframe an aspect ratio and let the rack fill it:
+
+```html
+<iframe
+	src="https://www.chalkysticks.com/rack/embed?strategy=NineBall&amp;seed=league"
+	style="aspect-ratio: 3 / 2; border: 0; width: 100%"
+	title="Nine-ball rack"
+></iframe>
+```
+
+If the ratio does not match the rack, the rack letterboxes inside it rather than
+distorting or overflowing. There is no `postMessage` channel and none is needed:
+unlike the Pad embed, a rack has no state to synchronize.
+
+<Note>
+	Use `<iframe>`, not `<img src>`. The endpoint is an HTML page that draws an
+	SVG, not an image response.
+</Note>
+
+## Attribution
+
+Add `?ref=` to attribute embed traffic to the site hosting the frame. It is
+reported as `embed_ref` on the per-session `embed_view` event and on every
+subsequent hit, and it survives referrer-policy stripping because the partner
+sets it explicitly.
+
+```text
+?strategy=EightBall&seed=1234&ref=azbilliards
+```
+
+## Examples
+
+How to rack for eight-ball, the same way every time:
+
+```text
+/rack/embed?strategy=EightBall&seed=1234
+```
+
+A nine-ball diamond, stood on end:
+
+```text
+/rack/embed?strategy=NineBall&rotate=90
+```
+
+Ten-ball on a snooker set, no frame:
+
+```text
+/rack/embed?strategy=TenBall&set=snooker-flat&outline=0
+```
+
+Teaching where the eight goes, with the positions numbered:
+
+```text
+/rack/embed?strategy=EightBall&balls=-,-,-,-,8&labels=1&seed=teach
+```
+
+The break, with the cue ball in the kitchen, on a blue field:
+
+```text
+/rack/embed?strategy=EightBall&cue=1&bg=%233a7bbf&seed=break
+```
+
+A bare seven-ball drill line:
+
+```text
+/rack/embed?strategy=DrillLine&seed=drill
+```
+
+## Using the component directly
+
+Inside a ChalkySticks Vue app, skip the iframe and use
+[`ChalkyRackDiagram`](/vue/rack), which takes the same options as props and
+emits the arrangement it drew.

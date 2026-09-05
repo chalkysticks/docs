@@ -1,33 +1,257 @@
 ---
 title: 'Racking'
-description: 'Rack strategies and standard ball layouts'
+description: 'One source of truth for rack layouts, racking rules, and reproducible ball assignment'
 ---
 
-Racking is described by the `Enum.RackStrategy` axis — the **physical layout** of balls at the start of a game, independent of `MatchFormat` (match shape) and `GameType` (game variant). The enum values partially overlap with `GameType` because common layouts share names with their matching game; the distinction matters for racks with no game counterpart (`DrillLine`, `Clear`, `RandomSpread`, `Custom`) and for games that borrow another game's layout (Killers on an `EightBall` rack).
+## Overview
 
-`RackStrategy` mirrors `App\Enums\RackStrategy` in the ChalkySticks API and the trainer enum — values must stay in sync across all three.
-
-## Available Strategies
+`ChalkySticks.Game.Rack` turns a named game into a finished rack: which ball
+sits in which position, where those positions are, and how large the whole
+arrangement is. It is pure data — no table, no model, no renderer — which is
+what lets a metre-based physics scene, a normalized 2D diagram, and an SVG
+document all rack from the same source.
 
 ```typescript
-import { Enum } from '@chalkysticks/sdk-game';
+import ChalkySticks from '@chalkysticks/sdk';
 
-Enum.RackStrategy.EightBall;     // standard 15-ball triangle
-Enum.RackStrategy.NineBall;      // diamond rack
-Enum.RackStrategy.TenBall;       // 10-ball triangle
-Enum.RackStrategy.ThreeBall;     // 3-ball triangle
-Enum.RackStrategy.OneBall;       // single object ball
-Enum.RackStrategy.Rotation;      // rotation (1–15)
-Enum.RackStrategy.StraightPool;  // straight pool (14.1)
-Enum.RackStrategy.DrillLine;     // balls in a line
-Enum.RackStrategy.RandomSpread;  // randomized scatter
-Enum.RackStrategy.Clear;         // table cleared
-Enum.RackStrategy.Custom;        // caller-supplied layout
+const layout = ChalkySticks.Game.Rack.Builder.build({
+	seed: 'tuesday-league',
+	strategy: ChalkySticks.Game.Enum.RackStrategy.EightBall,
+});
+
+layout.balls[4].number; // 8 — the centre spot
+layout.rows; // [1, 2, 3, 4, 5]
 ```
 
-All values are PascalCase strings (`'EightBall'`, `'DrillLine'`, ...).
+<Note>
+	The rack module owns the *arrangement*. Ball colours, numbers, and artwork
+	belong to [`sdk-renderer-2d`](/sdk/renderer-2d); table dimensions and the foot
+	spot belong to the consumer. Keeping those apart is why one rack definition
+	serves the trainer, the Pad, and the web diagram.
+</Note>
 
-## Persisting The Layout
+## Why it exists
+
+Rack geometry previously lived in two places that disagreed:
+
+| | Trainer | Pad `Manager.Table` |
+| --- | --- | --- |
+| Row pitch | `√3/2` | `ballSize * 0.85` |
+| Eight-ball rules | Solid at the apex, 8 on the centre spot, groups alternating | Pins only the 1 and the 8, shuffles the other thirteen |
+| Space | Metres, 3D, mirrored by `rackOnLeft` | 2D diagram units, y-down |
+
+Neither was reusable from a component, so a third copy would have made the
+disagreement permanent. `Rack` is the shared definition; `Enum.RackStrategy`,
+which names the layouts, already lived in `sdk-game` alongside
+`Model.Game.rack_strategy`.
+
+## Coordinate model
+
+Three spaces, in order. A consumer only ever supplies the last one.
+
+<Steps>
+	<Step title="Lattice">
+		`{ column, row }`. The apex is row zero; each row is centred on column
+		zero, so odd rows land on integers and even rows on half-integers. A
+		two-ball row is `-0.5` and `0.5`.
+	</Step>
+	<Step title="Unit">
+		`{ x, y }` where one ball pitch equals one. `x = row * √3/2` carries the
+		equilateral row spacing, so no consumer has to know the ratio. Rotation
+		and mirroring are applied here.
+	</Step>
+	<Step title="Target">
+		`Builder.project()` scales unit space by a `rowPitch` and a `columnPitch`
+		you supply. The two are independent on purpose, because a pool table is
+		not square.
+	</Step>
+</Steps>
+
+One generator produces every shape. A five-row triangle is row counts
+`[1, 2, 3, 4, 5]`; the nine-ball diamond is `[1, 2, 3, 2, 1]`; a line is `[7]`.
+
+```typescript
+const { Pattern } = ChalkySticks.Game.Rack;
+
+Pattern.ROW_PITCH_RATIO; // 0.8660254037844386
+Pattern.triangle(5);
+Pattern.diamond();
+Pattern.line(7);
+Pattern.toLattice(Pattern.diamond()); // 9 { column, row } points
+```
+
+## The catalog
+
+`Rack.Catalog` holds one definition per named layout: its lattice, its rules,
+and the balls it uses.
+
+| Strategy | Shape | Object balls | Rules |
+| --- | --- | --- | --- |
+| `EightBall` | Triangle, 5 rows | 1–15 | Solid at the apex, **8 on the centre spot**, groups alternating, one of each group in the back corners |
+| `NineBall` | Diamond | 1–9 | **1 at the apex**, **9 in the middle**, rest random |
+| `TenBall` | Triangle, 4 rows | 1–10 | **1 at the apex**, **10 on the centre spot**, rest random |
+| `Rotation` | Triangle, 5 rows | 1–15 | 1 apex, 15 centre, 2 and 3 in the back corners |
+| `StraightPool` | Triangle, 5 rows | 1–15 | Fifteen random |
+| `ThreeBall` | Triangle, 2 rows | 1–3 | 1, then 2 and 3 |
+| `OneBall` | Triangle, 1 row | 1 | Just the 1 |
+| `DrillLine` | Line | 1–7 | Balls 1–7 along a shallow diagonal |
+| `Clear` | — | none | An empty table |
+
+```typescript
+const { Catalog } = ChalkySticks.Game.Rack;
+
+Catalog.get(strategy); // IGameRackDefinition | undefined
+Catalog.has(strategy); // boolean
+Catalog.require(strategy); // throws Exception.UnknownRackStrategyError
+Catalog.all(); // every definition
+```
+
+`Custom`, `Freeplay`, and `RandomSpread` are **deliberately absent**. `Custom`
+carries caller-supplied placements rather than a lattice, and the other two
+describe a table with no rack on it. `get()` returns `undefined` for those
+rather than falling back to some other game's layout.
+
+<Warning>
+	The trainer's own `RackManager.setStrategy()` silently keeps the previous
+	strategy when handed a name it does not know. The SDK does not copy that:
+	`require()` throws. A caller naming a strategy we cannot rack has made a
+	mistake worth hearing about, not one to paper over with a different game.
+</Warning>
+
+### Position requirements
+
+A definition's `requirements` array is ordered exactly as the lattice is
+emitted — apex first, then row by row, and within a row from the lowest column
+to the highest. The two are only ever changed together.
+
+| Requirement | Meaning |
+| --- | --- |
+| `Specific` | This exact ball, named by `specificNumber` |
+| `Solid` | Any ball from 1–7 |
+| `Stripe` | Any ball from 9–15 |
+| `Random` | Anything still unclaimed |
+
+The eight ball belongs to neither group, so `Solver.SOLID_BALLS` is `[1..7]`,
+not `[1..8]`. Every rack that positions the 8 does so with a `Specific`
+requirement.
+
+## Solving
+
+`Rack.Solver` reads requirements in passes, so the tightest constraints claim
+their balls before the loosest start consuming the pool:
+
+<Steps>
+	<Step title="Caller overrides">
+		Balls a caller placed by hand outrank every requirement, including a
+		`Specific` one.
+	</Step>
+	<Step title="Specific pins">
+		Skipped when the named ball is not in the caller's ball list, so
+		narrowing that list can never smuggle a ball back in.
+	</Step>
+	<Step title="Solid and Stripe">
+		Drawn from their groups, both shuffled up front before either is consumed.
+	</Step>
+	<Step title="Random, then anything still open">
+		A slot left short by a conflicting override takes whatever is left rather
+		than staying empty.
+	</Step>
+</Steps>
+
+### Seeding
+
+```typescript
+Rack.Builder.build({ seed: 'tuesday-league', strategy: 'EightBall' });
+```
+
+The same seed always produces the same rack, on any client and on the server.
+Seeding uses `Core.Utility.Math.createSeededRng` (mulberry32). Pass
+`randomNumberGenerator` to supply your own stream; with neither, the draw is
+unseeded and the rack differs every call.
+
+<Warning>
+	The draw order is a public contract, not an implementation detail. Rack order
+	is what makes one break differ from the next, because collision resolution
+	runs sequentially over the racked balls — and once a seed appears in a shared
+	link, changing the order silently re-racks every saved link.
+	`Solver.SOLVER_VERSION` exists to be bumped deliberately when that happens.
+</Warning>
+
+### Degenerate input never throws
+
+Fewer balls than positions, contradictory requirements, or a `rows` count that
+disagrees with the requirement list all yield a **partial** layout with the gaps
+listed in `unresolved`. A rendering consumer normally calls `build()` from
+inside a computed property, where an exception would take down far more than the
+diagram.
+
+## Orientation
+
+```typescript
+Rack.Builder.build({
+	mirrorColumn: false,
+	mirrorRow: true,
+	rotation: 90,
+	strategy: 'EightBall',
+});
+```
+
+Rotation is restricted to quarter turns and computed with exact integer
+arithmetic rather than trigonometry, so coordinates carry no floating-point
+dust. An unrecognized angle snaps to the nearest quarter turn instead of
+throwing, which is what lets a query string carrying `rotate=45` still render.
+
+Mirroring and rotation are **separate**, and not interchangeable. The trainer's
+`rackOnLeft` flips only the depth axis; a half turn flips both. That difference
+is invisible on a symmetric lattice, but eight-ball's back row is
+`Solid, Stripe, Stripe, Solid, Stripe` — reverse it and the corner solid moves,
+which is a different rack. Trainer `rackOnLeft === true` maps to
+`{ mirrorColumn: false, mirrorRow: true, rotation: 0 }`.
+
+Position ordinals are **stable** across seed, rotation, and mirroring. That is
+what lets a caller address a slot by number in a URL and mean the same slot
+forever.
+
+## Projecting into your own space
+
+```typescript
+const pitch = BALL_DIAMETER + RACK_SPACING;
+const placements = Rack.Builder.project(layout, {
+	columnPitch: pitch,
+	origin: { x: FOOT_SPOT_DISTANCE, y: 0 },
+	rowPitch: pitch,
+});
+```
+
+`rowPitch` scales the projected x axis and `columnPitch` the projected y axis.
+On an unrotated rack those are the depth and lateral axes. A quarter turn swaps
+them, so a consumer whose two pitches differ — a normalized diagram measured
+against an oblong playable area — should rack unrotated and turn its own output.
+
+`layout.bounds` is already in ball pitches, so an SVG consumer pads by `0.5` for
+exactly one ball radius:
+
+```typescript
+const viewBox = `${layout.bounds.minX - 0.5} ${layout.bounds.minY - 0.5} `
+	+ `${layout.bounds.width + 1} ${layout.bounds.height + 1}`;
+```
+
+## Validating a rack somebody else built
+
+`Rack.Validator` answers "is this a legal eight-ball rack" without re-racking
+anything — for a layout a person rearranged by hand, one restored from storage,
+or one assembled from explicit placements.
+
+```typescript
+const violations = Rack.Validator.validate(
+	layout.balls.map((ball) => ball.number),
+	Rack.Catalog.require('EightBall').requirements,
+);
+
+// [] means legal. Each entry names the index, what was expected, and what it found.
+```
+
+## Persisting the choice
 
 The chosen layout lives on `Model.Game.rack_strategy`:
 
@@ -35,21 +259,20 @@ The chosen layout lives on `Model.Game.rack_strategy`:
 game.getRackStrategy(); // Enum.RackStrategy (default: EightBall)
 ```
 
-## Rendering A Rack
+`RackStrategy` mirrors `App\Enums\RackStrategy` in the ChalkySticks API and the
+trainer's own enum — values must stay in sync across all three.
 
-For the visual layout in the pad editor, use `Manager.Table` from `@chalkysticks/sdk-pad`:
+<Note>
+	The trainer currently carries four values the SDK does not (`Alternating`,
+	`KBall`, `PenaltyKicks`, `SnookerMini`). Widening the SDK means widening the
+	API first, or game create and update start returning 422.
+</Note>
 
-```typescript
-import { Manager } from '@chalkysticks/sdk-pad';
+## Drawing one
 
-const table = new Manager.Table({ height: 400, width: 800, x: 0, y: 0 });
+For a rack as scalable SVG, use [`RackDiagram`](/vue/rack) in
+`@chalkysticks/vue2-components`, or the
+[stateless rack embed](/vue/rack-embedding) for an `<iframe>`.
 
-table.rack8Ball(true);   // include cue ball
-table.rack9Ball(true);
-table.rack10Ball(true);
-
-table.rackBalls(customBallsArray, false); // second arg: normalized coordinates
-table.shuffleBalls();
-```
-
-See [Pad → Table Manager](/sdk/pad/table-manager) for the full racking API.
+For the Pad editor's own racking shortcuts, see
+[Pad → Table Manager](/sdk/pad/table-manager).

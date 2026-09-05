@@ -3,43 +3,57 @@ title: 'Racking'
 description: 'Standard and custom ball rack patterns'
 ---
 
-## Rack Types
+## Rack strategies
 
-| Type | Description |
+Racks are named by `Enum.RackStrategy` — PascalCase values, shared with
+`App\Enums\RackStrategy` in the API and with
+[`ChalkySticks.Game.Enum.RackStrategy`](/sdk/game/racking) in the SDK.
+
+| Strategy | Description |
 |------|-------------|
-| `8ball` | 15-ball triangle |
-| `9ball` | 9-ball diamond |
-| `10ball` | 10-ball triangle |
-| `3ball` | 3-ball triangle |
-| `drill-line` | Line of balls |
-| `custom` | Manual placement |
+| `EightBall` | 15-ball triangle, 8 on the centre spot |
+| `NineBall` | 9-ball diamond, 1 at the apex and 9 in the middle |
+| `TenBall` | 10-ball triangle, 1 at the apex and 10 on the centre spot |
+| `ThreeBall` | 3-ball triangle |
+| `OneBall` | A single object ball |
+| `Rotation` | 1 apex, 15 centre, 2 and 3 in the back corners |
+| `StraightPool` | 14.1 continuous |
+| `KBall` | 1 apex, 8 centre, 2 and 3 in the back corners |
+| `SnookerMini` | Ten reds plus the colours on their spots |
+| `PenaltyKicks` | Placement drill |
+| `DrillLine` | A shallow diagonal of balls 1–7 |
+| `Clear` | Table cleared |
+| `Custom` | Caller-supplied placements |
+| `Freeplay` | Keeps whatever strategy was last used |
+| `Alternating`, `RandomSpread` | Declared but have no strategy class; they fall through to the previous strategy |
 
-## Standard Racks
-
-```typescript
-// 8-ball rack
-game.rackBalls('8ball');
-
-// 9-ball rack
-game.rackBalls('9ball');
-
-// 10-ball rack
-game.rackBalls('10ball');
-```
-
-## Rack Options
+## Standard racks
 
 ```typescript
-// Shuffle before racking
-game.rackBalls('8ball', { shuffle: true });
-
-// Custom foot spot position
-game.rackBalls('8ball', {
-    footSpot: { x: 0.75, y: 0.5 }
-});
+game.rackBalls(Enum.RackStrategy.EightBall);
+game.rackBalls(Enum.RackStrategy.NineBall);
+game.rackBalls(Enum.RackStrategy.TenBall);
 ```
 
-## 8-Ball Rack Layout
+`rackBalls` resets each player's per-game stats — ball group, fouls, pocketed
+balls — while preserving match stats such as games won. It also positions the
+cue ball on the head spot; there is no separate cue-ball placement call.
+
+### With custom rules
+
+The second and third arguments attach a ruleset to the rack, rather than
+configuring the rack itself:
+
+```typescript
+game.rackBalls(Enum.RackStrategy.EightBall, customRules, rulesShorthand);
+```
+
+See [Custom Rules](/trainer/custom-rules/index) for the shorthand. To change the
+ruleset without re-racking, use `game.applyCustomRules(customRules, shorthand)`.
+
+## Rack layouts
+
+Eight-ball, one draw:
 
 ```
         1
@@ -49,9 +63,12 @@ game.rackBalls('8ball', {
 15   2   13   9   5
 ```
 
-The 8-ball is always in the center. Solids and stripes alternate on the bottom corners.
+Only some of that is fixed. The rack guarantees a **solid at the apex**, the
+**8 on the centre spot**, groups alternating through the middle rows, and **one
+of each group in the back corners**. Which solid and which stripe land where
+changes on every rack — the order is what makes one break differ from the next.
 
-## 9-Ball Rack Layout
+Nine-ball:
 
 ```
       1
@@ -61,40 +78,48 @@ The 8-ball is always in the center. Solids and stripes alternate on the bottom c
       8
 ```
 
-1-ball at the apex, 9-ball in the center.
+The **1 at the apex** and the **9 in the middle** are fixed; the other seven are
+random.
 
-## Drill Setups
-
-```typescript
-// Line of balls for straight-in practice
-game.rackBalls('drill-line', {
-    balls: [1, 2, 3, 4, 5],
-    startX: 0.5,
-    startY: 0.3,
-    spacing: 0.1,
-    direction: 'vertical'
-});
-```
-
-## Custom Positions
+## Custom positions
 
 ```typescript
-game.rackBalls('custom', {
-    positions: [
-        { number: 1, x: 0.3, y: 0.3 },
-        { number: 2, x: 0.5, y: 0.5 },
-        { number: 3, x: 0.7, y: 0.3 },
-        { number: 8, x: 0.5, y: 0.7 }
-    ]
-});
+game.rackCustom([
+	{ ball: 1, x: 0.3, z: 0.3 },
+	{ ball: 2, x: 0.5, z: 0.5 },
+	{ ball: 8, x: 0.5, z: 0.7 },
+	{ ball: 'cue', x: 0.25, z: 0.5 },
+]);
 ```
 
-## Cue Ball Placement
+Placements use **relative table coordinates**: `x` runs `0` (foot rail) to `1`
+(head rail), `z` runs `0` (top) to `1` (bottom). Ball `0` or `'cue'` is the cue
+ball, so this is also how you place it. `rackCustom` takes the same optional
+`customRules` and `rulesShorthand` arguments as `rackBalls`.
+
+To rack from a saved Pad diagram instead, use
+`await game.rackPad(id, customRules, inverse, rulesShorthand)`, which accepts a
+diagram hash or a `Model.Diagram`.
+
+## Partial re-racks
 
 ```typescript
-// Kitchen placement (behind head string)
-game.placeCueBall({ x: 0.25, y: 0.5 });
-
-// Ball in hand (anywhere)
-game.placeCueBall({ x: 0.4, y: 0.6 });
+ballFacade.rackPocketed([0, 1]); // keep the cue ball and the 1 where they are
 ```
+
+Used by 14.1 continuous, which re-racks fourteen balls and leaves the fifteenth
+and the cue ball in place. This one lives on the ball runtime facade rather than
+on `Game`.
+
+## Where the rules live
+
+The trainer's rack strategies are in
+`src/App/System/Ball/Rack/Strategy/`, and they emit 3D world coordinates in
+metres.
+
+The same layouts and requirement tables also exist as a headless, framework-
+neutral module in the SDK — [`ChalkySticks.Game.Rack`](/sdk/game/racking) —
+which is what the 2D [rack diagram](/vue/rack) and the
+[rack embed](/vue/rack-embedding) draw from. Its geometry is pinned to the
+trainer's coordinates by a parity test, so a rack drawn on the web sits where
+the trainer racks it.
