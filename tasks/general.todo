@@ -125,6 +125,8 @@ Funding & Partnerships:
 		☐ sensei nate (yt)
 			natejmt@gmail.com
 
+		☐ https://absolute-pool.com/
+		☐ https://www.facebook.com/profile.php?id=61556685013045&sk=reels_tab
 		☐ https://www.youtube.com/@PoolTips101
 		☐ https://www.instagram.com/jp.billiard
 		☐ https://www.instagram.com/calbilliards
@@ -203,19 +205,19 @@ Marketing & Media:
 
 Physical Marketing:
 
-	☐ Design flyer system.
+	☐ Design flyer system
 		☐ Daily challenge flyers.
 		☐ Local location flyers.
 		☐ Merch flyers.
 		☐ Sign-up / wait-list flyers.
 
-	☐ Build a reusable asset repo.
+	☐ Build a reusable asset repo
 		☐ Backgrounds.
 		☐ Flyers.
 		☐ Stock images.
 		☐ Social templates.
 
-	☐ Create venue handouts.
+	☐ Create venue handouts
 		☐ Stickers or QR codes for app / website downloads
 		☐ ChalkySticks pool sheet for places like Tap a Keg
 		☐ Deck of ChalkySticks playing cards with diagrams
@@ -234,7 +236,7 @@ Business Ideas:
 
 	☐ Offer users their own pool-player link tree
 
-	☐ Explore venue recommendation content.
+	☐ Explore venue recommendation content
 		☐ "Best place to play pool in [city]?"
 		☐ Auto-generate or curate lists from venue data.
 
@@ -410,6 +412,7 @@ Copy from YouTube / live matches
 
 	☐ Rebound game:
 	https://www.reddit.com/r/nostalgia/comments/1vtgx94/before_video_games_ruined_friendships_we_had/#lightbox
+		Bank into a ball that has a random starting position so people can't easily cheat with angle + power
 
 		☐ Maybe a version of crossfire where it's turned based and two players shoot balls at each other
 
@@ -435,3 +438,57 @@ Copy from YouTube / live matches
 
 		Getting these projectors over tables and hooking it up to ChalkySticks turns
 		every pool table into a TV. Advertisements, announcements, games, news, etc
+
+
+
+	☐ We'll want to limit the assets someone can upload per month, like videos
+	  videos + audio should have a max length and maybe we say how many seconds
+	  they have left instead of how many videos? So they can upload an hour long
+	  video but they only get 4 more hours... versus saying 30 videos.
+
+	  thinking about pad here
+
+
+	☐ do a chalky 2026 mid-year review??
+
+
+
+	☐ Send a replay
+
+
+
+
+
+Sometimes we get weird diagrams in our runout because 'none' and 'ghost' are colliding
+with each other to make space but they shouldn't. they're allowed to overlap
+
+
+
+
+☐ Make a health thing like Claude or GPT's health monitors
+	to ensure payments, auth, etc are always working
+
+
+☐ Allow players to up their stats like max draw, max follow, max left, max right
+  like in tony hawk pro skater
+
+	| Stat      | Meaning                        |
+	| --------- | ------------------------------ |
+	| Stroke    | Power consistency              |
+	| Touch     | Fine speed control             |
+	| Spin      | English capability             |
+	| Vision    | Aim / trajectory assistance    |
+	| Position  | Position-play tools            |
+	| Nerve     | Pressure resistance            |
+	| Knowledge | Banks, kicks, patterns         |
+	| Hustle    | Dialogue / money / side quests |
+
+	Tape to Tape https://www.youtube.com/watch?v=y9oWlkozh-8
+
+☐ More gaming in the game?
+	- "Someone is sharking you" so you have to stand up or risk a worse shot
+
+
+
+if we change physics work on trainer,we might need to version
+it because old replays will no longer work as expected

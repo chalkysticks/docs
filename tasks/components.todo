@@ -9,12 +9,6 @@ Now:
 	☐ Use a provider to share settings across Vue packages.
 		☐ Define ownership between app, web, Pad, Trainer, and component defaults.
 
-	☐ Create shared factories.
-		☐ Venue Collection factory.
-		☐ User Collection factory.
-		☐ Media Collection factory.
-		☐ Factories for common test fixtures.
-
 
 Components:
 

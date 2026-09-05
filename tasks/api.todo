@@ -14,9 +14,6 @@ Now:
 		☐ Make impersonation auditable.
 		☐ Use it to test social, game, and venue flows without sharing credentials.
 
-	☐ Lots of stats in CMS?
-		☐ Like venues, what I could sell
-
 
 Auth, Billing & Notifications:
 
@@ -28,7 +25,7 @@ Auth, Billing & Notifications:
 		☐ Handle subscription transfer.
 		☐ Handle one-time purchases.
 
-	☐ Add 2FA or OTP support, especially for admin accounts. @started(26-07-24 19:51)
+	✔ Add 2FA or OTP support, especially for admin accounts. @started(26-07-24 19:51) @done(26-09-02 17:23) @lasted(5w4d21h32m1s)
 
 	☐ Detailed stats for venues, like clicks, views, users
 
@@ -62,14 +59,13 @@ Media, Reactions & Safety:
 
 Email:
 
-	☐ Finish shared HTML email templates.
-		☐ Welcome email: CTA to open the app or scan a table.
-		☐ Email verification: secure verification link.
+	✔ Finish shared HTML email templates. @done(26-09-02 20:00)
+		✔ Welcome email: CTA to open the app or scan a table. @done(26-09-02 20:00)
+		✔ Email verification: secure verification link. @done(26-09-02 20:00)
 		☐ Login alert: IP, device, and location.
-		☐ Password reset: secure expiring link.
-		☐ Password changed: support link if unauthorized.
+		✔ Password reset: secure expiring link. @done(26-09-02 20:00)
+		✔ Password changed: support link if unauthorized. @done(26-09-02 20:00)
 		☐ Email changed: notify old and new addresses with rollback path.
-		☐ Account deletion: confirmation and data download option.
 
 	☐ Add lifecycle emails.
 		☐ Check-in reminder.
@@ -79,8 +75,6 @@ Email:
 		☐ Leaderboard position changed.
 		☐ Billing and subscription events.
 		☐ Loot box / reward unlock.
-		☐ Trading card drop.
-		☐ Drill challenge invitation.
 		☐ Shot featured.
 		☐ Event reminder.
 		☐ Booking confirmation.
