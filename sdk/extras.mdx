@@ -263,7 +263,9 @@ await chat.unsubscribeFromRoom('match-123');
 
 ### Game
 
-Realtime in-game events on the `cs:game:` namespace.
+Realtime room interaction and coordination on the `cs:game:` namespace.
+Competitive shot, table, rack, and match truth belongs to the canonical Match
+API and is deliberately absent from this service.
 
 ```typescript
 const game = Service.Game.instance;
@@ -271,17 +273,13 @@ await game.initialize(auth);
 
 await game.joinGame('game-789');
 
-// e.data is IRealtimePayload<IGameMessage> — the domain data sits under .data.payload
-game.on('shot:taken', (e) => console.log(e.data.data.payload));       // IShotData
-game.on('game:state', (e) => updateLocalState(e.data.data.payload));  // IGameState
-game.on('state:request', () => game.sendGameState('game-789', currentState)); // late-join sync
+game.on('cue:move', (e) => renderLatestCue(e.data.data.payload));
+game.on('ball:move', (e) => renderPlacement(e.data.data.payload));
+game.on('game:state', (e) => handleRoomControl(e.data.data.payload));
 
-await game.sendShot('game-789', { angle: 45, force: 0.8, position: { x: 100, y: 200 } });
-await game.sendCueMove('game-789', { angle: 45, position: { x: 100, y: 200 } });
-await game.sendGameState('game-789', { balls: [], turn_user_id: 'user-42' });
-await game.sendMatchStart('game-789'); // also sendMatchCreate/End/Join/Leave
-
-const history = await game.getHistory('game-789', 50); // IGameMessage[], oldest first
+game.publishToChannel('game-789', 'cue:move', latestCueState);
+game.publishToChannel('game-789', 'ball:move', latestPlacement);
+game.publishToChannel('game-789', 'game:state', roomControl);
 
 await game.leaveGame('game-789');
 ```
@@ -290,13 +288,11 @@ Subscribed events (Ably delivers per event NAME — unlisted events are never re
 
 | Event | Meaning |
 |-------|---------|
-| `ball:move` | Ball position update (added in 1.12.1) |
-| `cue:move` | Cue stick position/angle (`ICueMoveData`) |
-| `game:state` | Full state snapshot (`IGameState`) |
-| `match:create` / `match:end` / `match:join` / `match:leave` / `match:start` | Match lifecycle |
+| `ball:move` | Transient owning-seat ball placement |
+| `cue:move` | Transient newest-state cue movement |
+| `game:state` | Player/config metadata and rematch room-control hints |
+| `match:create` / `match:end` / `match:join` / `match:leave` | Room lifecycle hints |
 | `matchmaking:matched` | Matchmaker pairing notification on `cs:user:{id}` (added in 1.13.7) |
-| `shot:taken` | Shot telemetry (`IShotData`) |
-| `state:request` | Peer requests current game state (added in 1.11.3) |
 
 ## Recent Changes
 
